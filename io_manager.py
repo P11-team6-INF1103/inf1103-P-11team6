@@ -191,3 +191,10 @@ def display_outcome(record, severity_levels=None, outcome_actions=None):
     logged, severity and action, then the AI findings that apply to it."""
     print()
     _print_incident_report(record, severity_levels, outcome_actions)
+
+def display_severity_guide(severity_levels):
+    """Prints what each severity level (1-5) means."""
+    print("\nWHAT THE SEVERITY LEVELS MEAN")
+    for level in sorted(severity_levels):
+        name, meaning = severity_levels[level]
+        print(f"  {level} {name:<9} {meaning}")
