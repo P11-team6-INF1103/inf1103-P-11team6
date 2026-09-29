@@ -198,3 +198,53 @@ def display_severity_guide(severity_levels):
     for level in sorted(severity_levels):
         name, meaning = severity_levels[level]
         print(f"  {level} {name:<9} {meaning}")
+
+def display_summary(records, severity_levels=None, outcome_actions=None):
+    """Prints the summary for review meetings: totals, an overview list
+    (manual reviews first, then highest severity), the severity guide,
+    then the full report for every incident."""
+    print("\n" + "#" * _WIDTH)
+    print("INCIDENT SUMMARY / AFTER-ACTION REVIEW")
+    print("#" * _WIDTH)
+    if not records:
+        print("No incidents logged yet.")
+        return
+
+    outcome_counts = {}
+    hazard_counts = {}
+    for record in records:
+        outcome = _OUTCOME_NAMES.get(record.get("outcome"), record.get("outcome"))
+        hazard = _HAZARD_NAMES.get(record.get("hazard_type"), record.get("hazard_type"))
+        outcome_counts[outcome] = outcome_counts.get(outcome, 0) + 1
+        hazard_counts[hazard] = hazard_counts.get(hazard, 0) + 1
+
+    print(f"Total incidents: {len(records)}")
+    print("By action: " + ", ".join(f"{k} ({v})" for k, v in sorted(outcome_counts.items())))
+    print("By hazard: " + ", ".join(f"{k} ({v})" for k, v in sorted(hazard_counts.items())))
+
+    ordered = sorted(
+        enumerate(records, start=1),
+        key=lambda pair: (
+            pair[1].get("outcome") == "pending_review",
+            pair[1].get("severity_estimate") or 0,
+        ),
+        reverse=True,
+    )
+    print("\nOVERVIEW (needs manual review first, then most severe)")
+    for number, record in ordered:
+        hazard = _HAZARD_NAMES.get(record.get("hazard_type"), record.get("hazard_type"))
+        outcome = _OUTCOME_NAMES.get(record.get("outcome"), record.get("outcome"))
+        print(
+            f"  #{number}  {_format_time(record.get('timestamp'))}  {record.get('location')}  "
+            f"- {hazard}, severity {record.get('severity_estimate')} -> {outcome}"
+        )
+
+    if severity_levels:
+        display_severity_guide(severity_levels)
+
+    print()
+    for number, record in ordered:
+        _print_incident_report(record, severity_levels, outcome_actions, number=number)
+    print("#" * _WIDTH)
+    print("END OF SUMMARY")
+    print("#" * _WIDTH)
