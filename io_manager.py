@@ -185,4 +185,9 @@ def _print_incident_report(record, severity_levels=None, outcome_actions=None, n
         _heading("NOTE: SOME AI STEPS DID NOT WORK")
         _bullets(problems)
     print()
-    
+
+def display_outcome(record, severity_levels=None, outcome_actions=None):
+    """Prints the report for the incident that was just logged: what was
+    logged, severity and action, then the AI findings that apply to it."""
+    print()
+    _print_incident_report(record, severity_levels, outcome_actions)
