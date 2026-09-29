@@ -43,3 +43,45 @@ def get_incident_input():
         "injury": injury,
         "timestamp": datetime.now().isoformat(),
     }
+
+#Helper functions for formatting output display_outcome() / display_summary()
+def _format_time(timestamp):
+    """'2026-09-27T20:44:10' -> '27 Sep 2026, 20:44'."""
+    try:
+        return datetime.fromisoformat(timestamp).strftime("%d %b %Y, %H:%M")
+    except (TypeError, ValueError):
+        return str(timestamp)
+
+def _heading(title):
+    print(f"\n{title}")
+
+def _bullets(items, indent="  "):
+    for item in items:
+        print(f"{indent}- {item}")
+
+_SEASON_TEXT = {
+    "northeast_monsoon": "Northeast monsoon season (Dec to early Mar): wet and windy, heavy rain spells",
+    "southwest_monsoon": "Southwest monsoon season (Jun to Sep): hot, early-morning squalls, possible haze",
+    "inter_monsoon": "Inter-monsoon season (Apr-May, Oct-Nov): hot, afternoon thunderstorms and lightning",
+}
+
+_HAZARD_NAMES = {
+    "fall": "Slip, trip or fall (ground level)",
+    "fall_from_height": "Fall from height",
+    "electrical": "Electrical",
+    "chemical": "Chemical",
+    "vehicular": "Vehicle or mobile machinery",
+    "struck_by_machinery": "Struck by machinery",
+    "low_visibility": "Poor visibility",
+    "other": "Other",
+    "unassessed": "Not assessed",
+}
+
+_OUTCOME_NAMES = {
+    "stop_work_review": "STOP WORK - safety review",
+    "systemic_escalation": "ESCALATE to management",
+    "log_only": "LOG ONLY",
+    "pending_review": "NEEDS MANUAL REVIEW",
+}
+
+_WIDTH = 64
