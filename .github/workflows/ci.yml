@@ -21,6 +21,7 @@ jobs:
         with:
           python-version: "3.11"
           cache: "pip" # Caching speeds up dependency installation
+          cache-dependency-path: "library.txt"
 
       # 3. Install dependencies from library.txt
       - name: Install Dependencies
