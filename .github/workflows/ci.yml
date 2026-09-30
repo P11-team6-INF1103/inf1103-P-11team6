@@ -38,9 +38,6 @@ jobs:
 
       # 5. Run Pytest
       - name: Run Pytest
-        # TEMPORARY (if Daniel's tests don't exist yet):
-        # run: pytest tests/ || [ $? -eq 5 ]
-        # FINAL (Once tests exist, use standard blocking pytest):
         run: pytest tests/
 
       # 6. Docker Build
