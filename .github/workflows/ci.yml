@@ -6,9 +6,17 @@ on:
   pull_request:
     branches: [ "main" ]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       # 1. Checkout repository code
@@ -27,19 +35,42 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest ruff  # Ensure test and lint tools are installed
-          if [ -f library.txt ]; then pip install -r library.txt; fi
+          pip install -r library.txt
+          pip install pytest ruff
 
-      # 4. Run Ruff Check (Advisory in Sprint 1, Blocking in Sprint 2)
+      # 4. Ruff (advisory in Sprint 1, blocking in Sprint 2)
+      # continue-on-error keeps the pipeline going but still flags the step in the
+      # UI, unlike "|| true", which hides real crashes and shows a green tick.
+      # SPRINT 2: delete the `continue-on-error` line to make this blocking.
+      # TODO: link the issue tracking this change here.
       - name: Run Ruff Check
-        # SPRINT 1: "|| true" makes ruff advisory (pipeline continues on error).
-        # SPRINT 2: Remove "|| true" to make it blocking.
-        run: ruff check . || true
+        continue-on-error: true
+        run: ruff check .
+ 
+      # 5. Pytest
+      # FINAL (blocking): use this once tests exist.
 
-      # 5. Run Pytest
       - name: Run Pytest
         run: pytest tests/
-
-      # 6. Docker Build
+      # TEMPORARY alternative while tests don't exist yet (replace the step above):
+      # Tolerates "no tests collected" (5) and "tests/ not found" (4).
+      # - name: Run Pytest
+      #   run: |
+      #     rc=0
+      #     pytest tests/ || rc=$?
+      #     if [ "$rc" -eq 0 ] || [ "$rc" -eq 4 ] || [ "$rc" -eq 5 ]; then exit 0; fi
+      #     exit "$rc"
+ 
+      # 6. Docker build (validation only, no push), with GitHub Actions layer caching
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+ 
       - name: Build Docker Image
-        run: docker build . -t app:latest
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: app:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
