@@ -27,6 +27,7 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install pytest ruff  # Ensure test and lint tools are installed
           if [ -f library.txt ]; then pip install -r library.txt; fi
 
       # 4. Run Ruff Check (Advisory in Sprint 1, Blocking in Sprint 2)
