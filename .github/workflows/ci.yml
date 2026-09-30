@@ -1,0 +1,46 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ "main", "feature/io-and-location" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout repository code
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 2. Set up Python 3.11
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip" # Caching speeds up dependency installation
+
+      # 3. Install dependencies from library.txt
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f library.txt ]; then pip install -r library.txt; fi
+
+      # 4. Run Ruff Check (Advisory in Sprint 1, Blocking in Sprint 2)
+      - name: Run Ruff Check
+        # SPRINT 1: "|| true" makes ruff advisory (pipeline continues on error).
+        # SPRINT 2: Remove "|| true" to make it blocking.
+        run: ruff check . || true
+
+      # 5. Run Pytest
+      - name: Run Pytest
+        # TEMPORARY (if Daniel's tests don't exist yet):
+        # run: pytest tests/ || [ $? -eq 5 ]
+        # FINAL (Once tests exist, use standard blocking pytest):
+        run: pytest tests/
+
+      # 6. Docker Build
+      - name: Build Docker Image
+        run: docker build . -t app:latest
