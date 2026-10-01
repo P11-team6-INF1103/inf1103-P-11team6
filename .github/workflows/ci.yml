@@ -48,18 +48,18 @@ jobs:
         run: ruff check .
  
       # 5. Pytest
-      # FINAL (blocking): use this once tests exist.
-
+      # TEMPORARY while tests don't exist yet: tolerates "no tests collected" (5)
+      # and "tests/ not found" (4). Real test failures still fail the job.
+      # Once tests exist, replace this step with the FINAL (blocking) version below.
       - name: Run Pytest
-        run: pytest tests/
-      # TEMPORARY alternative while tests don't exist yet (replace the step above):
-      # Tolerates "no tests collected" (5) and "tests/ not found" (4).
+        run: |
+          rc=0
+          pytest tests/ || rc=$?
+          if [ "$rc" -eq 0 ] || [ "$rc" -eq 4 ] || [ "$rc" -eq 5 ]; then exit 0; fi
+          exit "$rc"
+      # FINAL (blocking):
       # - name: Run Pytest
-      #   run: |
-      #     rc=0
-      #     pytest tests/ || rc=$?
-      #     if [ "$rc" -eq 0 ] || [ "$rc" -eq 4 ] || [ "$rc" -eq 5 ]; then exit 0; fi
-      #     exit "$rc"
+      #   run: pytest tests/
  
       # 6. Docker build (validation only, no push), with GitHub Actions layer caching
       - name: Set up Docker Buildx
