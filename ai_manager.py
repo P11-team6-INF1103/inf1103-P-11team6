@@ -149,8 +149,7 @@ _SG_LONGITUDE = 103.8198
 
 
 def call_weather_api(location):
-    """Calls Open-Meteo (free, no key needed) for current Singapore weather.
-    Returns a dict or None on failure — never raises uncaught."""
+    
     try:
         response = requests.get(
             "https://api.open-meteo.com/v1/forecast",
@@ -176,8 +175,7 @@ def call_weather_api(location):
 
 
 def validate_weather_response(response):
-    """Checks condition, temperature_c, humidity_pct are present and
-    sensible."""
+   
     if not isinstance(response, dict):
         return False
     condition = response.get("condition")
