@@ -3,6 +3,7 @@ import json
 from datetime import datetime
 
 import requests
+from datetime import datetime
 from dotenv import load_dotenv
 from google import genai
 
@@ -141,6 +142,17 @@ def is_weather_relevant(record):
     description = record.get("description", "").lower()
     return any(keyword in description for keyword in _WEATHER_KEYWORDS)
 
+#daniel
+def get_time_of_day(timestamp):
+    try:
+        hour = datetime.fromisoformat(timestamp).hour
+    except (TypeError, ValueError):
+        return "day"
+    if 7 <= hour < 18:
+        return "day"
+    if 18 <= hour < 20 or 5 <= hour < 7:
+        return "dusk_dawn"
+    return "night"
 
 def call_weather_api(location):
     """Calls Open-Meteo (free, no key needed) for current Singapore weather.

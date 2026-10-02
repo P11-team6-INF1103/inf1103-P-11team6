@@ -19,6 +19,15 @@ def load_records():
     except (json.JSONDecodeError, OSError):
         return []
 
+#Daniel
+def save_record(record):
+    """Appends one record and writes back to incidents.json."""
+    os.makedirs(_DATA_DIR, exist_ok=True)
+    records = load_records()
+    records.append(record)
+    with open(_DATA_PATH, "w", encoding="utf-8") as f:
+        json.dump(records, f, indent=2, default=str)
+
 #Ren Xiang
 def query_by_location(location, days):
     """Filters records by location within the last N days. Used by
