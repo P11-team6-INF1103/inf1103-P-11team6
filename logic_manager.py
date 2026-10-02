@@ -35,3 +35,9 @@ def is_high_severity(record):
     injury = record.get("injury", False)
     recurrence = record.get("likelihood_recurrence", "unknown")
     return severity >= 4 or (injury and recurrence == "high")
+
+def is_systemic_risk(record, history):
+    """Rule 2 (recurring likelihood): same location flagged 3+ times in
+    the last 30 days. `history` is already pre-filtered to that window by
+    data_manager.query_by_location()."""
+    return len(history) >= 3
