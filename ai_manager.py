@@ -5,7 +5,6 @@ from datetime import datetime
 import requests
 from dotenv import load_dotenv
 from google import genai
-import INF1103_Project_Folders.inf1103secret.data_manager as data_manager
 
 load_dotenv()
 
@@ -201,6 +200,70 @@ def find_similar_incidents(record):
     return []
 
 
+def _extract_json_object(text):
+    """Pulls the outermost JSON object out of a free-text reply.
+    browser_search can't be combined with JSON mode, so the model's answer
+    may have prose or citation markers around the object. Returns a dict,
+    or None if there isn't one."""
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end <= start:
+        return None
+    try:
+        parsed = json.loads(text[start:end + 1])
+    except ValueError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+WEB_SEARCH_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "industry_context": {"type": "string"},
+        "incidents": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "summary": {"type": "string"},
+                    "location": {"type": "string"},
+                    "date": {"type": "string"},
+                    "action_taken": {"type": "string"},
+                    "source_url": {"type": "string"},
+                },
+                "required": ["summary", "location", "date", "action_taken", "source_url"],
+            },
+        },
+    },
+    "required": ["industry_context", "incidents"],
+}
+
+
+def _validate_json_schema(data, schema, path="response"):
+    """Checks an AI reply against a JSON schema. Raises ValueError naming
+    the first field that doesn't match. Supports type, properties, required
+    and items. Separate from _validate_schema(), which only checks that
+    required fields are present and returns True/False."""
+    type_checks = {
+        "object": lambda v: isinstance(v, dict),
+        "array": lambda v: isinstance(v, list),
+        "string": lambda v: isinstance(v, str),
+    }
+    expected = schema.get("type")
+    if expected is not None and not type_checks[expected](data):
+        raise ValueError(f"{path}: expected {expected}, got {type(data).__name__}")
+    if isinstance(data, dict):
+        for key in schema.get("required", []):
+            if key not in data:
+                raise ValueError(f"{path}: missing required field '{key}'")
+        for key, sub_schema in schema.get("properties", {}).items():
+            if key in data:
+                _validate_json_schema(data[key], sub_schema, f"{path}.{key}")
+    if isinstance(data, list) and "items" in schema:
+        for index, item in enumerate(data):
+            _validate_json_schema(item, schema["items"], f"{path}[{index}]")
+
+
 def search_web_for_similar_incidents(record):
     """Runs for every incident. Asks Groq (GPT-OSS + browser_search) to
     search the internet for (a) whether this kind of hazard is a known
@@ -261,7 +324,7 @@ def search_web_for_similar_incidents(record):
             parsed = _extract_json_object(content)
             if parsed is None:
                 raise ValueError("Groq reply had no JSON object")
-            _validate_schema(parsed, WEB_SEARCH_SCHEMA)
+            _validate_json_schema(parsed, WEB_SEARCH_SCHEMA)
 
             # Drop incidents without a real web link — they can't be checked.
             incidents = [
