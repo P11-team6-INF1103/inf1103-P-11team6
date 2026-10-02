@@ -1,6 +1,7 @@
 import json
 
 import requests
+from datetime import datetime
 from dotenv import load_dotenv
 from google import genai
 
@@ -147,6 +148,17 @@ def is_weather_relevant(record):
 _SG_LATITUDE = 1.3521
 _SG_LONGITUDE = 103.8198
 
+#daniel
+def get_time_of_day(timestamp):
+    try:
+        hour = datetime.fromisoformat(timestamp).hour
+    except (TypeError, ValueError):
+        return "day"
+    if 7 <= hour < 18:
+        return "day"
+    if 18 <= hour < 20 or 5 <= hour < 7:
+        return "dusk_dawn"
+    return "night"
 
 def call_weather_api(location):
     """Calls Open-Meteo (free, no key needed) for current Singapore weather.
