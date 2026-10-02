@@ -47,6 +47,15 @@ def assess_severity(record, weather_data=None, history=None):
         )
         return result
     
+    hazard_type = record["hazard_category"]
+    injury_severity = record.get("injury_severity", "unspecified")
+    at_height = record.get("working_at_height")
+    machinery = record.get("heavy_machinery_present")
+    ppe_not_worn = record.get("ppe_status") == "not_worn"
+    poor_light = record.get("lighting_condition") in ("dark", "low_light")
+    similar = record.get("similar_incidents") or []
+    similar_escalated = any(item.get("outcome") in _ESCALATED_OUTCOMES for item in similar)
+
 def is_high_severity(record):
     """Rule 1 (severity): severity_estimate >= 4 OR (injury AND
     likelihood_recurrence == 'high') — evaluated against Daniel's
