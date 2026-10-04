@@ -105,6 +105,15 @@ def _call_gemini(client, prompt, schema):
             last_error = error
     raise RuntimeError(f"All Gemini models failed; last error: {last_error}")
 
+#place holder
+def _validate_schema(data, required_fields):
+    if not isinstance(data, dict):
+        return False
+    for field in required_fields:
+        if field not in data:
+            return False
+    return True
+
 
 
 
