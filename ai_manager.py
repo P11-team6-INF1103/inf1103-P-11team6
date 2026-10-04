@@ -134,6 +134,17 @@ def _validate_schema(data, schema, path="response"):
             _validate_schema(item, schema["items"], f"{path}[{index}]")
 
 
+def _gemini_json(client, prompt, schema):
+    key = _cache_key("gemini", prompt, json.dumps(schema, sort_keys=True))
+    text = _RESPONSE_CACHE.get(key)
+    if text is None:
+        text = _call_gemini(client, prompt, schema)
+    parsed = _parse_json_safe(text)
+    _validate_schema(parsed, schema)
+    _RESPONSE_CACHE[key] = text
+    return parsed
+
+
 HAZARD_CATEGORIES = (
     "fall", "fall_from_height", "electrical", "chemical", "vehicular",
     "struck_by_machinery", "low_visibility", "other",
