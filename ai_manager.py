@@ -106,6 +106,10 @@ def _call_gemini(client, prompt, schema):
     raise RuntimeError(f"All Gemini models failed; last error: {last_error}")
 
 def _validate_schema(data, schema, path="response"):
+    """Checks an AI reply against the JSON schema we asked for, before any
+    of it is used. Supports the parts of JSON Schema this module uses:
+    type (single or list), enum, properties, required, items. Raises
+    ValueError naming the first field that doesn't match."""
     type_checks = {
         "object": lambda v: isinstance(v, dict),
         "array": lambda v: isinstance(v, list),
@@ -132,21 +136,6 @@ def _validate_schema(data, schema, path="response"):
     if isinstance(data, list) and "items" in schema:
         for index, item in enumerate(data):
             _validate_schema(item, schema["items"], f"{path}[{index}]")
-
-
-def _gemini_json(client, prompt, schema):
-    """Returns the parsed, schema-valid reply to `prompt`. A cached reply is
-    used when the same request was answered before. Raises on an API
-    failure or a reply that is unparseable or fails the schema; only a
-    valid reply is cached."""
-    key = _cache_key("gemini", prompt, json.dumps(schema, sort_keys=True))
-    text = _RESPONSE_CACHE.get(key)
-    if text is None:
-        text = _call_gemini(client, prompt, schema)
-    parsed = _parse_json_safe(text)
-    _validate_schema(parsed, schema)
-    _RESPONSE_CACHE[key] = text
-    return parsed
 
 
 HAZARD_CATEGORIES = (
