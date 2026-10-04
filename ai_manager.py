@@ -105,16 +105,37 @@ def _call_gemini(client, prompt, schema):
             last_error = error
     raise RuntimeError(f"All Gemini models failed; last error: {last_error}")
 
-#place holder
-def _validate_schema(data, required_fields):
-    if not isinstance(data, dict):
-        return False
-    for field in required_fields:
-        if field not in data:
-            return False
-    return True
-
-
+def _validate_schema(data, schema, path="response"):
+    """Checks an AI reply against the JSON schema we asked for, before any
+    of it is used. Supports the parts of JSON Schema this module uses:
+    type (single or list), enum, properties, required, items. Raises
+    ValueError naming the first field that doesn't match."""
+    type_checks = {
+        "object": lambda v: isinstance(v, dict),
+        "array": lambda v: isinstance(v, list),
+        "string": lambda v: isinstance(v, str),
+        "boolean": lambda v: isinstance(v, bool),
+        "integer": lambda v: isinstance(v, int) and not isinstance(v, bool),
+        "number": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool),
+        "null": lambda v: v is None,
+    }
+    allowed = schema.get("type")
+    if allowed is not None:
+        allowed = allowed if isinstance(allowed, list) else [allowed]
+        if not any(type_checks[t](data) for t in allowed):
+            raise ValueError(f"{path}: expected {' or '.join(allowed)}, got {type(data).__name__}")
+    if "enum" in schema and data not in schema["enum"]:
+        raise ValueError(f"{path}: {data!r} is not one of {schema['enum']}")
+    if isinstance(data, dict):
+        for key in schema.get("required", []):
+            if key not in data:
+                raise ValueError(f"{path}: missing required field '{key}'")
+        for key, sub_schema in schema.get("properties", {}).items():
+            if key in data:
+                _validate_schema(data[key], sub_schema, f"{path}.{key}")
+    if isinstance(data, list) and "items" in schema:
+        for index, item in enumerate(data):
+            _validate_schema(item, schema["items"], f"{path}[{index}]")
 
 
 HAZARD_CATEGORIES = (
@@ -188,8 +209,7 @@ def extract_hazard_context_flags(description):
 
     try:
         parsed = _parse_json_safe(_call_gemini(client, prompt))
-        if not _validate_schema(parsed, schema["required"]):
-            raise ValueError("Gemini reply was missing required fields")
+        _validate_schema(parsed, schema)
 
         if parsed.get("hazard_category") not in HAZARD_CATEGORIES:
             raise ValueError(f"invalid hazard_category: {parsed.get('hazard_category')!r}")
@@ -334,28 +354,6 @@ WEB_SEARCH_SCHEMA = {
     },
     "required": ["industry_context", "incidents"],
 }
-
-
-def _validate_json_schema(data, schema, path="response"):
-   
-    type_checks = {
-        "object": lambda v: isinstance(v, dict),
-        "array": lambda v: isinstance(v, list),
-        "string": lambda v: isinstance(v, str),
-    }
-    expected = schema.get("type")
-    if expected is not None and not type_checks[expected](data):
-        raise ValueError(f"{path}: expected {expected}, got {type(data).__name__}")
-    if isinstance(data, dict):
-        for key in schema.get("required", []):
-            if key not in data:
-                raise ValueError(f"{path}: missing required field '{key}'")
-        for key, sub_schema in schema.get("properties", {}).items():
-            if key in data:
-                _validate_json_schema(data[key], sub_schema, f"{path}.{key}")
-    if isinstance(data, list) and "items" in schema:
-        for index, item in enumerate(data):
-            _validate_json_schema(item, schema["items"], f"{path}[{index}]")
 
 
 def search_web_for_similar_incidents(record):
