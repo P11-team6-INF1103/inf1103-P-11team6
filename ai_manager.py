@@ -386,6 +386,10 @@ def search_web_for_similar_incidents(record):
         "If you find no incidents, use an empty list for incidents."
     )
 
+    cache_key = _cache_key("groq", prompt)
+    if cache_key in _RESPONSE_CACHE:
+        return _RESPONSE_CACHE[cache_key]
+
     last_error = None
     for model in GROQ_SEARCH_MODELS:
         try:
@@ -409,7 +413,7 @@ def search_web_for_similar_incidents(record):
             parsed = _extract_json_object(content)
             if parsed is None:
                 raise ValueError("Groq reply had no JSON object")
-            _validate_json_schema(parsed, WEB_SEARCH_SCHEMA)
+            _validate_schema(parsed, WEB_SEARCH_SCHEMA)
 
             # Drop incidents without a real web link — they can't be checked.
             incidents = [
@@ -417,13 +421,17 @@ def search_web_for_similar_incidents(record):
                 for item in parsed["incidents"][:3]
                 if item["source_url"].startswith(("http://", "https://")) and item["summary"].strip()
             ]
-            return {
+            result = {
                 "industry_context": parsed["industry_context"].strip() or None,
                 "incidents": incidents,
             }
+            _RESPONSE_CACHE[cache_key] = result
+            return result
         except Exception as error:
+            logger.warning("Groq web search with %s failed: %s", model, error)
             last_error = error
     raise RuntimeError(f"Groq web search failed; last error: {last_error}")
+
 
 
 def review_step(record):
