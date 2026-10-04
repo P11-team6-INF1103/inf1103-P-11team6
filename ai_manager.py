@@ -215,8 +215,7 @@ def extract_hazard_context_flags(description):
     )
 
     try:
-        parsed = _parse_json_safe(_call_gemini(client, prompt))
-        _validate_schema(parsed, schema)
+        parsed = _gemini_json(client, prompt, schema)
 
         if parsed.get("hazard_category") not in HAZARD_CATEGORIES:
             raise ValueError(f"invalid hazard_category: {parsed.get('hazard_category')!r}")
