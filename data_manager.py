@@ -1,9 +1,13 @@
 import json
 import os
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 from datetime import datetime, timedelta
 >>>>>>> origin/main
+=======
+from datetime import datetime, timedelta
+>>>>>>> 4708af42e0662aff3b3c2e5da5d299f7cb60e6f9
 
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 _DATA_PATH = os.path.join(_DATA_DIR, "incidents.json")
@@ -22,6 +26,7 @@ def load_records():
         return data
     except (json.JSONDecodeError, OSError):
         return []
+<<<<<<< HEAD
 =======
 def _set_aside_corrupt(path):
     """Renames an unreadable data file so the next save cannot destroy it.
@@ -75,6 +80,15 @@ def save_record(record):
 #Ren Xiang
 def query_by_location(location, days):
   
+=======
+
+#Ren Xiang
+def query_by_location(location, days):
+    """Filters records by location within the last N days. Used by
+    is_systemic_risk() and by assess_severity()'s recurrence judgment.
+    Most recent first. Returns contracts.md section 4 shape only:
+    location, timestamp, outcome."""
+>>>>>>> 4708af42e0662aff3b3c2e5da5d299f7cb60e6f9
     cutoff = datetime.now() - timedelta(days=days)
     matches = []
     for record in load_records():
@@ -91,5 +105,9 @@ def query_by_location(location, days):
                 "outcome": record.get("outcome"),
             })
     matches.sort(key=lambda r: r["timestamp"], reverse=True)
+<<<<<<< HEAD
     return matches
 >>>>>>> origin/main
+=======
+    return matches
+>>>>>>> 4708af42e0662aff3b3c2e5da5d299f7cb60e6f9

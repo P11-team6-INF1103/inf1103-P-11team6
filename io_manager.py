@@ -44,7 +44,10 @@ def get_incident_input():
         "timestamp": datetime.now().isoformat(),
     }
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
+=======
+>>>>>>> 4708af42e0662aff3b3c2e5da5d299f7cb60e6f9
 
 #Helper functions for formatting output display_outcome() / display_summary()
 def _format_time(timestamp):
@@ -250,4 +253,7 @@ def display_summary(records, severity_levels=None, outcome_actions=None):
     print("#" * _WIDTH)
     print("END OF SUMMARY")
     print("#" * _WIDTH)
+<<<<<<< HEAD
 >>>>>>> origin/main
+=======
+>>>>>>> 4708af42e0662aff3b3c2e5da5d299f7cb60e6f9
