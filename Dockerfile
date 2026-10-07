@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Use an official Python runtime as the base image
 FROM python:3.11-slim
 
@@ -15,3 +16,15 @@ COPY . .
 
 # Set default command to run main.py interactively
 CMD ["python", "main.py"]
+=======
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY library.txt .
+RUN pip install --no-cache-dir -r library.txt
+
+COPY . .
+
+CMD ["python", "main.py"]
+>>>>>>> origin/main
