@@ -112,16 +112,10 @@ def assess_severity(record, weather_data=None, history=None):
     return result
 
 def is_high_severity(record):
-    """Rule 1 (severity): severity_estimate >= 4 OR (injury AND
-    likelihood_recurrence == 'high') — evaluated against Daniel's
-    judgment."""
     severity = record.get("severity_estimate", 0)
     injury = record.get("injury", False)
     recurrence = record.get("likelihood_recurrence", "unknown")
     return severity >= 4 or (injury and recurrence == "high")
 
 def is_systemic_risk(record, history):
-    """Rule 2 (recurring likelihood): same location flagged 3+ times in
-    the last 30 days. `history` is already pre-filtered to that window by
-    data_manager.query_by_location()."""
     return len(history) >= 3
