@@ -16,9 +16,6 @@ OUTCOME_ACTIONS = getattr(logic_manager, "OUTCOME_ACTIONS", None)
 
 # Lennart
 def start_up():
-    """Run once at launch: set up the log file, check the data file, load
-    every saved incident and the saved AI replies. Returns the list of
-    saved incidents."""
     log_path = data_manager.get_log_path()
     if log_path:
         logging.basicConfig(
