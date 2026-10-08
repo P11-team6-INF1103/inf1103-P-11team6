@@ -53,3 +53,12 @@ def test_run_batch_processes_every_incident_in_the_file(monkeypatch, tmp_path):
 
 def test_run_batch_returns_1_for_an_unreadable_file(tmp_path):
     assert main.run_batch(str(tmp_path / "missing.json")) == 1
+
+
+def test_main_menu_logs_an_incident_then_exits(monkeypatch):
+    _use_fakes(monkeypatch)
+    choices = iter(["1", "2", "4"])
+    monkeypatch.setattr(main.io_manager, "get_menu_choice", lambda: next(choices))
+    monkeypatch.setattr(main.io_manager, "get_incident_input", lambda: _incident())
+    main.main()
+    assert len(main.data_manager.load_records()) == 1
