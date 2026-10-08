@@ -1,25 +1,3 @@
-"""
-Fake / canned implementations of each manager's public functions, built strictly
-from contracts.md and tests/sample_input.json.
-
-WHY THIS FILE EXISTS: it's what lets all five people work in parallel from day one
-without waiting for anyone else's real code to exist. If you're building the rules
-half of logic_manager and you need something that "looks like" what the judgment
-half will eventually produce, you import fake_assess_severity() from here instead
-of blocking on that person's actual implementation. Same pattern in every direction.
-
-Rules for this file:
-- Every fake_* function has the exact same name+signature+return shape as the real
-  function it stands in for (see contracts.md).
-- Fakes never call the network, never touch the filesystem beyond reading
-  sample_input.json, and always return instantly.
-- When your own real function is ready, you keep using fakes for the OTHER
-  modules' functions in your unit tests, and only main.py (the DevOps secondary
-  task, once everything is merged) wires the real functions together end-to-end.
-- Nobody edits someone else's "owned" fake without flagging it in the team chat —
-  same one-file-shared-carefully rule as any other shared contract.
-"""
-
 import json
 import os
 from datetime import datetime
@@ -35,10 +13,6 @@ with open(_SAMPLE_PATH, "r", encoding="utf-8") as f:
 # Stands in for Daniel's get_time_of_day() + Darrel's classify_lighting_condition(). Don't edit without telling that person.
 # ============================================================
 def _fallback_time_and_lighting(timestamp: str | None) -> tuple[str, str]:
-    """Best-effort time_of_day/lighting_condition for records that aren't in
-    sample_input.json. Mirrors the real rule in ai_manager.get_time_of_day() /
-    classify_lighting_condition() closely enough for fakes, without needing the
-    real implementation to exist yet."""
     try:
         hour = datetime.fromisoformat(timestamp).hour
     except (TypeError, ValueError):
@@ -57,8 +31,6 @@ def _fallback_time_and_lighting(timestamp: str | None) -> tuple[str, str]:
 # Stands in for Lennart's enrich_record(). Don't edit without telling that person.
 # ============================================================
 def fake_enrich_record(record: dict) -> dict:
-    """Returns a canned enriched_record matching contracts.md section 2.
-    Looks up by description so tests stay readable."""
     for candidate in _SAMPLES["enriched_records"]:
         if candidate["description"] == record.get("description"):
             return dict(candidate)
@@ -93,7 +65,6 @@ def fake_enrich_record(record: dict) -> dict:
 # Stands in for Daniel's assess_severity(). Don't edit without telling that person.
 # ============================================================
 def fake_assess_severity(record: dict, weather_data: dict | None = None) -> dict:
-    """Returns a canned assessed_record matching contracts.md section 3."""
     for candidate in _SAMPLES["assessed_records"]:
         if candidate["description"] == record.get("description"):
             return dict(candidate)

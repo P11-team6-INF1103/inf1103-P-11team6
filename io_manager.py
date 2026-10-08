@@ -14,9 +14,6 @@ def get_menu_choice():
 
 #incident input interface
 def get_incident_input():
-    """Prompts for description, location, reporter role, and injury flag.
-    Validates and reprompts on bad input. Returns an `incident` dict
-    matching contracts.md section 1."""
     print("\n--- Log a New Incident ---")
 
     description = input("Describe what happened: ").strip()
@@ -46,7 +43,6 @@ def get_incident_input():
 
 #Helper functions for formatting output display_outcome() / display_summary()
 def _format_time(timestamp):
-    """'2026-09-27T20:44:10' -> '27 Sep 2026, 20:44'."""
     try:
         return datetime.fromisoformat(timestamp).strftime("%d %b %Y, %H:%M")
     except (TypeError, ValueError):
@@ -88,10 +84,6 @@ _WIDTH = 64
 
 #print incident report
 def _print_incident_report(record, severity_levels=None, outcome_actions=None, number=None):
-    """Prints one incident for non-technical readers: what was logged, the
-    severity level and action, then only the AI findings that apply to
-    this incident. Sections with nothing useful to say are left out.
-    Works with older records that are missing newer fields."""
     severity_levels = severity_levels or {}
     outcome_actions = outcome_actions or {}
 
@@ -187,22 +179,16 @@ def _print_incident_report(record, severity_levels=None, outcome_actions=None, n
     print()
 
 def display_outcome(record, severity_levels=None, outcome_actions=None):
-    """Prints the report for the incident that was just logged: what was
-    logged, severity and action, then the AI findings that apply to it."""
     print()
     _print_incident_report(record, severity_levels, outcome_actions)
 
 def display_severity_guide(severity_levels):
-    """Prints what each severity level (1-5) means."""
     print("\nWHAT THE SEVERITY LEVELS MEAN")
     for level in sorted(severity_levels):
         name, meaning = severity_levels[level]
         print(f"  {level} {name:<9} {meaning}")
 
 def display_summary(records, severity_levels=None, outcome_actions=None):
-    """Prints the summary for review meetings: totals, an overview list
-    (manual reviews first, then highest severity), the severity guide,
-    then the full report for every incident."""
     print("\n" + "#" * _WIDTH)
     print("INCIDENT SUMMARY / AFTER-ACTION REVIEW")
     print("#" * _WIDTH)
