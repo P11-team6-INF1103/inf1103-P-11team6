@@ -8,12 +8,12 @@ _DATA_PATH = os.path.join(_DATA_DIR, "incidents.json")
 
 # Lennart
 def _data_dir():
-    return _DATA_DIR
+    return os.environ.get("INCIDENT_DATA_DIR") or _DATA_DIR
 
 
 # Lennart
 def _incidents_path():
-    return _DATA_PATH
+    return os.path.join(_data_dir(), "incidents.json")
 
 
 # Lennart
@@ -46,6 +46,20 @@ def _read_json(path, expected_type):
         return expected_type(), f"{os.path.basename(path)} had the wrong format (kept as {os.path.basename(backup) if backup else 'unmovable file'})"
     return data, None
 
+def _write_json(path, data):
+    temp_path = path + ".tmp"
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(temp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, default=str, sort_keys=True)
+        os.replace(temp_path, path)
+        return True
+    except OSError:
+        try:
+            os.remove(temp_path)
+        except OSError:
+            pass
+        return False
 
 # Lennart
 def get_log_path():
@@ -73,23 +87,26 @@ def load_ai_cache():
     data, _problem = _read_json(_cache_path(), dict)
     return data
 
+def save_ai_cache(cache):
+    return _write_json(_cache_path(), cache)
 
 #Daniel
 def save_record(record):
-
-    os.makedirs(_DATA_DIR, exist_ok=True)
-    records = load_records()
+    path = _incidents_path()
+    records, problem = _read_json(path, list)
+    if problem and os.path.exists(path):
+        return False
+    records = [item for item in records if isinstance(item, dict)]
     records.append(record)
-    with open(_DATA_PATH, "w", encoding="utf-8") as f:
-        json.dump(records, f, indent=2, default=str)
+    return _write_json(path, records)
 
 #Ren Xiang
-def query_by_location(location, days):
-  
-    cutoff = datetime.now() - timedelta(days=days)
+def query_by_location(location, days, as_of=None, records=None):
+    end = datetime.fromisoformat(as_of) if as_of else datetime.now()
+    cutoff = end - timedelta(days=days)
     matches = []
-    for record in load_records():
-        if record.get("location") != location:
+    for record in (load_records() if records is None else records):
+        if not isinstance(record, dict) or record.get("location") != location:
             continue
         try:
             record_time = datetime.fromisoformat(record.get("timestamp", ""))
