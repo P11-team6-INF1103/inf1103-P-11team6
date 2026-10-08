@@ -16,6 +16,11 @@ def _incidents_path():
     return _DATA_PATH
 
 
+# Lennart
+def _cache_path():
+    return os.path.join(_data_dir(), "ai_cache.json")
+
+
 def _set_aside_corrupt(path):
     """Renames an unreadable data file so the next save cannot destroy it.
     Returns the new name, or None if the rename failed."""
