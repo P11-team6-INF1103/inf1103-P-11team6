@@ -145,12 +145,6 @@ def _gemini_json(client, prompt, schema):
     return parsed
 
 
-HAZARD_CATEGORIES = (
-    "fall", "fall_from_height", "electrical", "chemical", "vehicular",
-    "struck_by_machinery", "low_visibility", "other",
-)
-INJURY_SEVERITIES = ("none", "minor", "serious", "fatal", "unspecified")
-
 # Lennart
 def extract_hazard_context_flags(description):
     defaults = {
@@ -461,8 +455,13 @@ def enrich_record(record, history_records=None):
     enriched["humidity_pct"] = None
     enriched["enrichment_error"] = None
     if weather_relevant:
-        raw_weather = call_weather_api(record.get("location", ""))
+        # Same hour + same place -> same weather answer on every run.
+        weather_key = _cache_key("weather", str(record.get("timestamp", ""))[:13])
+        raw_weather = _RESPONSE_CACHE.get(weather_key)
+        if raw_weather is None:
+            raw_weather = call_weather_api(record.get("location", ""))
         if raw_weather is not None and validate_weather_response(raw_weather):
+            _RESPONSE_CACHE[weather_key] = raw_weather
             enriched["weather_available"] = True
             enriched["condition"] = raw_weather["condition"]
             enriched["temperature_c"] = raw_weather["temperature_c"]

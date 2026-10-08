@@ -6,6 +6,21 @@ _DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 _DATA_PATH = os.path.join(_DATA_DIR, "incidents.json")
 
 
+# Lennart
+def _data_dir():
+    return _DATA_DIR
+
+
+# Lennart
+def _incidents_path():
+    return _DATA_PATH
+
+
+# Lennart
+def _cache_path():
+    return os.path.join(_data_dir(), "ai_cache.json")
+
+
 def _set_aside_corrupt(path):
     """Renames an unreadable data file so the next save cannot destroy it.
     Returns the new name, or None if the rename failed."""
@@ -38,12 +53,40 @@ def _read_json(path, expected_type):
 
 
 # Lennart
+def get_log_path():
+    """Where main.py writes the log (data/app.log). Creates the data folder
+    if needed; returns None when it cannot be created."""
+    try:
+        os.makedirs(_data_dir(), exist_ok=True)
+    except OSError:
+        return None
+    return os.path.join(_data_dir(), "app.log")
+
+
+# Lennart
 def load_records():
     """Loads incidents.json (main.py calls this once on startup). Returns
     an empty list if the file is missing, corrupt or the wrong shape —
     never raises. Entries that are not objects are dropped."""
-    data, _problem = _read_json(_DATA_PATH, list)
+    data, _problem = _read_json(_incidents_path(), list)
     return [item for item in data if isinstance(item, dict)]
+
+
+# Lennart
+def check_records_file():
+    """Returns a plain-English problem with incidents.json (for main.py to
+    show), or None if it is fine or absent. A corrupt file is set aside as
+    part of the check, so call this before load_records()."""
+    _data, problem = _read_json(_incidents_path(), list)
+    return problem
+
+
+# Lennart
+def load_ai_cache():
+    """Loads the saved AI replies (ai_cache.json). Empty dict if missing
+    or corrupt — never raises."""
+    data, _problem = _read_json(_cache_path(), dict)
+    return data
 
 
 #Daniel
