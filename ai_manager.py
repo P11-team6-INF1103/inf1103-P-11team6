@@ -145,12 +145,6 @@ def _gemini_json(client, prompt, schema):
     return parsed
 
 
-HAZARD_CATEGORIES = (
-    "fall", "fall_from_height", "electrical", "chemical", "vehicular",
-    "struck_by_machinery", "low_visibility", "other",
-)
-INJURY_SEVERITIES = ("none", "minor", "serious", "fatal", "unspecified")
-
 # Lennart
 def extract_hazard_context_flags(description):
     defaults = {
