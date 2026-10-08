@@ -41,3 +41,15 @@ def test_log_incident_flow_runs_one_incident(monkeypatch, capsys):
     final_record = main.log_incident_flow([])
     assert "outcome" in final_record
     assert capsys.readouterr().out != ""
+
+
+def test_run_batch_processes_every_incident_in_the_file(monkeypatch, tmp_path):
+    _use_fakes(monkeypatch)
+    path = tmp_path / "batch.json"
+    path.write_text(json.dumps([_incident(), _incident(location="Site B")]))
+    assert main.run_batch(str(path)) == 0
+    assert len(main.data_manager.load_records()) == 2
+
+
+def test_run_batch_returns_1_for_an_unreadable_file(tmp_path):
+    assert main.run_batch(str(tmp_path / "missing.json")) == 1
