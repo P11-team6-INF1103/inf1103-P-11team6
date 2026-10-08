@@ -129,4 +129,9 @@ def main():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Workplace Safety Incident Triage System")
+    parser.add_argument("--batch", metavar="FILE", help="process the incidents in FILE (JSON) and exit")
+    arguments = parser.parse_args()
+    if arguments.batch:
+        raise SystemExit(run_batch(arguments.batch))
     main()
