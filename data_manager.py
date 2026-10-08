@@ -81,6 +81,14 @@ def check_records_file():
     return problem
 
 
+# Lennart
+def load_ai_cache():
+    """Loads the saved AI replies (ai_cache.json). Empty dict if missing
+    or corrupt — never raises."""
+    data, _problem = _read_json(_cache_path(), dict)
+    return data
+
+
 #Daniel
 def save_record(record):
 
