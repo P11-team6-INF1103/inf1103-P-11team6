@@ -1,0 +1,347 @@
+{
+  "raw_incidents": [
+    {
+      "description": "worker slipped near the scaffolding, no injury, wet floor",
+      "location": "Site A - Block 3",
+      "reporter_role": "site_supervisor",
+      "injury": false,
+      "timestamp": "2026-09-01T08:15:00"
+    },
+    {
+      "description": "worker fell from height near unguarded edge, taken to hospital",
+      "location": "Site B - Tower Crane Zone",
+      "reporter_role": "site_supervisor",
+      "injury": true,
+      "timestamp": "2026-09-03T14:02:00"
+    },
+    {
+      "description": "exposed live wire spotted near generator, no contact made",
+      "location": "Site A - Block 1",
+      "reporter_role": "wsh_officer",
+      "injury": false,
+      "timestamp": "2026-09-05T09:40:00"
+    },
+    {
+      "description": "forklift reversed into stacked pallets near the loading bay at night, driver was not wearing a hi-vis vest, no injury",
+      "location": "Site C - Loading Bay",
+      "reporter_role": "site_supervisor",
+      "injury": false,
+      "timestamp": "2026-09-10T20:45:00"
+    },
+    {
+      "description": "electrician working on a rooftop AC unit after dark under portable floodlights, harness and PPE worn throughout, no incident",
+      "location": "Site A - Rooftop",
+      "reporter_role": "wsh_officer",
+      "injury": false,
+      "timestamp": "2026-09-12T21:10:00"
+    }
+  ],
+  "enriched_records": [
+    {
+      "description": "worker slipped near the scaffolding, no injury, wet floor",
+      "location": "Site A - Block 3",
+      "reporter_role": "site_supervisor",
+      "injury": false,
+      "timestamp": "2026-09-01T08:15:00",
+      "weather_available": true,
+      "condition": "rain",
+      "temperature_c": 27.5,
+      "humidity_pct": 88,
+      "enrichment_error": null,
+      "time_of_day": "day",
+      "lighting_condition": "daylight",
+      "working_at_height": true,
+      "height_estimate_m": null,
+      "heavy_machinery_present": false,
+      "ppe_status": "unspecified",
+      "context_flags_error": null,
+      "similar_incidents_checked": false,
+      "similar_incidents": null,
+      "similar_incidents_error": null
+    },
+    {
+      "description": "worker fell from height near unguarded edge, taken to hospital",
+      "location": "Site B - Tower Crane Zone",
+      "reporter_role": "site_supervisor",
+      "injury": true,
+      "timestamp": "2026-09-03T14:02:00",
+      "weather_available": false,
+      "condition": null,
+      "temperature_c": null,
+      "humidity_pct": null,
+      "enrichment_error": null,
+      "time_of_day": "day",
+      "lighting_condition": "daylight",
+      "working_at_height": true,
+      "height_estimate_m": null,
+      "heavy_machinery_present": false,
+      "ppe_status": "unspecified",
+      "context_flags_error": null,
+      "similar_incidents_checked": true,
+      "similar_incidents": [
+        {
+          "description": "worker fell from a scaffolding platform, fractured wrist",
+          "hazard_type": "fall_from_height",
+          "outcome": "stop_work_review",
+          "resolution_notes": "site added guardrails and mandatory harness checks before re-opening the zone"
+        }
+      ],
+      "similar_incidents_error": null
+    },
+    {
+      "description": "exposed live wire spotted near generator, no contact made",
+      "location": "Site A - Block 1",
+      "reporter_role": "wsh_officer",
+      "injury": false,
+      "timestamp": "2026-09-05T09:40:00",
+      "weather_available": false,
+      "condition": null,
+      "temperature_c": null,
+      "humidity_pct": null,
+      "enrichment_error": null,
+      "time_of_day": "day",
+      "lighting_condition": "daylight",
+      "working_at_height": false,
+      "height_estimate_m": null,
+      "heavy_machinery_present": true,
+      "ppe_status": "unspecified",
+      "context_flags_error": null,
+      "similar_incidents_checked": true,
+      "similar_incidents": [
+        {
+          "description": "generator cable found exposed near the site office",
+          "hazard_type": "electrical",
+          "outcome": "log_only",
+          "resolution_notes": "cable re-routed and taped the same day, no further action needed"
+        }
+      ],
+      "similar_incidents_error": null
+    },
+    {
+      "description": "forklift reversed into stacked pallets near the loading bay at night, driver was not wearing a hi-vis vest, no injury",
+      "location": "Site C - Loading Bay",
+      "reporter_role": "site_supervisor",
+      "injury": false,
+      "timestamp": "2026-09-10T20:45:00",
+      "weather_available": false,
+      "condition": null,
+      "temperature_c": null,
+      "humidity_pct": null,
+      "enrichment_error": null,
+      "time_of_day": "night",
+      "lighting_condition": "dark",
+      "working_at_height": false,
+      "height_estimate_m": null,
+      "heavy_machinery_present": true,
+      "ppe_status": "not_worn",
+      "context_flags_error": null,
+      "similar_incidents_checked": true,
+      "similar_incidents": [
+        {
+          "description": "forklift clipped a stacked pallet during a night shift, no injury",
+          "hazard_type": "struck_by_machinery",
+          "outcome": "systemic_escalation",
+          "resolution_notes": "loading-bay lighting upgraded and a spotter role added for night shifts"
+        }
+      ],
+      "similar_incidents_error": null
+    },
+    {
+      "description": "electrician working on a rooftop AC unit after dark under portable floodlights, harness and PPE worn throughout, no incident",
+      "location": "Site A - Rooftop",
+      "reporter_role": "wsh_officer",
+      "injury": false,
+      "timestamp": "2026-09-12T21:10:00",
+      "weather_available": false,
+      "condition": null,
+      "temperature_c": null,
+      "humidity_pct": null,
+      "enrichment_error": null,
+      "time_of_day": "night",
+      "lighting_condition": "dark",
+      "working_at_height": true,
+      "height_estimate_m": null,
+      "heavy_machinery_present": false,
+      "ppe_status": "worn",
+      "context_flags_error": null,
+      "similar_incidents_checked": true,
+      "similar_incidents": [
+        {
+          "description": "technician worked on a rooftop unit after dark, PPE worn, no incident",
+          "hazard_type": "fall_from_height",
+          "outcome": "log_only",
+          "resolution_notes": "no action needed; harness and floodlight procedure already followed correctly"
+        }
+      ],
+      "similar_incidents_error": null
+    }
+  ],
+  "assessed_records": [
+    {
+      "description": "worker slipped near the scaffolding, no injury, wet floor",
+      "location": "Site A - Block 3",
+      "reporter_role": "site_supervisor",
+      "injury": false,
+      "timestamp": "2026-09-01T08:15:00",
+      "weather_available": true,
+      "condition": "rain",
+      "temperature_c": 27.5,
+      "humidity_pct": 88,
+      "enrichment_error": null,
+      "time_of_day": "day",
+      "lighting_condition": "daylight",
+      "working_at_height": true,
+      "height_estimate_m": null,
+      "heavy_machinery_present": false,
+      "ppe_status": "unspecified",
+      "context_flags_error": null,
+      "similar_incidents_checked": false,
+      "similar_incidents": null,
+      "similar_incidents_error": null,
+      "hazard_type": "fall",
+      "severity_estimate": 2,
+      "likelihood_recurrence": "medium",
+      "assessment_error": null
+    },
+    {
+      "description": "worker fell from height near unguarded edge, taken to hospital",
+      "location": "Site B - Tower Crane Zone",
+      "reporter_role": "site_supervisor",
+      "injury": true,
+      "timestamp": "2026-09-03T14:02:00",
+      "weather_available": false,
+      "condition": null,
+      "temperature_c": null,
+      "humidity_pct": null,
+      "enrichment_error": null,
+      "time_of_day": "day",
+      "lighting_condition": "daylight",
+      "working_at_height": true,
+      "height_estimate_m": null,
+      "heavy_machinery_present": false,
+      "ppe_status": "unspecified",
+      "context_flags_error": null,
+      "similar_incidents_checked": true,
+      "similar_incidents": [
+        {
+          "description": "worker fell from a scaffolding platform, fractured wrist",
+          "hazard_type": "fall_from_height",
+          "outcome": "stop_work_review",
+          "resolution_notes": "site added guardrails and mandatory harness checks before re-opening the zone"
+        }
+      ],
+      "similar_incidents_error": null,
+      "hazard_type": "fall_from_height",
+      "severity_estimate": 5,
+      "likelihood_recurrence": "high",
+      "assessment_error": null
+    },
+    {
+      "description": "exposed live wire spotted near generator, no contact made",
+      "location": "Site A - Block 1",
+      "reporter_role": "wsh_officer",
+      "injury": false,
+      "timestamp": "2026-09-05T09:40:00",
+      "weather_available": false,
+      "condition": null,
+      "temperature_c": null,
+      "humidity_pct": null,
+      "enrichment_error": null,
+      "time_of_day": "day",
+      "lighting_condition": "daylight",
+      "working_at_height": false,
+      "height_estimate_m": null,
+      "heavy_machinery_present": true,
+      "ppe_status": "unspecified",
+      "context_flags_error": null,
+      "similar_incidents_checked": true,
+      "similar_incidents": [
+        {
+          "description": "generator cable found exposed near the site office",
+          "hazard_type": "electrical",
+          "outcome": "log_only",
+          "resolution_notes": "cable re-routed and taped the same day, no further action needed"
+        }
+      ],
+      "similar_incidents_error": null,
+      "hazard_type": "electrical",
+      "severity_estimate": 3,
+      "likelihood_recurrence": "low",
+      "assessment_error": null
+    },
+    {
+      "description": "forklift reversed into stacked pallets near the loading bay at night, driver was not wearing a hi-vis vest, no injury",
+      "location": "Site C - Loading Bay",
+      "reporter_role": "site_supervisor",
+      "injury": false,
+      "timestamp": "2026-09-10T20:45:00",
+      "weather_available": false,
+      "condition": null,
+      "temperature_c": null,
+      "humidity_pct": null,
+      "enrichment_error": null,
+      "time_of_day": "night",
+      "lighting_condition": "dark",
+      "working_at_height": false,
+      "height_estimate_m": null,
+      "heavy_machinery_present": true,
+      "ppe_status": "not_worn",
+      "context_flags_error": null,
+      "similar_incidents_checked": true,
+      "similar_incidents": [
+        {
+          "description": "forklift clipped a stacked pallet during a night shift, no injury",
+          "hazard_type": "struck_by_machinery",
+          "outcome": "systemic_escalation",
+          "resolution_notes": "loading-bay lighting upgraded and a spotter role added for night shifts"
+        }
+      ],
+      "similar_incidents_error": null,
+      "hazard_type": "struck_by_machinery",
+      "severity_estimate": 4,
+      "likelihood_recurrence": "high",
+      "assessment_error": null
+    },
+    {
+      "description": "electrician working on a rooftop AC unit after dark under portable floodlights, harness and PPE worn throughout, no incident",
+      "location": "Site A - Rooftop",
+      "reporter_role": "wsh_officer",
+      "injury": false,
+      "timestamp": "2026-09-12T21:10:00",
+      "weather_available": false,
+      "condition": null,
+      "temperature_c": null,
+      "humidity_pct": null,
+      "enrichment_error": null,
+      "time_of_day": "night",
+      "lighting_condition": "dark",
+      "working_at_height": true,
+      "height_estimate_m": null,
+      "heavy_machinery_present": false,
+      "ppe_status": "worn",
+      "context_flags_error": null,
+      "similar_incidents_checked": true,
+      "similar_incidents": [
+        {
+          "description": "technician worked on a rooftop unit after dark, PPE worn, no incident",
+          "hazard_type": "fall_from_height",
+          "outcome": "log_only",
+          "resolution_notes": "no action needed; harness and floodlight procedure already followed correctly"
+        }
+      ],
+      "similar_incidents_error": null,
+      "hazard_type": "fall_from_height",
+      "severity_estimate": 2,
+      "likelihood_recurrence": "medium",
+      "assessment_error": null
+    }
+  ],
+  "history_examples": {
+    "site_a_block_3_recent": [
+      {"location": "Site A - Block 3", "timestamp": "2026-08-20T10:00:00", "outcome": "log_only"},
+      {"location": "Site A - Block 3", "timestamp": "2026-08-25T11:00:00", "outcome": "log_only"},
+      {"location": "Site A - Block 3", "timestamp": "2026-08-30T09:00:00", "outcome": "log_only"}
+    ],
+    "empty": []
+  }
+}
