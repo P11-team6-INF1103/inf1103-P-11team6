@@ -66,25 +66,20 @@ def process_incident(incident, records):
 
 
 # Lennart
-def log_incident_flow():
+def log_incident_flow(records):
     incident = io_manager.get_incident_input()
-    enriched = ai_manager.enrich_record(incident)
-    history = data_manager.query_by_location(enriched.get("location", ""), 30)
-    assessed = logic_manager.assess_severity(enriched, enriched, history)
-    final_record = dict(assessed)
-    final_record["outcome"] = decide_outcome(assessed, history)
-    save_record(final_record)
+    final_record = process_incident(incident, records)
     io_manager.display_outcome(final_record, SEVERITY_LEVELS, OUTCOME_ACTIONS)
     return final_record
 
 
 # Lennart
 def main():
-    start_up()
+    records = start_up()
     while True:
         choice = io_manager.get_menu_choice()
         if choice == "1":
-            log_incident_flow()
+            log_incident_flow(records)
         elif choice == "2":
             records = data_manager.load_records()
             io_manager.display_summary(records, SEVERITY_LEVELS, OUTCOME_ACTIONS)
