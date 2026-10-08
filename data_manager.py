@@ -68,8 +68,17 @@ def load_records():
     """Loads incidents.json (main.py calls this once on startup). Returns
     an empty list if the file is missing, corrupt or the wrong shape —
     never raises. Entries that are not objects are dropped."""
-    data, _problem = _read_json(_DATA_PATH, list)
+    data, _problem = _read_json(_incidents_path(), list)
     return [item for item in data if isinstance(item, dict)]
+
+
+# Lennart
+def check_records_file():
+    """Returns a plain-English problem with incidents.json (for main.py to
+    show), or None if it is fine or absent. A corrupt file is set aside as
+    part of the check, so call this before load_records()."""
+    _data, problem = _read_json(_incidents_path(), list)
+    return problem
 
 
 #Daniel
