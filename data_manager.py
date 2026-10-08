@@ -6,6 +6,11 @@ _DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 _DATA_PATH = os.path.join(_DATA_DIR, "incidents.json")
 
 
+# Lennart
+def _data_dir():
+    return _DATA_DIR
+
+
 def _set_aside_corrupt(path):
     """Renames an unreadable data file so the next save cannot destroy it.
     Returns the new name, or None if the rename failed."""
