@@ -19,6 +19,20 @@ apply_lighting = getattr(logic_manager, "apply_lighting", dict)
 generate_incident_review = getattr(ai_manager, "generate_incident_review", lambda record: {})
 
 
+def _fallback_read_incident_file(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            items = json.load(f)
+    except (OSError, ValueError) as error:
+        return [], [f"Could not read {path}: {error}"]
+    if not isinstance(items, list):
+        return [], [f"{path} must contain a JSON list of incidents"]
+    return [item for item in items if isinstance(item, dict)], []
+
+
+read_incident_file = getattr(io_manager, "read_incident_file", _fallback_read_incident_file)
+
+
 # Lennart
 def start_up():
     log_path = data_manager.get_log_path()
@@ -71,6 +85,23 @@ def log_incident_flow(records):
     final_record = process_incident(incident, records)
     io_manager.display_outcome(final_record, SEVERITY_LEVELS, OUTCOME_ACTIONS)
     return final_record
+
+
+# Lennart
+def run_batch(path):
+    incidents, problems = read_incident_file(path)
+    for problem in problems:
+        print(f"Skipped: {problem}")
+    if not incidents:
+        print("No valid incidents to process.")
+        return 1
+
+    records = start_up()
+    for incident in incidents:
+        final_record = process_incident(incident, records)
+        io_manager.display_outcome(final_record, SEVERITY_LEVELS, OUTCOME_ACTIONS)
+    io_manager.display_summary(records, SEVERITY_LEVELS, OUTCOME_ACTIONS)
+    return 0
 
 
 # Lennart
