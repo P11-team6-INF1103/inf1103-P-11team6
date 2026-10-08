@@ -24,3 +24,12 @@ def _use_fakes(monkeypatch):
 
 def test_start_up_returns_a_list_of_records():
     assert main.start_up() == []
+
+
+def test_process_incident_saves_and_returns_a_record_with_an_outcome(monkeypatch):
+    _use_fakes(monkeypatch)
+    records = []
+    final_record = main.process_incident(_incident(), records)
+    assert final_record["outcome"] in ("log_only", "pending_review", "systemic_escalation", "stop_work_review")
+    assert records == [final_record]
+    assert main.data_manager.load_records() == [final_record]
