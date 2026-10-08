@@ -53,6 +53,17 @@ def _read_json(path, expected_type):
 
 
 # Lennart
+def get_log_path():
+    """Where main.py writes the log (data/app.log). Creates the data folder
+    if needed; returns None when it cannot be created."""
+    try:
+        os.makedirs(_data_dir(), exist_ok=True)
+    except OSError:
+        return None
+    return os.path.join(_data_dir(), "app.log")
+
+
+# Lennart
 def load_records():
     """Loads incidents.json (main.py calls this once on startup). Returns
     an empty list if the file is missing, corrupt or the wrong shape —
