@@ -1,3 +1,5 @@
+import argparse
+import json
 import logging
 
 import ai_manager
@@ -12,6 +14,9 @@ decide_outcome = getattr(logic_manager, "decide_outcome", trial.fake_decide_outc
 save_record = getattr(data_manager, "save_record", trial.fake_save_record)
 SEVERITY_LEVELS = getattr(logic_manager, "SEVERITY_LEVELS", None)
 OUTCOME_ACTIONS = getattr(logic_manager, "OUTCOME_ACTIONS", None)
+derive_context = getattr(logic_manager, "derive_context", dict)
+apply_lighting = getattr(logic_manager, "apply_lighting", dict)
+generate_incident_review = getattr(ai_manager, "generate_incident_review", lambda record: {})
 
 
 # Lennart
@@ -29,6 +34,35 @@ def start_up():
     ai_manager.load_response_cache(data_manager.load_ai_cache())
     print(f"Loaded {len(records)} saved incident(s).")
     return records
+
+
+# Lennart
+def process_incident(incident, records):
+    with_context = derive_context(incident)
+    enriched = ai_manager.enrich_record(with_context, records)
+    enriched = apply_lighting(enriched)
+    enriched.update(generate_incident_review(enriched))
+
+    history = data_manager.query_by_location(
+        enriched.get("location", ""), 30, as_of=enriched.get("timestamp"), records=records
+    )
+    weather_data = {
+        "weather_available": enriched.get("weather_available"),
+        "condition": enriched.get("condition"),
+        "temperature_c": enriched.get("temperature_c"),
+        "humidity_pct": enriched.get("humidity_pct"),
+    }
+    assessed = logic_manager.assess_severity(enriched, weather_data, history)
+
+    final_record = dict(assessed)
+    final_record["outcome"] = decide_outcome(assessed, history)
+
+    if save_record(final_record) is False:
+        print("Warning: could not save this incident to disk.")
+    records.append(final_record)
+    if not data_manager.save_ai_cache(ai_manager.export_response_cache()):
+        print("Warning: could not save the AI reply cache.")
+    return final_record
 
 
 # Lennart
