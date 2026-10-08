@@ -48,15 +48,12 @@ _RESPONSE_CACHE = {}
 # Lennart
 
 def load_response_cache(cache):
-    """Replaces the in-memory reply cache with `cache` (a dict, or anything
-    else to start empty)."""
     _RESPONSE_CACHE.clear()
     if isinstance(cache, dict):
         _RESPONSE_CACHE.update(cache)
 
 
 def export_response_cache():
-    """Returns a copy of the reply cache for main.py to save."""
     return dict(_RESPONSE_CACHE)
 
 
@@ -245,8 +242,6 @@ _WEATHER_KEYWORDS = (
 )
 
 def is_weather_relevant(record):
-    """Checks hazard keywords in the description to decide if weather
-    context matters. Simple keyword match — skips the API call otherwise."""
     description = record.get("description", "").lower()
     return any(keyword in description for keyword in _WEATHER_KEYWORDS)
 
@@ -263,8 +258,6 @@ def get_time_of_day(timestamp):
     return "night"
 
 def call_weather_api(location):
-    """Calls Open-Meteo (free, no key needed) for current Singapore weather.
-    Returns a dict or None on failure — never raises uncaught."""
     try:
         response = requests.get(
             "https://api.open-meteo.com/v1/forecast",
@@ -290,8 +283,6 @@ def call_weather_api(location):
 
 
 def validate_weather_response(response):
-    """Checks condition, temperature_c, humidity_pct are present and
-    sensible."""
     if not isinstance(response, dict):
         return False
     condition = response.get("condition")
@@ -307,8 +298,6 @@ def validate_weather_response(response):
 
 
 def classify_lighting_condition(time_of_day, condition):
-    """One step darker than time_of_day if weather cuts visibility. Reads
-    condition from Darrel's own weather response. Never returns None."""
     levels = ["daylight", "low_light", "dark"]
     base = {"day": 0, "dusk_dawn": 1, "night": 2}.get(time_of_day, 0)
     if condition == "rain":
