@@ -7,6 +7,7 @@ import logging
 import requests
 from dotenv import load_dotenv
 from google import genai
+from datetime import datetime
 
 load_dotenv()
 
