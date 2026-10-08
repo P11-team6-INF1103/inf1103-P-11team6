@@ -1,5 +1,3 @@
-"""logic_manager: context rules moved from ai_manager, plus severity/outcome."""
-
 import logic_manager as lm
 from tests._suite import suite_from
 

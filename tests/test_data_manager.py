@@ -1,5 +1,3 @@
-"""data_manager: persistence that survives missing, corrupt and unwritable files."""
-
 import json
 import os
 import tempfile
@@ -57,6 +55,21 @@ def test_non_object_entries_are_dropped_and_queries_do_not_crash():
         assert len(dm.load_records()) == 1
         assert len(dm.query_by_location("A", 30, as_of="2026-09-28T00:00:00")) == 1
         assert dm.query_by_location("A", 30, records=[1, None, "x"]) == []
+
+
+def test_unreadable_file_is_not_overwritten_by_save():
+    with temp_data_dir() as folder:
+        _write(folder, "incidents.json", json.dumps([{"location": "old"}]))
+        real_open = open
+
+        def locked(path, mode="r", *args, **kwargs):
+            if "r" in mode and str(path).endswith("incidents.json"):
+                raise PermissionError("locked by another program")
+            return real_open(path, mode, *args, **kwargs)
+
+        with mock.patch("builtins.open", locked):
+            assert dm.save_record({"location": "new"}) is False
+        assert dm.load_records() == [{"location": "old"}]
 
 
 def test_unwritable_location_returns_false_instead_of_crashing():
