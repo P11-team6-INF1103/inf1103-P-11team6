@@ -1,3 +1,5 @@
+import logging
+
 import ai_manager
 import data_manager
 import io_manager
@@ -10,6 +12,26 @@ decide_outcome = getattr(logic_manager, "decide_outcome", trial.fake_decide_outc
 save_record = getattr(data_manager, "save_record", trial.fake_save_record)
 SEVERITY_LEVELS = getattr(logic_manager, "SEVERITY_LEVELS", None)
 OUTCOME_ACTIONS = getattr(logic_manager, "OUTCOME_ACTIONS", None)
+
+
+# Lennart
+def start_up():
+    """Run once at launch: set up the log file, check the data file, load
+    every saved incident and the saved AI replies. Returns the list of
+    saved incidents."""
+    log_path = data_manager.get_log_path()
+    if log_path:
+        logging.basicConfig(
+            filename=log_path, level=logging.INFO,
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        )
+    problem = data_manager.check_records_file()
+    if problem:
+        print(f"Warning: {problem}. Starting with no saved incidents.")
+    records = data_manager.load_records()
+    ai_manager.load_response_cache(data_manager.load_ai_cache())
+    print(f"Loaded {len(records)} saved incident(s).")
+    return records
 
 
 # Lennart
@@ -27,6 +49,7 @@ def log_incident_flow():
 
 # Lennart
 def main():
+    start_up()
     while True:
         choice = io_manager.get_menu_choice()
         if choice == "1":
