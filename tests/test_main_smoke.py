@@ -33,3 +33,11 @@ def test_process_incident_saves_and_returns_a_record_with_an_outcome(monkeypatch
     assert final_record["outcome"] in ("log_only", "pending_review", "systemic_escalation", "stop_work_review")
     assert records == [final_record]
     assert main.data_manager.load_records() == [final_record]
+
+
+def test_log_incident_flow_runs_one_incident(monkeypatch, capsys):
+    _use_fakes(monkeypatch)
+    monkeypatch.setattr(main.io_manager, "get_incident_input", lambda: _incident())
+    final_record = main.log_incident_flow([])
+    assert "outcome" in final_record
+    assert capsys.readouterr().out != ""
