@@ -11,6 +11,11 @@ def _data_dir():
     return _DATA_DIR
 
 
+# Lennart
+def _incidents_path():
+    return _DATA_PATH
+
+
 def _set_aside_corrupt(path):
     """Renames an unreadable data file so the next save cannot destroy it.
     Returns the new name, or None if the rename failed."""
