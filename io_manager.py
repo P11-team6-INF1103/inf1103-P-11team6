@@ -113,6 +113,22 @@ def _ask_yes_no(prompt):
     return answer in ("yes", "y")
 
 
+# After the AI rejects an incident as not a real safety incident: asks whether to enter it again.
+def ask_try_again():
+    return _ask_yes_no("Enter the incident again? (yes/no): ")
+
+
+# Lennart
+# After a failed save: warns that the incident is not on disk and asks whether to try saving again.
+def ask_retry_save():
+    print("")
+    print("!" * 60)
+    print("  INCIDENT NOT SAVED: it could not be written to disk and")
+    print("  will be lost when you exit the program.")
+    print("!" * 60)
+    return _ask_yes_no("Try saving again? (yes/no): ")
+
+
 # Main menu
 def get_menu_choice():
     print("\n=== Workplace Safety Incident Triage System ===")
