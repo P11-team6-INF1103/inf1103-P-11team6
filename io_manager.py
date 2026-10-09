@@ -41,18 +41,6 @@ def show_loading(message="AI is thinking"):
         sys.stdout.flush()
 
 
-#incident log interface 
-def get_menu_choice():
-    print("\n=== Workplace Safety Incident Triage System ===")
-    print("1. Log a new incident")
-    print("2. View summary of all incidents")
-    print("3. Query incidents by location")
-    print("4. Exit")
-    choice = input("Choose an option (1-4): ").strip()
-    while choice not in ("1", "2", "3", "4"):
-        choice = input("Invalid choice. Please enter 1, 2, 3 or 4: ").strip()
-    return choice
-
 #Input Validation for incident input
 _MIN_DESCRIPTION = 10
 _MAX_DESCRIPTION = 500
@@ -129,6 +117,7 @@ def ask_try_again():
         answer = input("Please answer yes or no: ").strip().lower()
     return answer in ("yes", "y")
 
+
 #incident input interface
 def get_incident_input():
     """Prompts for description, location, reporter role, and injury flag.
@@ -154,6 +143,7 @@ def get_incident_input():
         "timestamp": datetime.now().isoformat(),
     }
 
+
 #Helper functions for formatting output display_outcome() / display_summary()
 def _format_time(timestamp):
     try:
@@ -161,11 +151,14 @@ def _format_time(timestamp):
     except (TypeError, ValueError):
         return str(timestamp)
 
+
 _LABEL_WIDTH = 14
+
 
 def _report_width():
     """Wrap width for the full report: the terminal width, kept readable."""
     return min(max(shutil.get_terminal_size((100, 24)).columns, 60), 90)
+
 
 def _clean(text):
     """Tidies web/AI text for the terminal: drops citation markers like
@@ -174,6 +167,7 @@ def _clean(text):
     text = text.translate({0x2011: "-", 0x2010: "-", 0x2019: "'", 0x2018: "'"})
     # Close up "word ." / "word ," but leave ".env" (dot followed by a letter) alone.
     return re.sub(r"\s+([.,;])(?=\s|$)", r"\1", " ".join(text.split()))
+
 
 def _field(label, value, width, indent=2, label_width=_LABEL_WIDTH):
     """Prints `label  value` with wrapped lines hanging under the value. A
@@ -189,6 +183,7 @@ def _field(label, value, width, indent=2, label_width=_LABEL_WIDTH):
             break_long_words=False, break_on_hyphens=False,
         ))
 
+
 def _section(title, width):
     print(f"\n── {title} " + "─" * max(width - len(title) - 4, 3))
 
@@ -198,6 +193,7 @@ _SEASON_TEXT = {
     "southwest_monsoon": "Southwest monsoon season (Jun to Sep): hot, early-morning squalls, possible haze",
     "inter_monsoon": "Inter-monsoon season (Apr-May, Oct-Nov): hot, afternoon thunderstorms and lightning",
 }
+
 
 _HAZARD_NAMES = {
     "fall": "Slip, trip or fall (ground level)",
@@ -211,6 +207,7 @@ _HAZARD_NAMES = {
     "unassessed": "Not assessed",
 }
 
+
 _OUTCOME_NAMES = {
     "stop_work_review": "STOP WORK - safety review",
     "systemic_escalation": "ESCALATE to management",
@@ -218,7 +215,9 @@ _OUTCOME_NAMES = {
     "pending_review": "NEEDS MANUAL REVIEW",
 }
 
+
 _WIDTH = 64
+
 
 #print incident report
 def _print_incident_report(record, severity_levels=None, outcome_actions=None, number=None):
@@ -326,12 +325,14 @@ def display_outcome(record, severity_levels=None, outcome_actions=None):
     print()
     _print_incident_report(record, severity_levels, outcome_actions)
 
+
 #Serverity Level
 def display_severity_guide(severity_levels):
     print("\nWHAT THE SEVERITY LEVELS MEAN")
     for level in sorted(severity_levels):
         name, meaning = severity_levels[level]
         print(f"  {level} {name:<9} {meaning}")
+
 
 _HAZARD_SHORT = {
     "fall": "Fall (ground level)",
@@ -345,12 +346,14 @@ _HAZARD_SHORT = {
     "unassessed": "Not assessed",
 }
 
+
 _OUTCOME_SHORT = {
     "stop_work_review": "STOP WORK",
     "systemic_escalation": "ESCALATE",
     "log_only": "Log only",
     "pending_review": "MANUAL REVIEW",
 }
+
 
 #Table display
 def _print_table(headers, rows, widths):
@@ -370,6 +373,8 @@ def _print_table(headers, rows, widths):
             print(line("├", "┼", "┤"))
     print(line("└", "┴", "┘"))
 
+
+#Display Summary of all incidents
 def display_summary(records, severity_levels=None, outcome_actions=None):
     print("\n" + "#" * _WIDTH)
     print("INCIDENT SUMMARY / AFTER-ACTION REVIEW")
@@ -398,21 +403,63 @@ def display_summary(records, severity_levels=None, outcome_actions=None):
         ),
         reverse=True,
     )
-    print("\nOVERVIEW (needs manual review first, then most severe)")
+
+
+    # Fixed-width columns first; Location and Description share what is left.
+    fixed = [3, 11, 18, 3, 13]
+    total_width = max(shutil.get_terminal_size((100, 24)).columns, 100)
+    spare = total_width - sum(fixed) - (3 * 7 + 1)
+    location_width = max(spare * 2 // 5, 12)
+    description_width = max(spare - location_width, 20)
+    widths = [fixed[0], fixed[1], location_width, fixed[2], fixed[3], fixed[4], description_width]
+
+    rows = []
     for number, record in ordered:
-        hazard = _HAZARD_NAMES.get(record.get("hazard_type"), record.get("hazard_type"))
-        outcome = _OUTCOME_NAMES.get(record.get("outcome"), record.get("outcome"))
-        print(
-            f"  #{number}  {_format_time(record.get('timestamp'))}  {record.get('location')}  "
-            f"- {hazard}, severity {record.get('severity_estimate')} -> {outcome}"
-        )
+        timestamp = _format_time(record.get("timestamp"))
+        date, _, time = timestamp.partition(", ")
+        hazard = record.get("hazard_type")
+        outcome = record.get("outcome")
+        rows.append([
+            number,
+            f"{date} {time}".strip(),
+            record.get("location"),
+            _HAZARD_SHORT.get(hazard, hazard),
+            record.get("severity_estimate") if not record.get("assessment_error") else "-",
+            _OUTCOME_SHORT.get(outcome, outcome),
+            record.get("description"),
+        ])
+
+    print("\nOVERVIEW (needs manual review first, then most severe)")
+    _print_table(["#", "When", "Location", "Hazard", "Sev", "Action", "What happened"], rows, widths)
 
     if severity_levels:
         display_severity_guide(severity_levels)
 
     print()
-    for number, record in ordered:
-        _print_incident_report(record, severity_levels, outcome_actions, number=number)
-    print("#" * _WIDTH)
-    print("END OF SUMMARY")
-    print("#" * _WIDTH)
+    while interactive:
+        try:
+            choice = input("Enter an incident # for its full report (or press Enter to go back): ").strip()
+        except EOFError:
+            break
+        if choice == "":
+            break
+        if choice.isdigit() and 1 <= int(choice) <= len(records):
+            print()
+            _print_incident_report(records[int(choice) - 1], severity_levels, outcome_actions,
+                                   number=int(choice))
+        else:
+            print(f"Please enter a number from 1 to {len(records)}.")
+
+
+#incident log interface 
+def get_menu_choice():
+    print("\n=== Workplace Safety Incident Triage System ===")
+    print("1. Log a new incident")
+    print("2. View summary of all incidents")
+    print("3. Query incidents by location")
+    print("4. Exit")
+    choice = input("Choose an option (1-4): ").strip()
+    while choice not in ("1", "2", "3", "4"):
+        choice = input("Invalid choice. Please enter 1, 2, 3 or 4: ").strip()
+    return choice
+
