@@ -35,6 +35,54 @@ def test_process_incident_saves_and_returns_a_record_with_an_outcome(monkeypatch
     assert main.data_manager.load_records() == [final_record]
 
 
+def _ai_rejects(monkeypatch, reason="It is random text."):
+    monkeypatch.setattr(
+        main.ai_manager, "enrich_record",
+        lambda record, history=None: dict(record, is_valid_incident=False, invalid_reason=reason),
+    )
+
+
+def test_process_incident_returns_none_and_saves_nothing_when_the_ai_rejects_it(monkeypatch, capsys):
+    _use_fakes(monkeypatch)
+    _ai_rejects(monkeypatch)
+    records = []
+    assert main.process_incident(_incident(description="asdf qwerty banana"), records) is None
+    assert "Incident rejected: It is random text." in capsys.readouterr().out
+    assert records == [] and main.data_manager.load_records() == []
+
+
+def test_failed_save_offers_retry_and_keeps_record_in_memory(monkeypatch, capsys):
+    _use_fakes(monkeypatch)
+    attempts = []
+    monkeypatch.setattr(main, "save_record", lambda record: attempts.append(record) or len(attempts) >= 3)
+    answers = iter(["y", "y"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+    records = []
+    assert main.process_incident(_incident(), records) is not None
+    out = capsys.readouterr().out
+    assert len(attempts) == 3 and len(records) == 1
+    assert out.count("INCIDENT NOT SAVED") == 2 and "Warning: could not save" not in out
+
+    attempts.clear()
+    records = []
+    monkeypatch.setattr("builtins.input", lambda prompt="": "n")
+    assert main.process_incident(_incident(), records) is not None
+    assert len(attempts) == 1 and len(records) == 1
+    assert "Warning: could not save this incident" in capsys.readouterr().out
+
+
+def test_failed_save_never_prompts_when_not_interactive(monkeypatch, capsys):
+    _use_fakes(monkeypatch)
+    monkeypatch.setattr(main, "save_record", lambda record: False)
+
+    def no_typing(prompt=""):
+        raise AssertionError("input() called")
+
+    monkeypatch.setattr("builtins.input", no_typing)
+    assert main.process_incident(_incident(), [], interactive=False) is not None
+    assert "Warning: could not save this incident" in capsys.readouterr().out
+
+
 def test_log_incident_flow_runs_one_incident(monkeypatch, capsys):
     _use_fakes(monkeypatch)
     monkeypatch.setattr(main.io_manager, "get_incident_input", lambda: _incident())
