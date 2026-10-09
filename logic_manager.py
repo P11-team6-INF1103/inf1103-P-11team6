@@ -145,3 +145,12 @@ def is_high_severity(record):
 
 def is_systemic_risk(record, history):
     return len(history) >= 3
+
+def decide_outcome(record, history):
+    if record.get("assessment_error"):
+        return "pending_review"
+    if is_high_severity(record):
+        return "stop_work_review"
+    if is_systemic_risk(record, history):
+        return "systemic_escalation"
+    return "log_only"
