@@ -65,6 +65,23 @@ def test_location_query_returns_none_on_empty_input_to_go_back(monkeypatch):
     assert "press Enter to go back" in prompts[1]
 
 
+def test_ask_try_again(monkeypatch):
+    prompts = _type(monkeypatch, ["maybe", "n"])
+    assert io.ask_try_again() is False
+    assert "Please answer yes or no" in prompts[1]
+    _type(monkeypatch, ["Y"])
+    assert io.ask_try_again() is True
+
+
+def test_ask_retry_save_warns_and_asks_again_until_valid(monkeypatch, capsys):
+    prompts = _type(monkeypatch, ["maybe", "n"])
+    assert io.ask_retry_save() is False
+    assert "INCIDENT NOT SAVED" in capsys.readouterr().out
+    assert "Please answer yes or no" in prompts[1]
+    _type(monkeypatch, ["Y"])
+    assert io.ask_retry_save() is True
+
+
 def test_menu_rejects_invalid_choice(monkeypatch, capsys):
     _type(monkeypatch, ["9", "x", "3"])
     assert io.get_menu_choice() == "3"
