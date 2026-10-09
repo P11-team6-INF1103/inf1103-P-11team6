@@ -352,6 +352,24 @@ _OUTCOME_SHORT = {
     "pending_review": "MANUAL REVIEW",
 }
 
+#Table display
+def _print_table(headers, rows, widths):
+    """Prints a boxed table. Cells wrap onto extra lines inside their column,
+    so long text never breaks the layout."""
+    def line(left, mid, right):
+        return left + mid.join("─" * (w + 2) for w in widths) + right
+
+    print(line("┌", "┬", "┐"))
+    all_rows = [headers] + rows
+    for index, row in enumerate(all_rows):
+        cells = [textwrap.wrap(str(cell), w) or [""] for cell, w in zip(row, widths)]
+        for i in range(max(len(c) for c in cells)):
+            parts = [(c[i] if i < len(c) else "").ljust(w) for c, w in zip(cells, widths)]
+            print("│ " + " │ ".join(parts) + " │")
+        if index < len(all_rows) - 1:
+            print(line("├", "┼", "┤"))
+    print(line("└", "┴", "┘"))
+
 def display_summary(records, severity_levels=None, outcome_actions=None):
     print("\n" + "#" * _WIDTH)
     print("INCIDENT SUMMARY / AFTER-ACTION REVIEW")
