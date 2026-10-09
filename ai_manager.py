@@ -421,14 +421,93 @@ def search_web_for_similar_incidents(record):
     raise RuntimeError(f"Groq web search failed; last error: {last_error}")
 
 
-
-def review_step(record):
-    return {
-        "monsoon_season": "inter_monsoon",
+#Ren Xiang
+def generate_incident_review(record):
+    """Asks Gemini for after-action review notes: the likely causes of the
+    incident and practical steps to prevent it happening again, using
+    everything already gathered (AI flags, weather, season, lighting,
+    similar local and web incidents). Advisory text only — it does not
+    rate severity or decide the outcome; that is logic_manager's job.
+    Never raises: returns a dict with review_error set on failure."""
+    result = {
         "review_likely_causes": None,
         "review_prevention_actions": None,
         "review_error": None,
     }
+
+    client = _get_gemini_client()
+    if client is None:
+        logger.warning("After-action review skipped: Gemini client unavailable")
+        result["review_error"] = "Gemini client unavailable (check GEMINI_API_KEY)"
+        return result
+
+    context = {
+        "description": record.get("description"),
+        "injury_reported": record.get("injury"),
+        "hazard_category": record.get("hazard_category"),
+        "injury_severity": record.get("injury_severity"),
+        "working_at_height": record.get("working_at_height"),
+        "heavy_machinery_present": record.get("heavy_machinery_present"),
+        "ppe_status": record.get("ppe_status"),
+        "time_of_day": record.get("time_of_day"),
+        "lighting_condition": record.get("lighting_condition"),
+        "monsoon_season": record.get("monsoon_season"),
+        "weather": {
+            "condition": record.get("condition"),
+            "temperature_c": record.get("temperature_c"),
+            "humidity_pct": record.get("humidity_pct"),
+        } if record.get("weather_available") else None,
+        "similar_past_incidents_on_site": [
+            {"description": s.get("description"), "outcome": s.get("outcome")}
+            for s in record.get("similar_incidents") or []
+        ],
+        "similar_real_world_incidents": [
+            {"summary": w.get("summary"), "action_taken": w.get("action_taken")}
+            for w in record.get("web_incidents") or []
+        ],
+        "industry_context": record.get("web_industry_context"),
+    }
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "likely_causes": {"type": "array", "items": {"type": "string"}},
+            "prevention_actions": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["likely_causes", "prevention_actions"],
+    }
+
+    prompt = (
+        "You are helping a Singapore construction company write an after-action "
+        "review for a workplace safety incident. Here is everything recorded "
+        "about it (JSON):\n"
+        f"{json.dumps(context)}\n\n"
+        "Return:\n"
+        "likely_causes: 2-3 short sentences on why this incident most likely "
+        "happened, based only on the facts above. Say 'possibly' where you are "
+        "inferring.\n"
+        "prevention_actions: 3-4 short, practical actions a site team could take "
+        "to stop it happening again (e.g. controls, training, inspections, PPE, "
+        "scheduling around weather). Mention Singapore WSH requirements only "
+        "where clearly relevant.\n"
+        "Write for site managers with no technical background: plain English, "
+        "short sentences, no jargon or field names.\n"
+        "Do NOT rate the severity or say whether work should stop — that is "
+        "decided elsewhere."
+    )
+
+    try:
+        parsed = _gemini_json(client, prompt, schema)
+        causes = [c for c in parsed.get("likely_causes") or [] if isinstance(c, str) and c.strip()]
+        actions = [a for a in parsed.get("prevention_actions") or [] if isinstance(a, str) and a.strip()]
+        if not causes or not actions:
+            raise ValueError("AI response was missing causes or prevention actions")
+        result["review_likely_causes"] = causes[:3]
+        result["review_prevention_actions"] = actions[:4]
+    except Exception as error:
+        logger.warning("After-action review failed: %s", error)
+        result["review_error"] = f"AI review failed: {error}"
+    return result
 
 
 # Lennart
