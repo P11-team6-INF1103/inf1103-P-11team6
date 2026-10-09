@@ -110,6 +110,30 @@ def test_run_batch_processes_every_incident_in_the_file(monkeypatch, tmp_path):
     assert len(main.data_manager.load_records()) == 2
 
 
+def test_run_batch_skips_an_incident_the_ai_rejects(monkeypatch, tmp_path, capsys):
+    _use_fakes(monkeypatch)
+    _ai_rejects(monkeypatch)
+    path = tmp_path / "batch.json"
+    path.write_text(json.dumps([_incident(description="asdf qwerty banana")]))
+    main.run_batch(str(path))
+    assert "Incident rejected" in capsys.readouterr().out
+    assert main.data_manager.load_records() == []
+
+
+def test_run_batch_never_prompts_after_a_failed_save(monkeypatch, tmp_path, capsys):
+    _use_fakes(monkeypatch)
+    monkeypatch.setattr(main, "save_record", lambda record: False)
+
+    def no_typing(prompt=""):
+        raise AssertionError("input() called")
+
+    monkeypatch.setattr("builtins.input", no_typing)
+    path = tmp_path / "batch.json"
+    path.write_text(json.dumps([_incident()]))
+    assert main.run_batch(str(path)) == 0
+    assert "Warning: could not save this incident" in capsys.readouterr().out
+
+
 def test_run_batch_returns_1_for_an_unreadable_file(tmp_path):
     assert main.run_batch(str(tmp_path / "missing.json")) == 1
 

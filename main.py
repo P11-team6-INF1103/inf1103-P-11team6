@@ -102,7 +102,9 @@ def run_batch(path):
 
     records = start_up()
     for incident in incidents:
-        final_record = process_incident(incident, records)
+        final_record = process_incident(incident, records, interactive=False)
+        if final_record is None:
+            continue
         io_manager.display_outcome(final_record, SEVERITY_LEVELS, OUTCOME_ACTIONS)
     io_manager.display_summary(records, SEVERITY_LEVELS, OUTCOME_ACTIONS, interactive=False)
     return 0
