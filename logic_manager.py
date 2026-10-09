@@ -43,9 +43,12 @@ def get_time_of_day(timestamp):
     return "night"
 
 def assess_severity(record, weather_data=None, history=None):
-    if weather_data is None:
+    # Bad inputs are treated as empty rather than crashing the pipeline.
+    if not isinstance(record, dict):
+        record = {}
+    if not isinstance(weather_data, dict):
         weather_data = {}
-    if history is None:
+    if not isinstance(history, list):
         history = []
 
     result = dict(record)
@@ -62,13 +65,22 @@ def assess_severity(record, weather_data=None, history=None):
         return result
     
     hazard_type = record["hazard_category"]
-    injury_severity = record.get("injury_severity", "unspecified")
-    at_height = record.get("working_at_height")
-    machinery = record.get("heavy_machinery_present")
+    # Unknown or oddly-cased values count as "unspecified", so an injured
+    # person still gets the "hurt but not described" point below.
+    injury_severity = str(record.get("injury_severity") or "unspecified").lower()
+    if injury_severity != "fatal" and injury_severity not in _INJURY_POINTS:
+        injury_severity = "unspecified"
+    # Only a real True counts; the text "false" would otherwise be truthy.
+    at_height = record.get("working_at_height") is True
+    machinery = record.get("heavy_machinery_present") is True
     ppe_not_worn = record.get("ppe_status") == "not_worn"
     poor_light = record.get("lighting_condition") in ("dark", "low_light")
-    similar = record.get("similar_incidents") or []
-    similar_escalated = any(item.get("outcome") in _ESCALATED_OUTCOMES for item in similar)
+    similar = record.get("similar_incidents")
+    if not isinstance(similar, list):
+        similar = []
+    similar_escalated = any(
+        isinstance(item, dict) and item.get("outcome") in _ESCALATED_OUTCOMES for item in similar
+    )
 
     severity = 1
     reasons = []
