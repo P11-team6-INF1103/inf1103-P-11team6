@@ -448,6 +448,15 @@ def review_step(record):
 # Lennart
 def enrich_record(record, history_records=None):
     enriched = dict(record)
+
+    # The mandatory AI call runs first. If it says this is not a real safety incident we stop
+    # here, before the weather and web-search calls are spent on it; process_incident rejects it.
+    flags = extract_hazard_context_flags(record.get("description", ""))
+    enriched["is_valid_incident"] = flags.get("is_valid_incident", True)
+    enriched["invalid_reason"] = flags.get("invalid_reason")
+    if not enriched["is_valid_incident"]:
+        return enriched
+
     if "weather_relevant" in record:
         weather_relevant = bool(record["weather_relevant"])
     else:
@@ -480,7 +489,6 @@ def enrich_record(record, history_records=None):
             enriched["time_of_day"], enriched["condition"]
         )
 
-    flags = extract_hazard_context_flags(record.get("description", ""))
     enriched["hazard_category"] = flags["hazard_category"]
     enriched["injury_severity"] = flags["injury_severity"]
     enriched["working_at_height"] = flags["working_at_height"]
