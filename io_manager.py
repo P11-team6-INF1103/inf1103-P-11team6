@@ -150,7 +150,16 @@ def display_message(text):
 
 # Location query interface (menu option 3)
 def get_location_query():
-    location = _ask_valid("Location to search: ", _check_location)
+    prompt = "Location to search (or press Enter to go back to the menu): "
+    while True:
+        location = _sanitise(input(prompt))
+        if location == "":
+            return None
+        error = _check_location(location)
+        if error is None:
+            break
+        print("Error: " + error)
+        prompt = "Try again (or press Enter to go back to the menu): "
 
     days_input = input("How many days back? (Enter for 30): ").strip()
     while days_input != "" and not (days_input.isdigit() and int(days_input) > 0):
