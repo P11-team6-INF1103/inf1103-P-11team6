@@ -91,6 +91,17 @@ def test_log_incident_flow_runs_one_incident(monkeypatch, capsys):
     assert capsys.readouterr().out != ""
 
 
+def test_log_incident_flow_asks_again_after_a_rejection_and_can_be_declined(monkeypatch, capsys):
+    _use_fakes(monkeypatch)
+    _ai_rejects(monkeypatch)
+    monkeypatch.setattr(main.io_manager, "get_incident_input", lambda: _incident())
+    answers = iter(["y", "n"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+    assert main.log_incident_flow([]) is None
+    out = capsys.readouterr().out
+    assert out.count("Incident rejected") == 2 and main.data_manager.load_records() == []
+
+
 def test_run_batch_processes_every_incident_in_the_file(monkeypatch, tmp_path):
     _use_fakes(monkeypatch)
     path = tmp_path / "batch.json"
