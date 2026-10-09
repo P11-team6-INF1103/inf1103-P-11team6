@@ -1,5 +1,7 @@
 import re
+import shutil
 import sys
+import textwrap
 import threading
 from contextlib import contextmanager
 from datetime import datetime
@@ -159,12 +161,37 @@ def _format_time(timestamp):
     except (TypeError, ValueError):
         return str(timestamp)
 
-def _heading(title):
-    print(f"\n{title}")
+_LABEL_WIDTH = 14
 
-def _bullets(items, indent="  "):
-    for item in items:
-        print(f"{indent}- {item}")
+def _report_width():
+    """Wrap width for the full report: the terminal width, kept readable."""
+    return min(max(shutil.get_terminal_size((100, 24)).columns, 60), 90)
+
+def _clean(text):
+    """Tidies web/AI text for the terminal: drops citation markers like
+    【9†L109-L112】 and swaps fancy hyphens/quotes for plain ones."""
+    text = re.sub(r"【[^】]*】", "", str(text))
+    text = text.translate({0x2011: "-", 0x2010: "-", 0x2019: "'", 0x2018: "'"})
+    # Close up "word ." / "word ," but leave ".env" (dot followed by a letter) alone.
+    return re.sub(r"\s+([.,;])(?=\s|$)", r"\1", " ".join(text.split()))
+
+def _field(label, value, width, indent=2, label_width=_LABEL_WIDTH):
+    """Prints `label  value` with wrapped lines hanging under the value. A
+    list value prints one '- ' bullet per item."""
+    items = value if isinstance(value, list) else [value]
+    bullets = isinstance(value, list)
+    hang = " " * (indent + label_width)
+    for position, item in enumerate(items):
+        lead = " " * indent + label.ljust(label_width) if position == 0 else hang
+        print(textwrap.fill(
+            ("- " if bullets else "") + _clean(item), width,
+            initial_indent=lead, subsequent_indent=hang + ("  " if bullets else ""),
+            break_long_words=False, break_on_hyphens=False,
+        ))
+
+def _section(title, width):
+    print(f"\n── {title} " + "─" * max(width - len(title) - 4, 3))
+
 
 _SEASON_TEXT = {
     "northeast_monsoon": "Northeast monsoon season (Dec to early Mar): wet and windy, heavy rain spells",
@@ -197,82 +224,87 @@ _WIDTH = 64
 def _print_incident_report(record, severity_levels=None, outcome_actions=None, number=None):
     severity_levels = severity_levels or {}
     outcome_actions = outcome_actions or {}
+    width = _report_width()
 
     title = f"INCIDENT #{number}" if number else "INCIDENT REPORT"
-    print("=" * _WIDTH)
-    print(f"{title}  |  {record.get('location')}  |  {_format_time(record.get('timestamp'))}")
-    print("=" * _WIDTH)
+    print("=" * width)
+    print(f"{title}   {record.get('location')}   {_format_time(record.get('timestamp'))}")
+    print("=" * width)
 
     # --- What was logged ---
-    print(f"What happened:  {record.get('description')}")
-    print(f"Reported by:    {record.get('reporter_role')}")
-    print(f"Anyone injured: {'Yes' if record.get('injury') else 'No'}")
     hazard = record.get("hazard_type")
-    print(f"Type of hazard: {_HAZARD_NAMES.get(hazard, hazard)}")
+    _field("What happened", record.get("description"), width, indent=1, label_width=15)
+    _field("Reported by", record.get("reporter_role"), width, indent=1, label_width=15)
+    _field("Anyone injured", "Yes" if record.get("injury") else "No", width, indent=1, label_width=15)
+    _field("Type of hazard", _HAZARD_NAMES.get(hazard, hazard), width, indent=1, label_width=15)
 
     # --- Severity and action ---
     outcome = record.get("outcome")
     severity = record.get("severity_estimate")
+    _section("SEVERITY AND ACTION", width)
     if record.get("assessment_error"):
-        _heading("SEVERITY: NOT ASSESSED")
-        print("  The AI could not analyse this incident, so it was not scored.")
+        _field("Severity", "NOT ASSESSED - the AI could not analyse this incident, so it was not scored.", width)
     else:
         level = severity_levels.get(severity)
-        name = f" - {level[0].upper()}" if level else ""
-        _heading(f"SEVERITY: {severity} out of 5{name}")
+        gauge = "█" * (severity or 0) + "░" * (5 - (severity or 0))
+        name = f"  {level[0].upper()}" if level else ""
+        _field("Severity", f"{gauge}  {severity}/5{name}", width)
         if level:
-            print(f"  {level[1]}")
+            _field("", level[1], width)
         reasons = [r for r in record.get("severity_reasons") or []
                    if not r.startswith(("Base score", "Capped"))]
         if reasons:
-            print("  Why:")
-            _bullets(reasons, indent="    ")
-        print(f"  Chance of it happening again: {record.get('likelihood_recurrence')}")
-
-    _heading(f"ACTION: {_OUTCOME_NAMES.get(outcome, outcome)}")
+            _field("Why", reasons, width)
+        _field("Could recur", record.get("likelihood_recurrence"), width)
+    _field("Action", _OUTCOME_NAMES.get(outcome, outcome), width)
     if outcome in outcome_actions:
-        print(f"  {outcome_actions[outcome]}")
+        _field("", outcome_actions[outcome], width)
 
     # --- Weather: only when it was checked ---
     if record.get("weather_available"):
-        _heading("WEATHER AT THE TIME")
-        print(
-            f"  {str(record.get('condition')).capitalize()}, {record.get('temperature_c')}°C, "
+        _section("WEATHER AT THE TIME", width)
+        _field("Conditions", (
+            f"{str(record.get('condition')).capitalize()}, {record.get('temperature_c')}°C, "
             f"{record.get('humidity_pct')}% humidity"
-        )
+        ), width)
         if record.get("monsoon_season") in _SEASON_TEXT:
-            print(f"  {_SEASON_TEXT[record['monsoon_season']]}")
+            _field("Season", _SEASON_TEXT[record["monsoon_season"]], width)
 
     # --- Known industry issue (web) ---
     if record.get("web_industry_context"):
-        _heading("IS THIS A KNOWN ISSUE IN THE INDUSTRY?")
-        print(f"  {record['web_industry_context']}")
+        _section("IS THIS A KNOWN ISSUE IN THE INDUSTRY?", width)
+        _field("", record["web_industry_context"], width, label_width=0)
 
     # --- Similar real incidents (web) ---
     if record.get("web_incidents"):
-        _heading("SIMILAR INCIDENTS REPORTED ELSEWHERE")
+        _section("SIMILAR INCIDENTS REPORTED ELSEWHERE", width)
         for i, item in enumerate(record["web_incidents"], start=1):
-            print(f"  {i}. {item.get('summary')}")
-            print(f"     Where / when:  {item.get('location')}, {item.get('date')}")
-            print(f"     What was done: {item.get('action_taken')}")
-            print(f"     Source:        {item.get('source_url')}")
+            print(textwrap.fill(_clean(item.get("summary")), width, initial_indent=f"  {i}. ",
+                                subsequent_indent="     ", break_long_words=False))
+            _field("Where / when", f"{item.get('location')}, {item.get('date')}", width, indent=5)
+            _field("What was done", item.get("action_taken"), width, indent=5)
+            _field("Source", item.get("source_url"), width, indent=5)
+            if i < len(record["web_incidents"]):
+                print()
 
     # --- Similar incidents on our own sites ---
     if record.get("similar_incidents"):
-        _heading("SIMILAR INCIDENTS ON OUR OWN SITES")
+        _section("SIMILAR INCIDENTS ON OUR OWN SITES", width)
         for i, item in enumerate(record["similar_incidents"], start=1):
             date = _format_time(item.get("timestamp"))[:11]
             outcome_name = _OUTCOME_NAMES.get(item.get("outcome"), item.get("outcome"))
-            print(f"  {i}. \"{item.get('description')}\" - {item.get('location')}, {date}")
-            print(f"     Action taken: {outcome_name}")
+            print(textwrap.fill(
+                f"\"{item.get('description')}\" - {item.get('location')}, {date}", width,
+                initial_indent=f"  {i}. ", subsequent_indent="     ", break_long_words=False))
+            _field("Action taken", outcome_name, width, indent=5)
 
     # --- After-action review (AI) ---
     if record.get("review_likely_causes"):
-        _heading("WHY IT LIKELY HAPPENED")
-        _bullets(record["review_likely_causes"])
+        _section("WHY IT LIKELY HAPPENED", width)
+        _field("", record["review_likely_causes"], width, label_width=0)
     if record.get("review_prevention_actions"):
-        _heading("HOW TO PREVENT IT")
-        _bullets(record["review_prevention_actions"])
+        _section("HOW TO PREVENT IT", width)
+        _field("", record["review_prevention_actions"], width, label_width=0)
 
     # --- Anything the AI couldn't do, in one place ---
     problems = []
@@ -285,8 +317,9 @@ def _print_incident_report(record, severity_levels=None, outcome_actions=None, n
     if record.get("similar_incidents_error"):
         problems.append(f"Own-site search: {record['similar_incidents_error']}")
     if problems:
-        _heading("NOTE: SOME AI STEPS DID NOT WORK")
-        _bullets(problems)
+        _section("NOTE: SOME AI STEPS DID NOT WORK", width)
+        _field("", problems, width, label_width=0)
+    print("═" * width)
     print()
 
 def display_outcome(record, severity_levels=None, outcome_actions=None):
