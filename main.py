@@ -1,5 +1,4 @@
 import argparse
-import json
 import logging
 
 import ai_manager
@@ -19,20 +18,6 @@ apply_lighting = getattr(logic_manager, "apply_lighting", dict)
 generate_incident_review = getattr(ai_manager, "generate_incident_review", lambda record: {})
 
 
-def _fallback_read_incident_file(path):
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            items = json.load(f)
-    except (OSError, ValueError) as error:
-        return [], [f"Could not read {path}: {error}"]
-    if not isinstance(items, list):
-        return [], [f"{path} must contain a JSON list of incidents"]
-    return [item for item in items if isinstance(item, dict)], []
-
-
-read_incident_file = getattr(io_manager, "read_incident_file", _fallback_read_incident_file)
-
-
 # Lennart
 def start_up():
     log_path = data_manager.get_log_path()
@@ -43,19 +28,20 @@ def start_up():
         )
     problem = data_manager.check_records_file()
     if problem:
-        print(f"Warning: {problem}. Starting with no saved incidents.")
+        io_manager.display_message(f"Warning: {problem}. Starting with no saved incidents.")
     records = data_manager.load_records()
     ai_manager.load_response_cache(data_manager.load_ai_cache())
-    print(f"Loaded {len(records)} saved incident(s).")
+    io_manager.display_message(f"Loaded {len(records)} saved incident(s).")
     return records
 
 
 # Lennart
 def process_incident(incident, records):
     with_context = derive_context(incident)
-    enriched = ai_manager.enrich_record(with_context, records)
-    enriched = apply_lighting(enriched)
-    enriched.update(generate_incident_review(enriched))
+    with io_manager.show_loading("AI is analysing the incident"):
+        enriched = ai_manager.enrich_record(with_context, records)
+        enriched = apply_lighting(enriched)
+        enriched.update(generate_incident_review(enriched))
 
     history = data_manager.query_by_location(
         enriched.get("location", ""), 30, as_of=enriched.get("timestamp"), records=records
@@ -72,10 +58,10 @@ def process_incident(incident, records):
     final_record["outcome"] = decide_outcome(assessed, history)
 
     if save_record(final_record) is False:
-        print("Warning: could not save this incident to disk.")
+        io_manager.display_message("Warning: could not save this incident to disk.")
     records.append(final_record)
     if not data_manager.save_ai_cache(ai_manager.export_response_cache()):
-        print("Warning: could not save the AI reply cache.")
+        io_manager.display_message("Warning: could not save the AI reply cache.")
     return final_record
 
 
@@ -89,18 +75,18 @@ def log_incident_flow(records):
 
 # Lennart
 def run_batch(path):
-    incidents, problems = read_incident_file(path)
+    incidents, problems = io_manager.read_incident_file(path)
     for problem in problems:
-        print(f"Skipped: {problem}")
+        io_manager.display_message(f"Skipped: {problem}")
     if not incidents:
-        print("No valid incidents to process.")
+        io_manager.display_message("No valid incidents to process.")
         return 1
 
     records = start_up()
     for incident in incidents:
         final_record = process_incident(incident, records)
         io_manager.display_outcome(final_record, SEVERITY_LEVELS, OUTCOME_ACTIONS)
-    io_manager.display_summary(records, SEVERITY_LEVELS, OUTCOME_ACTIONS)
+    io_manager.display_summary(records, SEVERITY_LEVELS, OUTCOME_ACTIONS, interactive=False)
     return 0
 
 
@@ -115,16 +101,10 @@ def main():
             records = data_manager.load_records()
             io_manager.display_summary(records, SEVERITY_LEVELS, OUTCOME_ACTIONS)
         elif choice == "3":
-            location = input("Location to search: ").strip()
-            days_input = input("How many days back? ").strip()
-            days = int(days_input) if days_input.isdigit() else 30
-            results = data_manager.query_by_location(location, days)
-            if not results:
-                print("No matching incidents found.")
-            for item in results:
-                print(f"[{item['timestamp']}] {item['location']} -> {item['outcome']}")
+            location, days = io_manager.get_location_query()
+            io_manager.display_query_results(data_manager.query_by_location(location, days))
         elif choice == "4":
-            print("Goodbye.")
+            io_manager.display_message("Goodbye.")
             break
 
 
