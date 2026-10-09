@@ -382,8 +382,15 @@ def find_similar_incidents(record):
 
 
 def _extract_json_object(text):
-    # TODO: not implemented yet
-    return None
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end <= start:
+        return None
+    try:
+        parsed = json.loads(text[start:end + 1])
+    except ValueError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
 
 
 WEB_SEARCH_SCHEMA = {
