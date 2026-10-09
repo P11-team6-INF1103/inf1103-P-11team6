@@ -1,3 +1,5 @@
+from datetime import datetime
+
 # classifications
 _TYPE_A_HAZARDS = ("fall_from_height", "vehicular", "struck_by_machinery")
 
@@ -27,6 +29,18 @@ OUTCOME_ACTIONS = {
     "log_only": "Record the incident; no escalation needed.",
     "pending_review": "The AI could not assess it; a person must review it manually.",
 }
+
+#daniel
+def get_time_of_day(timestamp):
+    try:
+        hour = datetime.fromisoformat(timestamp).hour
+    except (TypeError, ValueError):
+        return "day"
+    if 7 <= hour < 18:
+        return "day"
+    if 18 <= hour < 20 or 5 <= hour < 7:
+        return "dusk_dawn"
+    return "night"
 
 def assess_severity(record, weather_data=None, history=None):
     if weather_data is None:
