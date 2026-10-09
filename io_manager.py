@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 
 #incident log interface 
@@ -40,6 +41,83 @@ def get_incident_input():
         "injury": injury,
         "timestamp": datetime.now().isoformat(),
     }
+
+
+#Input Validation for incident input
+_MIN_DESCRIPTION = 10
+_MAX_DESCRIPTION = 500
+_MAX_LOCATION = 100
+_MAX_ROLE = 40
+_LOCATION_CHARS = re.compile(r"^[A-Za-z0-9 \-,./()#]+$")
+_ROLE_CHARS = re.compile(r"^[A-Za-z _/\-]+$")
+
+
+def _sanitise(text):
+    """Collapses runs of whitespace and drops control characters."""
+    text = " ".join(str(text).split())
+    return "".join(ch for ch in text if ch.isprintable())
+
+
+def _check_description(text):
+    if text == "":
+        return "Description cannot be empty."
+    if len(text) < _MIN_DESCRIPTION:
+        return f"Description is too short. Say what happened in at least {_MIN_DESCRIPTION} characters."
+    if len(text) > _MAX_DESCRIPTION:
+        return f"Description is too long (maximum {_MAX_DESCRIPTION} characters)."
+    no_spaces = text.replace(" ", "")
+    if sum(ch.isalpha() for ch in no_spaces) < len(no_spaces) / 2:
+        return "Description must be mostly words, not symbols or numbers."
+    if len(re.findall(r"[A-Za-z]{2,}", text)) < 2:
+        return "Description must contain at least 2 real words."
+    if len({ch for ch in text.lower() if ch.isalpha()}) < 4:
+        return "Description looks like repeated characters. Describe the incident in words."
+    return None
+
+
+def _check_location(text):
+    if text == "":
+        return "Location cannot be empty."
+    if len(text) > _MAX_LOCATION:
+        return f"Location is too long (maximum {_MAX_LOCATION} characters)."
+    if not _LOCATION_CHARS.match(text):
+        return "Location may only contain letters, digits, spaces and - , . / ( ) #"
+    if not re.search(r"[A-Za-z]", text):
+        return "Location must contain at least one letter, e.g. 'Site A - Block 3'."
+    return None
+
+
+def _check_role(text):
+    if text == "":
+        return "Role cannot be empty."
+    if len(text) < 2:
+        return "Role is too short, e.g. 'site_supervisor'."
+    if len(text) > _MAX_ROLE:
+        return f"Role is too long (maximum {_MAX_ROLE} characters)."
+    if not _ROLE_CHARS.match(text):
+        return "Role may only contain letters, spaces, _ - and /"
+    return None
+
+
+def _ask_valid(prompt, check):
+    """Asks until the (sanitised) answer passes `check`; prints why each
+    rejected answer was rejected."""
+    while True:
+        value = _sanitise(input(prompt))
+        error = check(value)
+        if error is None:
+            return value
+        print("Error: " + error)
+        prompt = "Try again: "
+
+
+def ask_try_again():
+    """After the AI rejects an incident as not a real safety incident: asks
+    whether to enter it again. Returns True for yes."""
+    answer = input("Enter the incident again? (yes/no): ").strip().lower()
+    while answer not in ("yes", "no", "y", "n"):
+        answer = input("Please answer yes or no: ").strip().lower()
+    return answer in ("yes", "y")
 
 #Helper functions for formatting output display_outcome() / display_summary()
 def _format_time(timestamp):
