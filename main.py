@@ -101,7 +101,10 @@ def main():
             records = data_manager.load_records()
             io_manager.display_summary(records, SEVERITY_LEVELS, OUTCOME_ACTIONS)
         elif choice == "3":
-            location, days = io_manager.get_location_query()
+            query = io_manager.get_location_query()
+            if query is None:
+                continue
+            location, days = query
             io_manager.display_query_results(data_manager.query_by_location(location, days))
         elif choice == "4":
             io_manager.display_message("Goodbye.")
