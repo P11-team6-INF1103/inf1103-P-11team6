@@ -121,9 +121,6 @@ def is_systemic_risk(record, history):
     return len(history) >= 3
 
 def decide_outcome(record, history):
-    """Returns 'stop_work_review' / 'systemic_escalation' / 'log_only' /
-    'pending_review'. Never crashes on assessment_error — routes to
-    pending_review instead."""
     if record.get("assessment_error"):
         return "pending_review"
     if is_high_severity(record):
