@@ -147,50 +147,6 @@ def get_incident_input():
     }
 
 
-#Helper functions for formatting output display_outcome() / display_summary()
-def _format_time(timestamp):
-    try:
-        return datetime.fromisoformat(timestamp).strftime("%d %b %Y, %H:%M")
-    except (TypeError, ValueError):
-        return str(timestamp)
-
-
-_LABEL_WIDTH = 14
-
-
-def _report_width():
-    """Wrap width for the full report: the terminal width, kept readable."""
-    return min(max(shutil.get_terminal_size((100, 24)).columns, 60), 90)
-
-
-def _clean(text):
-    """Tidies web/AI text for the terminal: drops citation markers like
-    【9†L109-L112】 and swaps fancy hyphens/quotes for plain ones."""
-    text = re.sub(r"【[^】]*】", "", str(text))
-    text = text.translate({0x2011: "-", 0x2010: "-", 0x2019: "'", 0x2018: "'"})
-    # Close up "word ." / "word ," but leave ".env" (dot followed by a letter) alone.
-    return re.sub(r"\s+([.,;])(?=\s|$)", r"\1", " ".join(text.split()))
-
-
-def _field(label, value, width, indent=2, label_width=_LABEL_WIDTH):
-    """Prints `label  value` with wrapped lines hanging under the value. A
-    list value prints one '- ' bullet per item."""
-    items = value if isinstance(value, list) else [value]
-    bullets = isinstance(value, list)
-    hang = " " * (indent + label_width)
-    for position, item in enumerate(items):
-        lead = " " * indent + label.ljust(label_width) if position == 0 else hang
-        print(textwrap.fill(
-            ("- " if bullets else "") + _clean(item), width,
-            initial_indent=lead, subsequent_indent=hang + ("  " if bullets else ""),
-            break_long_words=False, break_on_hyphens=False,
-        ))
-
-
-def _section(title, width):
-    print(f"\n── {title} " + "─" * max(width - len(title) - 4, 3))
-
-
 _SEASON_TEXT = {
     "northeast_monsoon": "Northeast monsoon season (Dec to early Mar): wet and windy, heavy rain spells",
     "southwest_monsoon": "Southwest monsoon season (Jun to Sep): hot, early-morning squalls, possible haze",
@@ -220,6 +176,50 @@ _OUTCOME_NAMES = {
 
 
 _WIDTH = 64
+
+
+#Helper functions for formatting output display_outcome() / display_summary()
+def _format_time(timestamp):
+    try:
+        return datetime.fromisoformat(timestamp).strftime("%d %b %Y, %H:%M")
+    except (TypeError, ValueError):
+        return str(timestamp)
+
+
+_LABEL_WIDTH = 14
+
+
+def _report_width():
+    """Wrap width for the full report: the terminal width, kept readable."""
+    return min(max(shutil.get_terminal_size((100, 24)).columns, 60), 90)
+
+
+def _clean(text):
+    """Tidies web/AI text for the terminal: drops citation markers like
+    【9†L109-L112】 and swaps fancy hyphens/quotes for plain ones."""
+    text = re.sub(r"【[^】]*】", "", str(text))
+    text = text.translate({0x2011: "-", 0x2010: "-", 0x2019: "'", 0x2018: "'"})
+    # Close up "word ." / "word ," but leave ".env" (dot followed by a letter) alone.
+    return re.sub(r"\s+([.,;])(?=\s|$)", r"\1", " ".join(text.split()))
+
+
+def _section(title, width):
+    print(f"\n── {title} " + "─" * max(width - len(title) - 4, 3))
+
+
+def _field(label, value, width, indent=2, label_width=_LABEL_WIDTH):
+    """Prints `label  value` with wrapped lines hanging under the value. A
+    list value prints one '- ' bullet per item."""
+    items = value if isinstance(value, list) else [value]
+    bullets = isinstance(value, list)
+    hang = " " * (indent + label_width)
+    for position, item in enumerate(items):
+        lead = " " * indent + label.ljust(label_width) if position == 0 else hang
+        print(textwrap.fill(
+            ("- " if bullets else "") + _clean(item), width,
+            initial_indent=lead, subsequent_indent=hang + ("  " if bullets else ""),
+            break_long_words=False, break_on_hyphens=False,
+        ))
 
 
 #print incident report
@@ -323,6 +323,7 @@ def _print_incident_report(record, severity_levels=None, outcome_actions=None, n
         _field("", problems, width, label_width=0)
     print("═" * width)
     print()
+
 
 def display_outcome(record, severity_levels=None, outcome_actions=None):
     print()
