@@ -63,3 +63,14 @@ def test_main_menu_logs_an_incident_then_exits(monkeypatch):
     monkeypatch.setattr("builtins.input", lambda prompt="": "")
     main.main()
     assert len(main.data_manager.load_records()) == 1
+
+
+def test_main_location_query_can_go_back_to_the_menu(monkeypatch):
+    _use_fakes(monkeypatch)
+    choices = iter(["3", "4"])
+    monkeypatch.setattr(main.io_manager, "get_menu_choice", lambda: next(choices))
+    monkeypatch.setattr(main.io_manager, "get_location_query", lambda: None)
+    searched = []
+    monkeypatch.setattr(main.data_manager, "query_by_location", lambda *a: searched.append(a) or [])
+    main.main()
+    assert searched == []
