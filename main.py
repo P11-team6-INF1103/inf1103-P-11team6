@@ -78,9 +78,15 @@ def process_incident(incident, records, interactive=True):
 
 
 # Lennart
+# If the AI rejects the incident, asks whether to enter it again instead of showing a report.
 def log_incident_flow(records):
-    incident = io_manager.get_incident_input()
-    final_record = process_incident(incident, records)
+    while True:
+        incident = io_manager.get_incident_input()
+        final_record = process_incident(incident, records)
+        if final_record is not None:
+            break
+        if not io_manager.ask_try_again():
+            return None
     io_manager.display_outcome(final_record, SEVERITY_LEVELS, OUTCOME_ACTIONS)
     return final_record
 
