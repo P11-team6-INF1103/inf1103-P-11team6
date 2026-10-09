@@ -13,36 +13,6 @@ def get_menu_choice():
         choice = input("Invalid choice. Please enter 1, 2, 3 or 4: ").strip()
     return choice
 
-#incident input interface
-def get_incident_input():
-    print("\n--- Log a New Incident ---")
-
-    description = input("Describe what happened: ").strip()
-    while description == "":
-        description = input("Description cannot be empty. Try again: ").strip()
-
-    location = input("Location (e.g. 'Site A - Block 3'): ").strip()
-    while location == "":
-        location = input("Location cannot be empty. Try again: ").strip()
-
-    reporter_role = input("Your role (e.g. 'site_supervisor'): ").strip()
-    while reporter_role == "":
-        reporter_role = input("Role cannot be empty. Try again: ").strip()
-
-    injury_input = input("Was anyone injured? (yes/no): ").strip().lower()
-    while injury_input not in ("yes", "no", "y", "n"):
-        injury_input = input("Please answer yes or no: ").strip().lower()
-    injury = injury_input in ("yes", "y")
-
-    return {
-        "description": description,
-        "location": location,
-        "reporter_role": reporter_role,
-        "injury": injury,
-        "timestamp": datetime.now().isoformat(),
-    }
-
-
 #Input Validation for incident input
 _MIN_DESCRIPTION = 10
 _MAX_DESCRIPTION = 500
@@ -118,6 +88,31 @@ def ask_try_again():
     while answer not in ("yes", "no", "y", "n"):
         answer = input("Please answer yes or no: ").strip().lower()
     return answer in ("yes", "y")
+
+#incident input interface
+def get_incident_input():
+    """Prompts for description, location, reporter role, and injury flag.
+    Validates and reprompts on bad input (empty, symbols, too short or too
+    long, wrong characters). Returns an `incident` dict matching
+    contracts.md section 1."""
+    print("\n--- Log a New Incident ---")
+
+    description = _ask_valid("Describe what happened: ", _check_description)
+    location = _ask_valid("Location (e.g. 'Site A - Block 3'): ", _check_location)
+    reporter_role = _ask_valid("Your role (e.g. 'site_supervisor'): ", _check_role)
+
+    injury_input = input("Was anyone injured? (yes/no): ").strip().lower()
+    while injury_input not in ("yes", "no", "y", "n"):
+        injury_input = input("Please answer yes or no: ").strip().lower()
+    injury = injury_input in ("yes", "y")
+
+    return {
+        "description": description,
+        "location": location,
+        "reporter_role": reporter_role,
+        "injury": injury,
+        "timestamp": datetime.now().isoformat(),
+    }
 
 #Helper functions for formatting output display_outcome() / display_summary()
 def _format_time(timestamp):
