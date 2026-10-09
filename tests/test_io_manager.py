@@ -48,12 +48,38 @@ def test_checks_reject_junk_and_accept_real_input():
 
 
 def test_location_query_reprompts_and_defaults_to_30_days(monkeypatch, capsys):
-    prompts = _type(monkeypatch, ["", "Site A", "abc", "0", "-3", "7"])
+    prompts = _type(monkeypatch, ["***", "Site A", "abc", "0", "-3", "7"])
     assert io.get_location_query() == ("Site A", 7)
-    assert "Error: Location cannot be empty." in capsys.readouterr().out
+    assert "Error:" in capsys.readouterr().out
     assert sum(p.startswith("Please enter a whole number") for p in prompts) == 3
     _type(monkeypatch, ["Site B", ""])
     assert io.get_location_query() == ("Site B", 30)
+
+
+def test_location_query_returns_none_on_empty_input_to_go_back(monkeypatch):
+    prompts = _type(monkeypatch, [""])
+    assert io.get_location_query() is None
+    assert "press Enter to go back" in prompts[0]
+    prompts = _type(monkeypatch, ["***", ""])
+    assert io.get_location_query() is None
+    assert "press Enter to go back" in prompts[1]
+
+
+def test_ask_try_again(monkeypatch):
+    prompts = _type(monkeypatch, ["maybe", "n"])
+    assert io.ask_try_again() is False
+    assert "Please answer yes or no" in prompts[1]
+    _type(monkeypatch, ["Y"])
+    assert io.ask_try_again() is True
+
+
+def test_ask_retry_save_warns_and_asks_again_until_valid(monkeypatch, capsys):
+    prompts = _type(monkeypatch, ["maybe", "n"])
+    assert io.ask_retry_save() is False
+    assert "INCIDENT NOT SAVED" in capsys.readouterr().out
+    assert "Please answer yes or no" in prompts[1]
+    _type(monkeypatch, ["Y"])
+    assert io.ask_retry_save() is True
 
 
 def test_menu_rejects_invalid_choice(monkeypatch, capsys):
