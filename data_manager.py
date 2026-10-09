@@ -54,7 +54,7 @@ def _write_json(path, data):
             json.dump(data, f, indent=2, default=str, sort_keys=True)
         os.replace(temp_path, path)
         return True
-    except OSError:
+    except (OSError, TypeError, ValueError):
         try:
             os.remove(temp_path)
         except OSError:

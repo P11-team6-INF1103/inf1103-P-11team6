@@ -7,16 +7,12 @@ import threading
 from contextlib import contextmanager
 from datetime import datetime
 
-
 _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 
-#Loading Interface
+# Animated spinner while the `with` block runs. Silent when stdout is not a terminal.
 @contextmanager
 def show_loading(message="AI is thinking"):
-    """Shows an animated spinner on the terminal while the `with` block runs,
-    then clears the line. Does nothing when stdout isn't a terminal (piped
-    output, tests), so it never pollutes captured output."""
     if not sys.stdout.isatty():
         yield
         return
@@ -44,7 +40,7 @@ def show_loading(message="AI is thinking"):
         sys.stdout.flush()
 
 
-#Input Validation for incident input
+# Input validation. Each _check_* returns an error message, or None when the text is fine.
 _MIN_DESCRIPTION = 10
 _MAX_DESCRIPTION = 500
 _MAX_LOCATION = 100
@@ -54,7 +50,6 @@ _ROLE_CHARS = re.compile(r"^[A-Za-z _/\-]+$")
 
 
 def _sanitise(text):
-    """Collapses runs of whitespace and drops control characters."""
     text = " ".join(str(text).split())
     return "".join(ch for ch in text if ch.isprintable())
 
@@ -100,9 +95,8 @@ def _check_role(text):
     return None
 
 
+# Asks until the sanitised answer passes `check`, saying why each answer was rejected.
 def _ask_valid(prompt, check):
-    """Asks until the (sanitised) answer passes `check`; prints why each
-    rejected answer was rejected."""
     while True:
         value = _sanitise(input(prompt))
         error = check(value)
@@ -112,31 +106,56 @@ def _ask_valid(prompt, check):
         prompt = "Try again: "
 
 
-def ask_try_again():
-    """After the AI rejects an incident as not a real safety incident: asks
-    whether to enter it again. Returns True for yes."""
-    answer = input("Enter the incident again? (yes/no): ").strip().lower()
+def _ask_yes_no(prompt):
+    answer = input(prompt).strip().lower()
     while answer not in ("yes", "no", "y", "n"):
         answer = input("Please answer yes or no: ").strip().lower()
     return answer in ("yes", "y")
 
 
-#incident input interface
+# After the AI rejects an incident as not a real safety incident: asks whether to enter it again.
+def ask_try_again():
+    return _ask_yes_no("Enter the incident again? (yes/no): ")
+
+
+# Lennart
+# After a failed save: warns that the incident is not on disk and asks whether to try saving again.
+def ask_retry_save():
+    print("")
+    print("!" * 60)
+    print("  INCIDENT NOT SAVED: it could not be written to disk and")
+    print("  will be lost when you exit the program.")
+    print("!" * 60)
+    return _ask_yes_no("Try saving again? (yes/no): ")
+
+
+# Main menu
+def get_menu_choice():
+    print("\n=== Workplace Safety Incident Triage System ===")
+    print("1. Log a new incident")
+    print("2. View summary of all incidents")
+    print("3. Query incidents by location")
+    print("4. Exit")
+    # Ctrl+C or closed input (Ctrl+D / end of piped input) means "Exit",
+    # so main.py says goodbye instead of showing a traceback.
+    try:
+        choice = input("Choose an option (1-4): ").strip()
+        while choice not in ("1", "2", "3", "4"):
+            choice = input("Invalid choice. Please enter 1, 2, 3 or 4: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return "4"
+    return choice
+
+
+# Incident input interface
 def get_incident_input():
-    """Prompts for description, location, reporter role, and injury flag.
-    Validates and reprompts on bad input (empty, symbols, too short or too
-    long, wrong characters). Returns an `incident` dict matching
-    contracts.md section 1."""
     print("\n--- Log a New Incident ---")
 
     description = _ask_valid("Describe what happened: ", _check_description)
     location = _ask_valid("Location (e.g. 'Site A - Block 3'): ", _check_location)
     reporter_role = _ask_valid("Your role (e.g. 'site_supervisor'): ", _check_role)
-
-    injury_input = input("Was anyone injured? (yes/no): ").strip().lower()
-    while injury_input not in ("yes", "no", "y", "n"):
-        injury_input = input("Please answer yes or no: ").strip().lower()
-    injury = injury_input in ("yes", "y")
+    injury = _ask_yes_no("Was anyone injured? (yes/no): ")
 
     return {
         "description": description,
@@ -147,12 +166,45 @@ def get_incident_input():
     }
 
 
+def display_message(text):
+    print(text)
+
+
+# Location query interface (menu option 3)
+def get_location_query():
+    prompt = "Location to search (or press Enter to go back to the menu): "
+    while True:
+        location = _sanitise(input(prompt))
+        if location == "":
+            return None
+        error = _check_location(location)
+        if error is None:
+            break
+        print("Error: " + error)
+        prompt = "Try again (or press Enter to go back to the menu): "
+
+    days_input = input("How many days back? (Enter for 30): ").strip()
+    while days_input != "" and not (days_input.isdigit() and int(days_input) > 0):
+        days_input = input("Please enter a whole number of days, 1 or more: ").strip()
+    return location, int(days_input) if days_input else 30
+
+
+def display_query_results(results):
+    if not results:
+        print("No matching incidents found.")
+        return
+    print(f"{len(results)} matching incident(s):")
+    for item in results:
+        print(f"[{_format_time(item.get('timestamp'))}] {item.get('location')} -> "
+              f"{_OUTCOME_NAMES.get(item.get('outcome'), item.get('outcome'))}")
+
+
+# Lookup tables for display_outcome() / display_summary()
 _SEASON_TEXT = {
     "northeast_monsoon": "Northeast monsoon season (Dec to early Mar): wet and windy, heavy rain spells",
     "southwest_monsoon": "Southwest monsoon season (Jun to Sep): hot, early-morning squalls, possible haze",
     "inter_monsoon": "Inter-monsoon season (Apr-May, Oct-Nov): hot, afternoon thunderstorms and lightning",
 }
-
 
 _HAZARD_NAMES = {
     "fall": "Slip, trip or fall (ground level)",
@@ -166,6 +218,7 @@ _HAZARD_NAMES = {
     "unassessed": "Not assessed",
 }
 
+_HAZARD_SHORT = dict(_HAZARD_NAMES, fall="Fall (ground level)", vehicular="Vehicle / mobile machinery")
 
 _OUTCOME_NAMES = {
     "stop_work_review": "STOP WORK - safety review",
@@ -174,11 +227,18 @@ _OUTCOME_NAMES = {
     "pending_review": "NEEDS MANUAL REVIEW",
 }
 
+_OUTCOME_SHORT = {
+    "stop_work_review": "STOP WORK",
+    "systemic_escalation": "ESCALATE",
+    "log_only": "Log only",
+    "pending_review": "MANUAL REVIEW",
+}
 
 _WIDTH = 64
+_LABEL_WIDTH = 14
 
 
-#Helper functions for formatting output display_outcome() / display_summary()
+# Helper functions for formatting output
 def _format_time(timestamp):
     try:
         return datetime.fromisoformat(timestamp).strftime("%d %b %Y, %H:%M")
@@ -186,20 +246,14 @@ def _format_time(timestamp):
         return str(timestamp)
 
 
-_LABEL_WIDTH = 14
-
-
 def _report_width():
-    """Wrap width for the full report: the terminal width, kept readable."""
     return min(max(shutil.get_terminal_size((100, 24)).columns, 60), 90)
 
 
+# Drops citation markers like 【9†L109-L112】 and swaps fancy hyphens/quotes for plain ones
 def _clean(text):
-    """Tidies web/AI text for the terminal: drops citation markers like
-    【9†L109-L112】 and swaps fancy hyphens/quotes for plain ones."""
     text = re.sub(r"【[^】]*】", "", str(text))
     text = text.translate({0x2011: "-", 0x2010: "-", 0x2019: "'", 0x2018: "'"})
-    # Close up "word ." / "word ," but leave ".env" (dot followed by a letter) alone.
     return re.sub(r"\s+([.,;])(?=\s|$)", r"\1", " ".join(text.split()))
 
 
@@ -207,9 +261,8 @@ def _section(title, width):
     print(f"\n── {title} " + "─" * max(width - len(title) - 4, 3))
 
 
+# Prints `label  value` with wrapped lines hanging under the value; a list prints one '- ' bullet per item
 def _field(label, value, width, indent=2, label_width=_LABEL_WIDTH):
-    """Prints `label  value` with wrapped lines hanging under the value. A
-    list value prints one '- ' bullet per item."""
     items = value if isinstance(value, list) else [value]
     bullets = isinstance(value, list)
     hang = " " * (indent + label_width)
@@ -222,16 +275,16 @@ def _field(label, value, width, indent=2, label_width=_LABEL_WIDTH):
         ))
 
 
-#print incident report
+# Print incident report
 def _print_incident_report(record, severity_levels=None, outcome_actions=None, number=None):
     severity_levels = severity_levels or {}
     outcome_actions = outcome_actions or {}
     width = _report_width()
 
     title = f"INCIDENT #{number}" if number else "INCIDENT REPORT"
-    print("=" * width)
-    print(f"{title}   {record.get('location')}   {_format_time(record.get('timestamp'))}")
-    print("=" * width)
+    print("═" * width)
+    print(f" {title}   {record.get('location')}   {_format_time(record.get('timestamp'))}")
+    print("═" * width)
 
     # --- What was logged ---
     hazard = record.get("hazard_type")
@@ -330,7 +383,6 @@ def display_outcome(record, severity_levels=None, outcome_actions=None):
     _print_incident_report(record, severity_levels, outcome_actions)
 
 
-#Serverity Level
 def display_severity_guide(severity_levels):
     print("\nWHAT THE SEVERITY LEVELS MEAN")
     for level in sorted(severity_levels):
@@ -338,31 +390,8 @@ def display_severity_guide(severity_levels):
         print(f"  {level} {name:<9} {meaning}")
 
 
-_HAZARD_SHORT = {
-    "fall": "Fall (ground level)",
-    "fall_from_height": "Fall from height",
-    "electrical": "Electrical",
-    "chemical": "Chemical",
-    "vehicular": "Vehicle / mobile machinery",
-    "struck_by_machinery": "Struck by machinery",
-    "low_visibility": "Poor visibility",
-    "other": "Other",
-    "unassessed": "Not assessed",
-}
-
-
-_OUTCOME_SHORT = {
-    "stop_work_review": "STOP WORK",
-    "systemic_escalation": "ESCALATE",
-    "log_only": "Log only",
-    "pending_review": "MANUAL REVIEW",
-}
-
-
-#Table display
+# Boxed table; long cells wrap inside their column
 def _print_table(headers, rows, widths):
-    """Prints a boxed table. Cells wrap onto extra lines inside their column,
-    so long text never breaks the layout."""
     def line(left, mid, right):
         return left + mid.join("─" * (w + 2) for w in widths) + right
 
@@ -378,7 +407,8 @@ def _print_table(headers, rows, widths):
     print(line("└", "┴", "┘"))
 
 
-#Display Summary of all incidents
+# Totals and one table row per incident, then the severity guide.
+# When `interactive`, an incident # can be typed to open its full report.
 def display_summary(records, severity_levels=None, outcome_actions=None, interactive=True):
     print("\n" + "#" * _WIDTH)
     print("INCIDENT SUMMARY / AFTER-ACTION REVIEW")
@@ -408,7 +438,6 @@ def display_summary(records, severity_levels=None, outcome_actions=None, interac
         reverse=True,
     )
 
-
     # Fixed-width columns first; Location and Description share what is left.
     fixed = [3, 11, 18, 3, 13]
     total_width = max(shutil.get_terminal_size((100, 24)).columns, 100)
@@ -419,8 +448,7 @@ def display_summary(records, severity_levels=None, outcome_actions=None, interac
 
     rows = []
     for number, record in ordered:
-        timestamp = _format_time(record.get("timestamp"))
-        date, _, time = timestamp.partition(", ")
+        date, _, time = _format_time(record.get("timestamp")).partition(", ")
         hazard = record.get("hazard_type")
         outcome = record.get("outcome")
         rows.append([
@@ -455,58 +483,9 @@ def display_summary(records, severity_levels=None, outcome_actions=None, interac
             print(f"Please enter a number from 1 to {len(records)}.")
 
 
-#incident log interface 
-def get_menu_choice():
-    print("\n=== Workplace Safety Incident Triage System ===")
-    print("1. Log a new incident")
-    print("2. View summary of all incidents")
-    print("3. Query incidents by location")
-    print("4. Exit")
-    choice = input("Choose an option (1-4): ").strip()
-    while choice not in ("1", "2", "3", "4"):
-        choice = input("Invalid choice. Please enter 1, 2, 3 or 4: ").strip()
-    return choice
-
-
-def display_message(text):
-    """Prints one plain line of status text."""
-    print(text)
-
-
-#Location query 
-def get_location_query():
-    """Asks for a location and a number of days for menu option 3.
-    Rejects an empty location and a non-positive or non-numeric day count
-    and asks again. Returns (location, days)."""
-    location = _ask_valid("Location to search: ", _check_location)
-
-    days_input = input("How many days back? (Enter for 30): ").strip()
-    while days_input != "" and not (days_input.isdigit() and int(days_input) > 0):
-        days_input = input("Please enter a whole number of days, 1 or more: ").strip()
-    return location, int(days_input) if days_input else 30
-
-
-#Query results display
-def display_query_results(results):
-    """Prints the matches from data_manager.query_by_location()."""
-    if not results:
-        print("No matching incidents found.")
-        return
-    print(f"{len(results)} matching incident(s):")
-    for item in results:
-        print(f"[{_format_time(item.get('timestamp'))}] {item.get('location')} -> "
-              f"{_OUTCOME_NAMES.get(item.get('outcome'), item.get('outcome'))}")
-
-
-#Incident File Reader
+# Batch mode: reads a JSON list of incidents and validates each one like typed input.
+# Returns (incidents, problems): the valid incidents plus one message per rejected item.
 def read_incident_file(path):
-    """Reads incidents from a JSON file (a list of objects with description,
-    location, reporter_role, injury, and optionally timestamp) for batch
-    mode. Every item is validated the same way typed input is. Returns
-    (incidents, problems): valid incidents in file order, plus one
-    plain-English problem per rejected item or per unreadable file. Never
-    raises. An item without a timestamp gets the current time, which makes
-    that run non-repeatable, so give every item a timestamp."""
     try:
         with open(path, "r", encoding="utf-8") as f:
             items = json.load(f)
@@ -545,11 +524,10 @@ def read_incident_file(path):
             problems.append(f"Item {number}: missing or invalid " + ", ".join(missing))
             continue
         incidents.append({
-            "description": item["description"].strip(),
-            "location": item["location"].strip(),
-            "reporter_role": item["reporter_role"].strip(),
+            "description": item["description"],
+            "location": item["location"],
+            "reporter_role": item["reporter_role"],
             "injury": injury,
             "timestamp": timestamp,
         })
     return incidents, problems
-
