@@ -48,6 +48,6 @@ def test_enrich_record_stops_early_when_incident_is_invalid():
             mock.patch.object(ai_manager, "call_weather_api", boom), \
             mock.patch.object(ai_manager, "find_similar_incidents", boom), \
             mock.patch.object(ai_manager, "search_web_for_similar_incidents", boom), \
-            mock.patch.object(ai_manager, "review_step", boom):
+            mock.patch.object(ai_manager, "generate_incident_review", boom):
         result = ai_manager.enrich_record(_incident("asdf qwerty banana", weather_relevant=True), [])
     assert result["is_valid_incident"] is False and result["invalid_reason"] == "not an incident"
