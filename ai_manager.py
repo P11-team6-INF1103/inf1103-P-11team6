@@ -582,6 +582,4 @@ def enrich_record(record, history_records=None):
         enriched["web_incidents"] = None
         enriched["web_search_error"] = str(error)
 
-    enriched.update(review_step(enriched))
-
     return enriched
