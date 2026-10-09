@@ -7,7 +7,8 @@ import logging
 import requests
 from dotenv import load_dotenv
 from google import genai
-from datetime import datetime
+
+import logic_manager
 
 load_dotenv()
 
@@ -247,10 +248,6 @@ def extract_hazard_context_flags(description):
         return result
 
 
-def get_time_of_day(timestamp):
-    return "day"
-
-
 _WEATHER_KEYWORDS = (
     "rain", "wet", "storm", "wind", "windy", "flood", "lightning",
     "thunder", "haze", "hot", "heat", "humid",
@@ -259,18 +256,6 @@ _WEATHER_KEYWORDS = (
 def is_weather_relevant(record):
     description = record.get("description", "").lower()
     return any(keyword in description for keyword in _WEATHER_KEYWORDS)
-
-#daniel
-def get_time_of_day(timestamp):
-    try:
-        hour = datetime.fromisoformat(timestamp).hour
-    except (TypeError, ValueError):
-        return "day"
-    if 7 <= hour < 18:
-        return "day"
-    if 18 <= hour < 20 or 5 <= hour < 7:
-        return "dusk_dawn"
-    return "night"
 
 def call_weather_api(location):
     try:
@@ -483,7 +468,7 @@ def enrich_record(record, history_records=None):
             enriched["enrichment_error"] = "Weather data unavailable or invalid"
 
     if "time_of_day" not in enriched:
-        enriched["time_of_day"] = get_time_of_day(record.get("timestamp"))
+        enriched["time_of_day"] = logic_manager.get_time_of_day(record.get("timestamp"))
     if "lighting_condition" not in enriched:
         enriched["lighting_condition"] = classify_lighting_condition(
             enriched["time_of_day"], enriched["condition"]

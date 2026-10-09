@@ -87,6 +87,14 @@ def test_menu_rejects_invalid_choice(monkeypatch, capsys):
     assert io.get_menu_choice() == "3"
 
 
+def test_menu_treats_ctrl_c_and_closed_input_as_exit(monkeypatch, capsys):
+    for interrupt in (EOFError, KeyboardInterrupt):
+        def stop(prompt=""):
+            raise interrupt
+        monkeypatch.setattr("builtins.input", stop)
+        assert io.get_menu_choice() == "4"
+
+
 def test_clean_keeps_dot_env_and_closes_up_punctuation():
     assert io._clean("is not set in .env") == "is not set in .env"
     assert io._clean("ends here . Next ; ok") == "ends here. Next; ok"
