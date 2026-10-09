@@ -72,6 +72,17 @@ def test_unreadable_file_is_not_overwritten_by_save():
         assert dm.load_records() == [{"location": "old"}]
 
 
+def test_unsaveable_record_returns_false_and_keeps_file():
+    circular = {}
+    circular["self"] = circular
+    with temp_data_dir() as folder:
+        assert dm.save_record({"location": "old"}) is True
+        for bad in ({1: "a", "b": 2}, {(1, 2): "x"}, circular):
+            assert dm.save_record(bad) is False
+        assert dm.load_records() == [{"location": "old"}]
+        assert _files(folder) == ["incidents.json"]
+
+
 def test_unwritable_location_returns_false_instead_of_crashing():
     with tempfile.NamedTemporaryFile() as blocker:
         with mock.patch.dict(os.environ, {"INCIDENT_DATA_DIR": os.path.join(blocker.name, "sub")}):

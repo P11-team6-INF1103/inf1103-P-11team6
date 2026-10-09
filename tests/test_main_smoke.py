@@ -60,5 +60,6 @@ def test_main_menu_logs_an_incident_then_exits(monkeypatch):
     choices = iter(["1", "2", "4"])
     monkeypatch.setattr(main.io_manager, "get_menu_choice", lambda: next(choices))
     monkeypatch.setattr(main.io_manager, "get_incident_input", lambda: _incident())
+    monkeypatch.setattr("builtins.input", lambda prompt="": "")
     main.main()
     assert len(main.data_manager.load_records()) == 1
