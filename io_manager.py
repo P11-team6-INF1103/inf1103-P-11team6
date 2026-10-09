@@ -326,11 +326,31 @@ def display_outcome(record, severity_levels=None, outcome_actions=None):
     print()
     _print_incident_report(record, severity_levels, outcome_actions)
 
+#Serverity Level
 def display_severity_guide(severity_levels):
     print("\nWHAT THE SEVERITY LEVELS MEAN")
     for level in sorted(severity_levels):
         name, meaning = severity_levels[level]
         print(f"  {level} {name:<9} {meaning}")
+
+_HAZARD_SHORT = {
+    "fall": "Fall (ground level)",
+    "fall_from_height": "Fall from height",
+    "electrical": "Electrical",
+    "chemical": "Chemical",
+    "vehicular": "Vehicle / mobile machinery",
+    "struck_by_machinery": "Struck by machinery",
+    "low_visibility": "Poor visibility",
+    "other": "Other",
+    "unassessed": "Not assessed",
+}
+
+_OUTCOME_SHORT = {
+    "stop_work_review": "STOP WORK",
+    "systemic_escalation": "ESCALATE",
+    "log_only": "Log only",
+    "pending_review": "MANUAL REVIEW",
+}
 
 def display_summary(records, severity_levels=None, outcome_actions=None):
     print("\n" + "#" * _WIDTH)
