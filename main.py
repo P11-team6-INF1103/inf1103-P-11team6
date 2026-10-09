@@ -36,12 +36,21 @@ def start_up():
 
 
 # Lennart
-def process_incident(incident, records):
+# Returns None, and saves nothing, when the AI says the text is not a real safety incident.
+# interactive=False (batch, scripts, Docker) never waits on input() after a failed save.
+def process_incident(incident, records, interactive=True):
     with_context = derive_context(incident)
     with io_manager.show_loading("AI is analysing the incident"):
         enriched = ai_manager.enrich_record(with_context, records)
-        enriched = apply_lighting(enriched)
-        enriched.update(generate_incident_review(enriched))
+        is_valid = enriched.get("is_valid_incident", True)
+        if is_valid:
+            enriched = apply_lighting(enriched)
+            enriched.update(generate_incident_review(enriched))
+    if not is_valid:
+        io_manager.display_message(
+            "Incident rejected: " + str(enriched.get("invalid_reason") or "not a workplace safety incident")
+        )
+        return None
 
     history = data_manager.query_by_location(
         enriched.get("location", ""), 30, as_of=enriched.get("timestamp"), records=records
@@ -57,7 +66,10 @@ def process_incident(incident, records):
     final_record = dict(assessed)
     final_record["outcome"] = decide_outcome(assessed, history)
 
-    if save_record(final_record) is False:
+    saved = save_record(final_record)
+    while saved is False and interactive and io_manager.ask_retry_save():
+        saved = save_record(final_record)
+    if saved is False:
         io_manager.display_message("Warning: could not save this incident to disk.")
     records.append(final_record)
     if not data_manager.save_ai_cache(ai_manager.export_response_cache()):
@@ -66,9 +78,15 @@ def process_incident(incident, records):
 
 
 # Lennart
+# If the AI rejects the incident, asks whether to enter it again instead of showing a report.
 def log_incident_flow(records):
-    incident = io_manager.get_incident_input()
-    final_record = process_incident(incident, records)
+    while True:
+        incident = io_manager.get_incident_input()
+        final_record = process_incident(incident, records)
+        if final_record is not None:
+            break
+        if not io_manager.ask_try_again():
+            return None
     io_manager.display_outcome(final_record, SEVERITY_LEVELS, OUTCOME_ACTIONS)
     return final_record
 
@@ -84,7 +102,9 @@ def run_batch(path):
 
     records = start_up()
     for incident in incidents:
-        final_record = process_incident(incident, records)
+        final_record = process_incident(incident, records, interactive=False)
+        if final_record is None:
+            continue
         io_manager.display_outcome(final_record, SEVERITY_LEVELS, OUTCOME_ACTIONS)
     io_manager.display_summary(records, SEVERITY_LEVELS, OUTCOME_ACTIONS, interactive=False)
     return 0
@@ -101,7 +121,10 @@ def main():
             records = data_manager.load_records()
             io_manager.display_summary(records, SEVERITY_LEVELS, OUTCOME_ACTIONS)
         elif choice == "3":
-            location, days = io_manager.get_location_query()
+            query = io_manager.get_location_query()
+            if query is None:
+                continue
+            location, days = query
             io_manager.display_query_results(data_manager.query_by_location(location, days))
         elif choice == "4":
             io_manager.display_message("Goodbye.")
