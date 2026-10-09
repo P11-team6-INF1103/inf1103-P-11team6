@@ -306,8 +306,80 @@ def classify_lighting_condition(time_of_day, condition):
     base = min(base, len(levels) - 1)
     return levels[base]
 
-def find_similar_incidents(record, history_records=None):
-    return []
+def find_similar_incidents(record):
+    history_records = data_manager.load_records()
+    if not history_records:
+        return []
+
+    client = _get_gemini_client()
+    if client is None:
+        raise RuntimeError("Gemini client unavailable (check GEMINI_API_KEY)")
+
+    # Keep the prompt small: the 10 most recent records only. Each gets an
+    # id so a match can be tied back to the exact saved record.
+    recent = history_records[-10:]
+    candidates = [
+        {
+            "id": i,
+            "description": r.get("description", ""),
+            "hazard_type": r.get("hazard_type", "other"),
+            "outcome": r.get("outcome", "log_only"),
+        }
+        for i, r in enumerate(recent)
+    ]
+
+    schema = {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "integer"},
+                "resolution_notes": {"type": "string"},
+            },
+            "required": ["id", "resolution_notes"],
+        },
+    }
+
+    prompt = (
+        "Here is a new workplace safety incident:\n"
+        f"\"{record.get('description', '')}\"\n\n"
+        "Here are past incidents (JSON):\n"
+        f"{json.dumps(candidates)}\n\n"
+        "Return a JSON array with the id of each past incident that shares a "
+        "similar hazard signature with the new one (same kind of hazard). If "
+        "none are similar, return an empty array. For each match, always add a "
+        "one-sentence resolution_notes saying what its recorded outcome means "
+        "was done on site: log_only = recorded, no further action; "
+        "stop_work_review = work was stopped for a safety review; "
+        "systemic_escalation = escalated to management as a recurring site "
+        "problem; pending_review = waiting for a manual review."
+    )
+
+    parsed = _parse_json_safe(_call_gemini(client, prompt, schema))
+    _validate_schema(parsed, schema)
+
+    # Only keep ids that point at a real saved record, and copy the facts
+    # from that record rather than trusting anything the model wrote.
+    matches = []
+    seen = set()
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        idx = item.get("id")
+        if not isinstance(idx, int) or not 0 <= idx < len(recent) or idx in seen:
+            continue
+        seen.add(idx)
+        saved = recent[idx]
+        notes = item.get("resolution_notes")
+        matches.append({
+            "description": saved.get("description", ""),
+            "location": saved.get("location", ""),
+            "timestamp": saved.get("timestamp", ""),
+            "hazard_type": saved.get("hazard_type", "other"),
+            "outcome": saved.get("outcome", "log_only"),
+            "resolution_notes": notes if isinstance(notes, str) else None,
+        })
+    return matches
 
 
 def _extract_json_object(text):
