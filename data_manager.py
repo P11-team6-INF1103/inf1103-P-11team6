@@ -102,8 +102,11 @@ def save_record(record):
 
 #Ren Xiang
 def query_by_location(location, days, as_of=None, records=None):
-    end = datetime.fromisoformat(as_of) if as_of else datetime.now()
-    cutoff = end - timedelta(days=days)
+    try:
+        reference = datetime.fromisoformat(as_of) if as_of else datetime.now()
+    except (TypeError, ValueError):
+        reference = datetime.now()
+    cutoff = reference - timedelta(days=days)
     matches = []
     for record in (load_records() if records is None else records):
         if not isinstance(record, dict) or record.get("location") != location:
