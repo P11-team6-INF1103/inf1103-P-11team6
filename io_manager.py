@@ -113,6 +113,11 @@ def _ask_yes_no(prompt):
     return answer in ("yes", "y")
 
 
+# After the AI rejects an incident as not a real safety incident: asks whether to enter it again.
+def ask_try_again():
+    return _ask_yes_no("Enter the incident again? (yes/no): ")
+
+
 # Main menu
 def get_menu_choice():
     print("\n=== Workplace Safety Incident Triage System ===")
