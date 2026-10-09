@@ -463,3 +463,89 @@ def get_menu_choice():
         choice = input("Invalid choice. Please enter 1, 2, 3 or 4: ").strip()
     return choice
 
+
+def display_message(text):
+    """Prints one plain line of status text."""
+    print(text)
+
+
+#Location query 
+def get_location_query():
+    """Asks for a location and a number of days for menu option 3.
+    Rejects an empty location and a non-positive or non-numeric day count
+    and asks again. Returns (location, days)."""
+    location = _ask_valid("Location to search: ", _check_location)
+
+    days_input = input("How many days back? (Enter for 30): ").strip()
+    while days_input != "" and not (days_input.isdigit() and int(days_input) > 0):
+        days_input = input("Please enter a whole number of days, 1 or more: ").strip()
+    return location, int(days_input) if days_input else 30
+
+
+#Query results display
+def display_query_results(results):
+    """Prints the matches from data_manager.query_by_location()."""
+    if not results:
+        print("No matching incidents found.")
+        return
+    print(f"{len(results)} matching incident(s):")
+    for item in results:
+        print(f"[{_format_time(item.get('timestamp'))}] {item.get('location')} -> "
+              f"{_OUTCOME_NAMES.get(item.get('outcome'), item.get('outcome'))}")
+
+
+#Incident File Reader
+def read_incident_file(path):
+    """Reads incidents from a JSON file (a list of objects with description,
+    location, reporter_role, injury, and optionally timestamp) for batch
+    mode. Every item is validated the same way typed input is. Returns
+    (incidents, problems): valid incidents in file order, plus one
+    plain-English problem per rejected item or per unreadable file. Never
+    raises. An item without a timestamp gets the current time, which makes
+    that run non-repeatable, so give every item a timestamp."""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            items = json.load(f)
+    except (OSError, ValueError) as error:
+        return [], [f"Could not read {path}: {error}"]
+    if not isinstance(items, list):
+        return [], [f"{path} must contain a JSON list of incidents"]
+
+    incidents, problems = [], []
+    for number, item in enumerate(items, start=1):
+        if not isinstance(item, dict):
+            problems.append(f"Item {number}: not an object")
+            continue
+        missing = []
+        for key, check in (("description", _check_description),
+                           ("location", _check_location),
+                           ("reporter_role", _check_role)):
+            if not isinstance(item.get(key), str):
+                missing.append(key)
+                continue
+            item[key] = _sanitise(item[key])
+            error = check(item[key])
+            if error:
+                missing.append(f"{key} ({error})")
+        injury = item.get("injury")
+        if isinstance(injury, str) and injury.strip().lower() in ("yes", "y", "no", "n"):
+            injury = injury.strip().lower() in ("yes", "y")
+        if not isinstance(injury, bool):
+            missing.append("injury (true/false)")
+        timestamp = item.get("timestamp") or datetime.now().isoformat()
+        try:
+            datetime.fromisoformat(timestamp)
+        except (TypeError, ValueError):
+            missing.append("timestamp (ISO format)")
+        if missing:
+            problems.append(f"Item {number}: missing or invalid " + ", ".join(missing))
+            continue
+        incidents.append({
+            "description": item["description"].strip(),
+            "location": item["location"].strip(),
+            "reporter_role": item["reporter_role"].strip(),
+            "injury": injury,
+            "timestamp": timestamp,
+        })
+    return incidents, problems
+
