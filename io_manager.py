@@ -1,5 +1,43 @@
 import re
+import sys
+import threading
+from contextlib import contextmanager
 from datetime import datetime
+
+_SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
+#Loading Interface
+@contextmanager
+def show_loading(message="AI is thinking"):
+    """Shows an animated spinner on the terminal while the `with` block runs,
+    then clears the line. Does nothing when stdout isn't a terminal (piped
+    output, tests), so it never pollutes captured output."""
+    if not sys.stdout.isatty():
+        yield
+        return
+
+    stop = threading.Event()
+
+    def animate():
+        frame = 0
+        while not stop.is_set():
+            dots = "." * (frame // 3 % 4)
+            spinner = _SPINNER_FRAMES[frame % len(_SPINNER_FRAMES)]
+            sys.stdout.write(f"\r{spinner} {message}{dots:<3}")
+            sys.stdout.flush()
+            frame += 1
+            stop.wait(0.1)
+
+    thread = threading.Thread(target=animate, daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        thread.join()
+        sys.stdout.write("\r" + " " * (len(message) + 6) + "\r")
+        sys.stdout.flush()
+
 
 #incident log interface 
 def get_menu_choice():
