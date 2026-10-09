@@ -1,3 +1,4 @@
+import json
 import re
 import shutil
 import sys
@@ -6,7 +7,9 @@ import threading
 from contextlib import contextmanager
 from datetime import datetime
 
+
 _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
 
 #Loading Interface
 @contextmanager
@@ -375,7 +378,7 @@ def _print_table(headers, rows, widths):
 
 
 #Display Summary of all incidents
-def display_summary(records, severity_levels=None, outcome_actions=None):
+def display_summary(records, severity_levels=None, outcome_actions=None, interactive=True):
     print("\n" + "#" * _WIDTH)
     print("INCIDENT SUMMARY / AFTER-ACTION REVIEW")
     print("#" * _WIDTH)
