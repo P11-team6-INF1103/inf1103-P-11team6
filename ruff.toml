@@ -1,3 +1,6 @@
+# macOS drops ._ metadata files next to every file on the shared USB drive
+extend-exclude = ["._*"]
+
 [lint]
 ignore = [
     # The spec says an API failure must be logged and never crash the app, so
