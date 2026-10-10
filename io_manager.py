@@ -322,6 +322,14 @@ _ALL_AI_DOWN_MESSAGE = (
 )
 _KEY_HINT = "An API key looks missing: check GEMINI_API_KEY and GROQ_API_KEY in the .env file."
 
+def _friendly_problems(record):
+    problems = [text for field, text in _PROBLEM_MESSAGES if record.get(field)]
+    if all(record.get(f) for f in ("context_flags_error", "web_search_error", "review_error")):
+        problems.insert(0, _ALL_AI_DOWN_MESSAGE)
+    raw = " ".join(str(record.get(field) or "") for field, _ in _PROBLEM_MESSAGES)
+    if "API_KEY" in raw:
+        problems.append(_KEY_HINT)
+    return problems
 
 # Print incident report
 def _print_incident_report(record, severity_levels=None, outcome_actions=None, number=None):
