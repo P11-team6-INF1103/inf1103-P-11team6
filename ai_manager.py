@@ -305,8 +305,8 @@ def classify_lighting_condition(time_of_day, condition):
     base = min(base, len(levels) - 1)
     return levels[base]
 
-def find_similar_incidents(record):
-    history_records = data_manager.load_records()
+def find_similar_incidents(record, history_records=None):
+    history_records = history_records or []
     if not history_records:
         return []
 
