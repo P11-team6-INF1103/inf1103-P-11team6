@@ -126,7 +126,7 @@ def test_report_shows_sections_only_when_they_have_content(capsys):
     io.display_outcome(_record(review_likely_causes=["Wet floor"]), {2: ("Minor", "Record it.")})
     out = capsys.readouterr().out
     assert "SEVERITY AND ACTION" in out and "WHY IT LIKELY HAPPENED" in out
-    assert "WEATHER AT THE TIME" not in out and "HOW TO PREVENT IT" not in out
+    assert "CURRENT WEATHER" not in out and "HOW TO PREVENT IT" not in out
 
 
 def test_query_results_display(capsys):
