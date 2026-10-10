@@ -5,17 +5,16 @@ import ai_manager
 import data_manager
 import io_manager
 import logic_manager
-import trial
 
-# Real functions are used wherever a teammate's module already has them.
-# Anything not merged yet falls back to the matching stand-in in fakes.py.
-decide_outcome = getattr(logic_manager, "decide_outcome", trial.fake_decide_outcome)
-save_record = getattr(data_manager, "save_record", trial.fake_save_record)
-SEVERITY_LEVELS = getattr(logic_manager, "SEVERITY_LEVELS", None)
-OUTCOME_ACTIONS = getattr(logic_manager, "OUTCOME_ACTIONS", None)
+decide_outcome = logic_manager.decide_outcome
+save_record = data_manager.save_record
+generate_incident_review = ai_manager.generate_incident_review
+SEVERITY_LEVELS = logic_manager.SEVERITY_LEVELS
+OUTCOME_ACTIONS = logic_manager.OUTCOME_ACTIONS
+
+# Not written yet (Darrel). Until they land, each step passes the record through unchanged.
 derive_context = getattr(logic_manager, "derive_context", dict)
 apply_lighting = getattr(logic_manager, "apply_lighting", dict)
-generate_incident_review = getattr(ai_manager, "generate_incident_review", lambda record: {})
 
 
 # Lennart
