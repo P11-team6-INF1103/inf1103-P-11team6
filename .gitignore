@@ -1,6 +1,5 @@
 # Environment / secrets
 .env
-.dockerignore
 
 # Python
 __pycache__/
@@ -33,6 +32,7 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+._*
 
 # Logs
 *.log
