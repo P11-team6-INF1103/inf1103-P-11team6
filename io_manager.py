@@ -410,7 +410,7 @@ def _print_incident_report(record, severity_levels=None, outcome_actions=None, n
         _field("", record["review_prevention_actions"], width, label_width=0)
 
     # --- Anything the AI couldn't do, in one place ---
-    problems = []
+    problems = _friendly_problems(record)
     if record.get("assessment_error"):
         problems.append(f"Assessment: {record['assessment_error']}")
     if record.get("web_search_error"):
