@@ -135,13 +135,29 @@ def _validate_schema(data, schema, path="response"):
 
 def _gemini_json(client, prompt, schema):
     key = _cache_key("gemini", prompt, json.dumps(schema, sort_keys=True))
-    text = _RESPONSE_CACHE.get(key)
-    if text is None:
+    cached = _RESPONSE_CACHE.get(key)
+    if cached is not None:
+        try:
+            parsed = _parse_json_safe(cached)
+            _validate_schema(parsed, schema)
+            return parsed
+        except ValueError:
+            pass
+
+    # A reply that is not valid JSON or fails the schema is asked for once more.
+    last_error = None
+    for _attempt in range(2):
         text = _call_gemini(client, prompt, schema)
-    parsed = _parse_json_safe(text)
-    _validate_schema(parsed, schema)
-    _RESPONSE_CACHE[key] = text
-    return parsed
+        try:
+            parsed = _parse_json_safe(text)
+            _validate_schema(parsed, schema)
+        except ValueError as error:
+            logger.warning("Malformed Gemini reply: %s", error)
+            last_error = error
+            continue
+        _RESPONSE_CACHE[key] = text
+        return parsed
+    raise last_error
 
 
 # Lennart
