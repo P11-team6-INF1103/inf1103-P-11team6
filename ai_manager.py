@@ -1,8 +1,8 @@
 
-import os
-import json
 import hashlib
+import json
 import logging
+import os
 
 import requests
 from dotenv import load_dotenv
@@ -308,9 +308,7 @@ def validate_weather_response(response):
         return False
     if not isinstance(temperature_c, (int, float)) or not (-10 <= temperature_c <= 50):
         return False
-    if not isinstance(humidity_pct, (int, float)) or not (0 <= humidity_pct <= 100):
-        return False
-    return True
+    return isinstance(humidity_pct, (int, float)) and 0 <= humidity_pct <= 100
 
 
 def classify_lighting_condition(time_of_day, condition):

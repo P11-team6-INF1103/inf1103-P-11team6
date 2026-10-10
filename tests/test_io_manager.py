@@ -89,7 +89,7 @@ def test_menu_rejects_invalid_choice(monkeypatch, capsys):
 
 def test_menu_treats_ctrl_c_and_closed_input_as_exit(monkeypatch, capsys):
     for interrupt in (EOFError, KeyboardInterrupt):
-        def stop(prompt=""):
+        def stop(prompt="", interrupt=interrupt):
             raise interrupt
         monkeypatch.setattr("builtins.input", stop)
         assert io.get_menu_choice() == "4"
