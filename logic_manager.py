@@ -36,7 +36,7 @@ OUTCOME_ACTIONS = {
 }
 
 #daniel
-def get_time_of_day(timestamp):
+def get_time_of_day(timestamp: str | None) -> str:
     try:
         hour = datetime.fromisoformat(timestamp).hour
     except (TypeError, ValueError):
@@ -47,7 +47,7 @@ def get_time_of_day(timestamp):
         return "dusk_dawn"
     return "night"
 
-def assess_severity(record, weather_data=None, history=None):
+def assess_severity(record: dict, weather_data: dict | None = None, history: list | None = None) -> dict:
     # Bad inputs are treated as empty rather than crashing the pipeline.
     if not isinstance(record, dict):
         record = {}
@@ -142,16 +142,16 @@ def assess_severity(record, weather_data=None, history=None):
     result["assessment_error"] = None
     return result
 
-def is_high_severity(record):
+def is_high_severity(record: dict) -> bool:
     severity = record.get("severity_estimate", 0)
     injury = record.get("injury", False)
     recurrence = record.get("likelihood_recurrence", "unknown")
     return severity >= 4 or (injury and recurrence == "high")
 
-def is_systemic_risk(record, history):
+def is_systemic_risk(record: dict, history: list) -> bool:
     return len(history) >= 3
 
-def decide_outcome(record, history):
+def decide_outcome(record: dict, history: list) -> str:
     if record.get("assessment_error"):
         return "pending_review"
     if is_high_severity(record):
