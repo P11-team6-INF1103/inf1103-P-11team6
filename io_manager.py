@@ -170,6 +170,23 @@ def display_message(text):
     print(text)
 
 
+def _choose_location(known_locations):
+    if not known_locations:
+        print("No incidents have been saved yet, so there are no locations to list.")
+        return None
+    print("Saved locations:")
+    for number, (location, count) in enumerate(known_locations, start=1):
+        noun = "incident" if count == 1 else "incidents"
+        print(f"  {number}. {location} ({count} {noun})")
+    while True:
+        picked = input("Choose a number (or press Enter to go back): ").strip()
+        if picked == "":
+            return None
+        if picked.isdigit() and 1 <= int(picked) <= len(known_locations):
+            return known_locations[int(picked) - 1][0]
+        print(f"Please enter a number from 1 to {len(known_locations)}.")
+
+
 # Location query interface (menu option 3)
 def get_location_query():
     prompt = "Location to search (or press Enter to go back to the menu): "
