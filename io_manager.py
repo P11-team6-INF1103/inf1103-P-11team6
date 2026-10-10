@@ -300,6 +300,29 @@ def _field(label, value, width, indent=2, label_width=_LABEL_WIDTH):
         ))
 
 
+# Plain-English text for each *_error field a record can carry. The raw
+# error text (HTTP codes, model names) goes to the log, not to the user.
+_PROBLEM_MESSAGES = (
+    ("context_flags_error", "Hazard details (type, injury, height, PPE) could not be read "
+     "automatically, so default values were used. Please check the severity score manually."),
+    ("assessment_error", "The AI service is unavailable, so this incident was not scored. "
+     "Please assess it manually and try again later."),
+    ("enrichment_error", "Current weather could not be retrieved, so weather was not "
+     "factored into this report."),
+    ("web_search_error", "We couldn't look up similar incidents or industry information "
+     "online right now. The rest of this report is unaffected."),
+    ("similar_incidents_error", "We couldn't compare this with earlier incidents on our "
+     "own sites right now."),
+    ("review_error", "Causes and prevention advice couldn't be generated. Please discuss "
+     "prevention steps with your safety officer."),
+)
+_ALL_AI_DOWN_MESSAGE = (
+    "AI services are currently unavailable (check your internet connection or API keys). "
+    "This record was saved, but needs manual review."
+)
+_KEY_HINT = "An API key looks missing: check GEMINI_API_KEY and GROQ_API_KEY in the .env file."
+
+
 # Print incident report
 def _print_incident_report(record, severity_levels=None, outcome_actions=None, number=None):
     severity_levels = severity_levels or {}
