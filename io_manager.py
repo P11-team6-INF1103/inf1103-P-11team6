@@ -121,7 +121,7 @@ def ask_try_again():
 # Lennart
 # After a failed save: warns that the incident is not on disk and asks whether to try saving again.
 def ask_retry_save():
-    print("")
+    print()
     print("!" * 60)
     print("  INCIDENT NOT SAVED: it could not be written to disk and")
     print("  will be lost when you exit the program.")

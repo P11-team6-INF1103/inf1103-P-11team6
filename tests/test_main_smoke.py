@@ -1,7 +1,7 @@
 import json
 
-import main
 import fakes
+import main
 
 
 def _incident(**overrides):
