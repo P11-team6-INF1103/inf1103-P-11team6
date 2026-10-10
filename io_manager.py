@@ -188,12 +188,20 @@ def _choose_location(known_locations):
 
 
 # Location query interface (menu option 3)
-def get_location_query():
-    prompt = "Location to search (or press Enter to go back to the menu): "
+def get_location_query(known_locations=None):
+    if known_locations is None:
+        prompt = "Location to search (or press Enter to go back to the menu): "
+    else:
+        prompt = ("Location to search, type 'list' to pick from saved locations "
+                  "(or press Enter to go back to the menu): ")
     while True:
         location = _sanitise(input(prompt))
         if location == "":
             return None
+        if known_locations is not None and location.lower() == "list":
+            location = _choose_location(known_locations)
+            if location is None:
+                return None
         error = _check_location(location)
         if error is None:
             break
