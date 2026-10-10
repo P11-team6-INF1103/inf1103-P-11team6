@@ -67,5 +67,23 @@ def test_failed_ai_extraction_routes_to_manual_review():
     assert lm.decide_outcome(result, []) == "pending_review"
 
 
+def test_severity_survives_malformed_inputs():
+    assert lm.assess_severity(None)["severity_estimate"] == 0
+    odd_history = _enriched(similar_incidents=[None, "x", {"outcome": "stop_work_review"}])
+    result = lm.assess_severity(odd_history, "rain", 5)
+    assert "A similar past incident on our sites was escalated (+1)" in result["severity_reasons"]
+    assert lm.assess_severity(_enriched(similar_incidents={"outcome": "x"}))["severity_estimate"] == 5
+
+
+def test_severity_normalises_injury_and_flag_values():
+    plain = {"hazard_category": "other", "injury": True}
+    for unclear in (None, "critical", ""):
+        assert lm.assess_severity({**plain, "injury_severity": unclear})["severity_estimate"] == 2, unclear
+    assert (lm.assess_severity({**plain, "injury_severity": "Serious"})["severity_estimate"]
+            == lm.assess_severity({**plain, "injury_severity": "serious"})["severity_estimate"] == 3)
+    assert lm.assess_severity({"hazard_category": "other", "working_at_height": "false",
+                               "heavy_machinery_present": "no"})["severity_estimate"] == 1
+
+
 def load_tests(loader, tests, pattern):
     return suite_from(globals())
