@@ -175,7 +175,7 @@ def main() -> None:
             records = data_manager.load_records()
             io_manager.display_summary(records, SEVERITY_LEVELS, OUTCOME_ACTIONS)
         elif choice == "3":
-            query = io_manager.get_location_query()
+            query = io_manager.get_location_query(data_manager.list_locations(records))
             if query is None:
                 continue
             location, days = query
