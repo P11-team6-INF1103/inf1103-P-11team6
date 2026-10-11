@@ -8,8 +8,6 @@ import requests
 from dotenv import load_dotenv
 from google import genai
 
-import logic_manager
-
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -264,15 +262,6 @@ def extract_hazard_context_flags(description: str) -> dict:
         return result
 
 
-_WEATHER_KEYWORDS = (
-    "rain", "wet", "storm", "wind", "windy", "flood", "lightning",
-    "thunder", "haze", "hot", "heat", "humid",
-)
-
-def is_weather_relevant(record: dict) -> bool:
-    description = record.get("description", "").lower()
-    return any(keyword in description for keyword in _WEATHER_KEYWORDS)
-
 def call_weather_api(location: str) -> dict | None:
     try:
         response = requests.get(
@@ -310,14 +299,6 @@ def validate_weather_response(response: object) -> bool:
         return False
     return isinstance(humidity_pct, (int, float)) and 0 <= humidity_pct <= 100
 
-
-def classify_lighting_condition(time_of_day: str, condition: str | None) -> str:
-    levels = ["daylight", "low_light", "dark"]
-    base = {"day": 0, "dusk_dawn": 1, "night": 2}.get(time_of_day, 0)
-    if condition == "rain":
-        base += 1
-    base = min(base, len(levels) - 1)
-    return levels[base]
 
 def find_similar_incidents(record: dict, history_records: list | None = None) -> list:
     history_records = history_records or []
@@ -606,10 +587,7 @@ def enrich_record(record: dict, history_records: list | None = None) -> dict:
     if not enriched["is_valid_incident"]:
         return enriched
 
-    if "weather_relevant" in record:
-        weather_relevant = bool(record["weather_relevant"])
-    else:
-        weather_relevant = is_weather_relevant(record)
+    weather_relevant = bool(record.get("weather_relevant"))
 
     enriched["weather_available"] = False
     enriched["condition"] = None
@@ -630,13 +608,6 @@ def enrich_record(record: dict, history_records: list | None = None) -> dict:
             enriched["humidity_pct"] = raw_weather["humidity_pct"]
         else:
             enriched["enrichment_error"] = "Weather data unavailable or invalid"
-
-    if "time_of_day" not in enriched:
-        enriched["time_of_day"] = logic_manager.get_time_of_day(record.get("timestamp"))
-    if "lighting_condition" not in enriched:
-        enriched["lighting_condition"] = classify_lighting_condition(
-            enriched["time_of_day"], enriched["condition"]
-        )
 
     enriched["hazard_category"] = flags["hazard_category"]
     enriched["injury_severity"] = flags["injury_severity"]
