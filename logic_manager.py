@@ -84,6 +84,17 @@ def is_weather_relevant(record: dict) -> bool:
     incidents are searched instead)."""
     return bool(_WEATHER_WORDS.search(str(record.get("description", ""))))
 
+#darrel
+def plan_enrichment(record):
+    """Which optional lookups ai_manager.enrich_record() should make for this
+    incident. Returns {"run_weather": bool, "run_similar": bool}. When
+    weather matters the weather API is called and similar past incidents are
+    skipped; otherwise the other way round. The web search always runs, so
+    it needs no flag."""
+    relevant = is_weather_relevant(record)
+    return {"run_weather": relevant, "run_similar": not relevant}
+
+
 # darrel
 def classify_lighting_condition(time_of_day: str, condition: str | None) -> str:
     """One step darker than time_of_day if weather cuts visibility. Never
@@ -102,12 +113,17 @@ def apply_weather(enriched: dict) -> dict:
         result["condition"] = "rain" if precipitation_mm > 0 else "clear"
     return result
 
-def derive_context(incident: dict) -> dict:
-    context = dict(incident)
-    context["weather_relevant"] = is_weather_relevant(incident)
-    context["time_of_day"] = get_time_of_day(incident.get("timestamp"))
-    context["monsoon_season"] = get_monsoon_season(incident.get("timestamp"))
-    return context
+def derive_context(incident):
+    """Rules that need no API: weather relevance, which lookups to make
+    (run_weather, run_similar), time of day and monsoon season. Run before
+    ai_manager.enrich_record(). Returns a new dict."""
+    result = dict(incident)
+    result["weather_relevant"] = is_weather_relevant(incident)
+    result.update(plan_enrichment(incident))
+    result["time_of_day"] = get_time_of_day(incident.get("timestamp"))
+    result["monsoon_season"] = get_monsoon_season(incident.get("timestamp"))
+    return result
+
 
 def apply_lighting(enriched: dict) -> dict:
     lit = dict(enriched)
