@@ -65,9 +65,10 @@ def test_enrich_record_runs_weather_or_similar_incidents_never_both(monkeypatch)
     weather = {"temperature_c": 30, "humidity_pct": 80, "precipitation_mm": 1.2}
     monkeypatch.setattr(main.ai_manager, "extract_hazard_context_flags", lambda description: flags)
     monkeypatch.setattr(main.ai_manager, "get_weather", lambda timestamp, location: weather)
-    monkeypatch.setattr(main.ai_manager, "find_similar_incidents", lambda record, history: [])
+    monkeypatch.setattr(main.ai_manager, "find_similar_incidents",
+                        lambda record, history: {"similar_incidents": [], "similar_incidents_error": None})
     monkeypatch.setattr(main.ai_manager, "search_web_for_similar_incidents",
-                        lambda record: {"industry_context": None, "incidents": []})
+                        lambda record: {"web_industry_context": None, "web_incidents": [], "web_search_error": None})
     wet = main.enrich_record(dict(_incident(), weather_relevant=True), [])
     assert wet["weather_available"] is True and wet["precipitation_mm"] == 1.2
     assert wet["similar_incidents_checked"] is False and wet["similar_incidents"] is None

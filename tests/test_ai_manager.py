@@ -70,3 +70,39 @@ def test_gemini_json_gives_up_after_one_retry():
         else:
             raise AssertionError("expected ValueError")
     assert call.call_count == 2
+
+
+_HISTORY = [{"description": "Worker fell from scaffolding", "hazard_type": "fall_from_height", "outcome": "log_only"}]
+
+
+def test_find_similar_incidents_asks_once_more_when_the_reply_is_malformed():
+    ai_manager.load_response_cache({})
+    replies = ["not json at all", json.dumps([{"id": 0, "resolution_notes": "Recorded only."}])]
+    with mock.patch.object(ai_manager, "_get_gemini_client", return_value=object()), \
+            mock.patch.object(ai_manager, "_call_gemini", side_effect=replies) as call:
+        result = ai_manager.find_similar_incidents(_incident(), _HISTORY)
+    assert call.call_count == 2
+    assert result["similar_incidents_error"] is None
+    assert result["similar_incidents"][0]["description"] == "Worker fell from scaffolding"
+
+
+def test_find_similar_incidents_never_raises():
+    ai_manager.load_response_cache({})
+    with mock.patch.object(ai_manager, "_get_gemini_client", return_value=object()), \
+            mock.patch.object(ai_manager, "_call_gemini", side_effect=RuntimeError("quota")):
+        result = ai_manager.find_similar_incidents(_incident(), _HISTORY)
+    assert result["similar_incidents"] is None and "quota" in result["similar_incidents_error"]
+    with mock.patch.object(ai_manager, "_get_gemini_client", return_value=None):
+        assert ai_manager.find_similar_incidents(_incident(), _HISTORY)["similar_incidents"] is None
+    assert ai_manager.find_similar_incidents(_incident(), []) == {
+        "similar_incidents": [], "similar_incidents_error": None}
+
+
+def test_web_search_never_raises():
+    with mock.patch.object(ai_manager, "_search_web", side_effect=RuntimeError("Groq down")):
+        result = ai_manager.search_web_for_similar_incidents(_incident())
+    assert result == {"web_industry_context": None, "web_incidents": None, "web_search_error": "Groq down"}
+    web = {"industry_context": "Common problem.", "incidents": []}
+    with mock.patch.object(ai_manager, "_search_web", return_value=web):
+        result = ai_manager.search_web_for_similar_incidents(_incident())
+    assert result["web_industry_context"] == "Common problem." and result["web_search_error"] is None
