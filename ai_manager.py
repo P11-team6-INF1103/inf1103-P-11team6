@@ -165,11 +165,11 @@ def extract_hazard_context_flags(description: str) -> dict:
     defaults = {
         "hazard_category": None,
         "injury_treatment": "unspecified",
-        "working_at_height": False,
+        "equipment_mentioned": [],
+        "elevated_places": [],
         "height_estimate_m": None,
-        "heavy_machinery_present": False,
         "ppe_status": "unspecified",
-        "is_valid_incident": True,
+        "is_valid_incident": None,
         "invalid_reason": None,
         "context_flags_error": None,
     }
@@ -186,9 +186,9 @@ def extract_hazard_context_flags(description: str) -> dict:
         "properties": {
             "hazard_category": {"type": "string", "enum": list(HAZARD_CATEGORIES)},
             "injury_treatment": {"type": "string", "enum": list(INJURY_TREATMENTS)},
-            "working_at_height": {"type": "boolean"},
+            "equipment_mentioned": {"type": "array", "items": {"type": "string"}},
+            "elevated_places": {"type": "array", "items": {"type": "string"}},
             "height_estimate_m": {"type": ["number", "null"]},
-            "heavy_machinery_present": {"type": "boolean"},
             "ppe_status": {
                 "type": "string",
                 "enum": ["worn", "not_worn", "unspecified"],
@@ -197,8 +197,8 @@ def extract_hazard_context_flags(description: str) -> dict:
             "invalid_reason": {"type": "string"},
         },
         "required": [
-            "hazard_category", "injury_treatment", "working_at_height",
-            "heavy_machinery_present", "ppe_status",
+            "hazard_category", "injury_treatment", "equipment_mentioned",
+            "elevated_places", "ppe_status",
         ],
     }
 
@@ -223,13 +223,16 @@ def extract_hazard_context_flags(description: str) -> dict:
         "nobody was hurt, 'first_aid' if first aid is mentioned, 'hospital' if "
         "the person was taken to hospital or sent for medical treatment, "
         "'died' if someone died, otherwise 'unspecified'.\n"
-        "working_at_height: true only if someone was working on or fell from "
-        "an elevated position (scaffolding, roof, ladder, edge, crane cab, "
-        "mezzanine). Being near scaffolding at ground level is false.\n"
+        "equipment_mentioned: every machine, vehicle, tool or piece of "
+        "equipment named in the description, as written, one short phrase "
+        "each. Empty list if none are named. Do not judge whether it is "
+        "heavy or dangerous.\n"
+        "elevated_places: every place above ground level that the person was "
+        "standing or working on, or fell from, as written, one short phrase "
+        "each. Empty list if everything happened at ground level. A place the "
+        "person was only near does not count.\n"
         "height_estimate_m: a number only if a specific height is stated "
         "(e.g. '10 metres'), otherwise null.\n"
-        "heavy_machinery_present: true if a crane, excavator, forklift, "
-        "generator, or conveyor is mentioned.\n"
         "ppe_status: 'worn' if PPE/harness/hi-vis is explicitly stated as "
         "worn, 'not_worn' if explicitly stated as missing/not worn, "
         "otherwise 'unspecified'."
@@ -243,18 +246,17 @@ def extract_hazard_context_flags(description: str) -> dict:
 
         result = dict(defaults)
         result["hazard_category"] = parsed["hazard_category"]
-        if parsed.get("is_valid_incident") is False:
-            result["is_valid_incident"] = False
-            result["invalid_reason"] = str(parsed.get("invalid_reason") or
-                                           "it does not describe a workplace safety incident")
+        if isinstance(parsed.get("is_valid_incident"), bool):
+            result["is_valid_incident"] = parsed["is_valid_incident"]
+        if isinstance(parsed.get("invalid_reason"), str) and parsed["invalid_reason"].strip():
+            result["invalid_reason"] = parsed["invalid_reason"].strip()
         if parsed.get("injury_treatment") in INJURY_TREATMENTS:
             result["injury_treatment"] = parsed["injury_treatment"]
-        if isinstance(parsed.get("working_at_height"), bool):
-            result["working_at_height"] = parsed["working_at_height"]
+        for key in ("equipment_mentioned", "elevated_places"):
+            result[key] = [item.strip() for item in parsed.get(key) or []
+                           if isinstance(item, str) and item.strip()]
         if isinstance(parsed.get("height_estimate_m"), (int, float)):
             result["height_estimate_m"] = parsed["height_estimate_m"]
-        if isinstance(parsed.get("heavy_machinery_present"), bool):
-            result["heavy_machinery_present"] = parsed["heavy_machinery_present"]
         if parsed.get("ppe_status") in ("worn", "not_worn", "unspecified"):
             result["ppe_status"] = parsed["ppe_status"]
         return result
