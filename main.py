@@ -17,8 +17,6 @@ derive_context = logic_manager.derive_context
 apply_weather = logic_manager.apply_weather
 apply_lighting = logic_manager.apply_lighting
 
-logger = logging.getLogger(__name__)
-
 
 # Lennart
 def start_up() -> list:
@@ -78,13 +76,7 @@ def enrich_record(record: dict, history_records: list | None = None) -> dict:
     # Similar incidents — mutually exclusive with the weather call.
     if not weather_relevant:
         enriched["similar_incidents_checked"] = True
-        try:
-            enriched["similar_incidents"] = ai_manager.find_similar_incidents(enriched, history_records or [])
-            enriched["similar_incidents_error"] = None
-        except Exception as error:
-            logger.warning("Similar-incidents lookup failed: %s", error)
-            enriched["similar_incidents"] = None
-            enriched["similar_incidents_error"] = f"Similar-incidents lookup failed: {error}"
+        enriched.update(ai_manager.find_similar_incidents(enriched, history_records or []))
     else:
         enriched["similar_incidents_checked"] = False
         enriched["similar_incidents"] = None
@@ -92,16 +84,7 @@ def enrich_record(record: dict, history_records: list | None = None) -> dict:
 
     # Web search — every incident: is this a known industry problem, and
     # similar real incidents with what was done about them.
-    try:
-        web = ai_manager.search_web_for_similar_incidents(enriched)
-        enriched["web_industry_context"] = web["industry_context"]
-        enriched["web_incidents"] = web["incidents"]
-        enriched["web_search_error"] = None
-    except Exception as error:
-        logger.warning("Web search failed: %s", error)
-        enriched["web_industry_context"] = None
-        enriched["web_incidents"] = None
-        enriched["web_search_error"] = str(error)
+    enriched.update(ai_manager.search_web_for_similar_incidents(enriched))
 
     return enriched
 

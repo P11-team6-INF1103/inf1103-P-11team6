@@ -311,14 +311,20 @@ def get_weather(timestamp: str | None, location: str) -> dict | None:
     return weather
 
 
-def find_similar_incidents(record: dict, history_records: list | None = None) -> list:
+def find_similar_incidents(record: dict, history_records: list | None = None) -> dict:
+    result = {"similar_incidents": [], "similar_incidents_error": None}
     history_records = history_records or []
     if not history_records:
-        return []
+        return result
 
     client = _get_gemini_client()
     if client is None:
-        raise RuntimeError("Gemini client unavailable (check GEMINI_API_KEY)")
+        logger.warning("Similar-incidents lookup skipped: Gemini client unavailable")
+        result["similar_incidents"] = None
+        result["similar_incidents_error"] = (
+            "Similar-incidents lookup failed: Gemini client unavailable (check GEMINI_API_KEY)"
+        )
+        return result
 
     # Keep the prompt small: the 10 most recent records only. Each gets an
     # id so a match can be tied back to the exact saved record.
@@ -360,8 +366,13 @@ def find_similar_incidents(record: dict, history_records: list | None = None) ->
         "problem; pending_review = waiting for a manual review."
     )
 
-    parsed = _parse_json_safe(_call_gemini(client, prompt, schema))
-    _validate_schema(parsed, schema)
+    try:
+        parsed = _gemini_json(client, prompt, schema)
+    except Exception as error:
+        logger.warning("Similar-incidents lookup failed: %s", error)
+        result["similar_incidents"] = None
+        result["similar_incidents_error"] = f"Similar-incidents lookup failed: {error}"
+        return result
 
     # Only keep ids that point at a real saved record, and copy the facts
     # from that record rather than trusting anything the model wrote.
@@ -384,7 +395,8 @@ def find_similar_incidents(record: dict, history_records: list | None = None) ->
             "outcome": saved.get("outcome", "log_only"),
             "resolution_notes": notes if isinstance(notes, str) else None,
         })
-    return matches
+    result["similar_incidents"] = matches
+    return result
 
 
 def _extract_json_object(text: str) -> dict | None:
@@ -423,6 +435,19 @@ WEB_SEARCH_SCHEMA = {
 
 
 def search_web_for_similar_incidents(record: dict) -> dict:
+    try:
+        web = _search_web(record)
+    except Exception as error:
+        logger.warning("Web search failed: %s", error)
+        return {"web_industry_context": None, "web_incidents": None, "web_search_error": str(error)}
+    return {
+        "web_industry_context": web["industry_context"],
+        "web_incidents": web["incidents"],
+        "web_search_error": None,
+    }
+
+
+def _search_web(record: dict) -> dict:
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         raise RuntimeError("GROQ_API_KEY is not set in .env")
