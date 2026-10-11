@@ -34,19 +34,30 @@ def test_derive_context_and_apply_lighting():
     assert lit["lighting_condition"] == "dark"
     assert "lighting_condition" not in ctx
 
+def test_apply_weather_turns_rainfall_into_a_condition():
+    assert lm.apply_weather({"precipitation_mm": 0.3})["condition"] == "rain"
+    assert lm.apply_weather({"precipitation_mm": 0})["condition"] == "clear"
+    assert lm.apply_weather({"condition": None})["condition"] is None
+    assert lm.apply_weather({"condition": "rain"})["condition"] == "rain"
+
+
+def test_apply_lighting_copes_with_missing_or_unknown_values():
+    assert lm.apply_lighting({})["lighting_condition"] == "daylight"
+    assert lm.apply_lighting({"time_of_day": None, "condition": None})["lighting_condition"] == "daylight"
+    assert lm.apply_lighting({"time_of_day": "midnight", "condition": "fog"})["lighting_condition"] == "daylight"
+    assert lm.apply_lighting({"time_of_day": "dusk_dawn", "condition": "rain"})["lighting_condition"] == "dark"
 
 def _enriched(**changes):
-    base = {"hazard_category": "fall_from_height", "injury_severity": "serious", "injury": True,
+    base = {"hazard_category": "fall_from_height", "injury_treatment": "hospital", "injury": True,
             "working_at_height": True, "heavy_machinery_present": False, "ppe_status": "not_worn",
             "lighting_condition": "dark", "similar_incidents": None, "context_flags_error": None}
     base.update(changes)
     return base
 
-
 def test_severity_and_outcome_rules():
-    worst = lm.assess_severity(_enriched(injury_severity="fatal"), {}, [])
+    worst = lm.assess_severity(_enriched(injury_treatment="died"), {}, [])
     assert worst["severity_estimate"] == 5 and lm.decide_outcome(worst, []) == "stop_work_review"
-    mild = lm.assess_severity(_enriched(hazard_category="fall", injury_severity="none", injury=False,
+    mild = lm.assess_severity(_enriched(hazard_category="fall", injury_treatment="none", injury=False,
                                          working_at_height=False, ppe_status="worn",
                                          lighting_condition="daylight"), {}, [])
     assert mild["severity_estimate"] == 1 and lm.decide_outcome(mild, []) == "log_only"
@@ -66,6 +77,33 @@ def test_failed_ai_extraction_routes_to_manual_review():
     assert result["assessment_error"] and result["severity_estimate"] == 0
     assert lm.decide_outcome(result, []) == "pending_review"
 
+
+def test_apply_hazard_rules_decides_height_and_machinery_from_the_ais_lists():
+    both = lm.apply_hazard_rules({"equipment_mentioned": ["Tower Crane", "hammer"],
+                                  "elevated_places": ["roof"]})
+    assert both["working_at_height"] is True and both["heavy_machinery_present"] is True
+    for name in ("excavator", "forklift", "generator", "conveyor belt", "dump truck", "piling rig",
+                 "scissor lift", "concrete pump", "bobcat", "dumper", "pile driver", "telehandler",
+                 "skid steer", "road roller", "mobile crane"):
+        assert lm.apply_hazard_rules({"equipment_mentioned": [name]})["heavy_machinery_present"], name
+    light = lm.apply_hazard_rules({"equipment_mentioned": ["hammer", "ladder", "drill", "paint roller",
+                                                           "lifting sling", "angle grinder"],
+                                   "elevated_places": []})
+    assert light["working_at_height"] is False and light["heavy_machinery_present"] is False
+    for odd in (None, "crane", [None, 5, " "], {}):
+        result = lm.apply_hazard_rules({"equipment_mentioned": odd, "elevated_places": odd})
+        assert result["working_at_height"] is False and result["heavy_machinery_present"] is False, odd
+    source = {"equipment_mentioned": ["crane"]}
+    lm.apply_hazard_rules(source)
+    assert "heavy_machinery_present" not in source
+
+def test_screen_incident_decides_accept_or_reject_from_the_ai_flag():
+    rejected = lm.screen_incident({"is_valid_incident": False, "invalid_reason": " It is random text. "})
+    assert rejected == {"accepted": False, "reject_reason": "It is random text."}
+    no_reason = lm.screen_incident({"is_valid_incident": False, "invalid_reason": None})
+    assert not no_reason["accepted"] and "workplace safety incident" in no_reason["reject_reason"]
+    for record in ({"is_valid_incident": True}, {"is_valid_incident": None}, {}, None, "x"):
+        assert lm.screen_incident(record) == {"accepted": True, "reject_reason": None}, record
 
 def load_tests(loader, tests, pattern):
     return suite_from(globals())
