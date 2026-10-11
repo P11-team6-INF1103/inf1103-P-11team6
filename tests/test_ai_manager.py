@@ -4,9 +4,9 @@ from unittest import mock
 import ai_manager
 
 _GOOD_FLAGS = {
-    "hazard_category": "fall_from_height", "injury_severity": "serious",
-    "working_at_height": True, "height_estimate_m": 10,
-    "heavy_machinery_present": False, "ppe_status": "not_worn",
+    "hazard_category": "fall_from_height", "injury_treatment": "hospital",
+    "equipment_mentioned": ["scaffolding", "safety harness"], "elevated_places": ["scaffolding"],
+    "height_estimate_m": 10, "ppe_status": "not_worn",
 }
 
 
@@ -31,12 +31,24 @@ def test_flags_ai_can_reject_text_that_is_not_a_safety_incident():
     assert "random text" in result["invalid_reason"]
 
 
-def test_flags_treat_a_reply_without_the_new_field_or_an_ai_outage_as_valid():
+def test_flags_pass_the_validity_answer_on_and_leave_none_when_there_is_no_answer():
     with mock.patch.object(ai_manager, "_get_gemini_client", return_value=object()), _flags_for(_GOOD_FLAGS):
         result = ai_manager.extract_hazard_context_flags("Worker fell")
-    assert result["is_valid_incident"] is True and result["invalid_reason"] is None
+    assert result["is_valid_incident"] is None and result["invalid_reason"] is None
     with mock.patch.object(ai_manager, "_get_gemini_client", return_value=None):
-        assert ai_manager.extract_hazard_context_flags("Worker fell")["is_valid_incident"] is True
+        result = ai_manager.extract_hazard_context_flags("Worker fell")
+    assert result["is_valid_incident"] is None and result["invalid_reason"] is None
+
+
+def test_flags_return_raw_equipment_and_places_not_decisions():
+    reply = dict(_GOOD_FLAGS, equipment_mentioned=[" Tower Crane ", ""], elevated_places=["roof"])
+    with mock.patch.object(ai_manager, "_get_gemini_client", return_value=object()), _flags_for(reply):
+        result = ai_manager.extract_hazard_context_flags("Worker hit by crane on the roof")
+    assert result["equipment_mentioned"] == ["Tower Crane"] and result["elevated_places"] == ["roof"]
+    assert "working_at_height" not in result and "heavy_machinery_present" not in result
+    with mock.patch.object(ai_manager, "_get_gemini_client", return_value=None):
+        down = ai_manager.extract_hazard_context_flags("Worker fell")
+    assert down["equipment_mentioned"] == [] and down["elevated_places"] == []
 
 
 def test_get_weather_returns_raw_numbers_and_caches_them_per_hour():
