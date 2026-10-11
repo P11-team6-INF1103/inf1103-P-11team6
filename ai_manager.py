@@ -248,15 +248,6 @@ def extract_hazard_context_flags(description):
         return result
 
 
-_WEATHER_KEYWORDS = (
-    "rain", "wet", "storm", "wind", "windy", "flood", "lightning",
-    "thunder", "haze", "hot", "heat", "humid",
-)
-
-def is_weather_relevant(record):
-    description = record.get("description", "").lower()
-    return any(keyword in description for keyword in _WEATHER_KEYWORDS)
-
 def call_weather_api(location):
     try:
         response = requests.get(
@@ -295,15 +286,6 @@ def validate_weather_response(response):
     if not isinstance(humidity_pct, (int, float)) or not (0 <= humidity_pct <= 100):
         return False
     return True
-
-
-def classify_lighting_condition(time_of_day, condition):
-    levels = ["daylight", "low_light", "dark"]
-    base = {"day": 0, "dusk_dawn": 1, "night": 2}.get(time_of_day, 0)
-    if condition == "rain":
-        base += 1
-    base = min(base, len(levels) - 1)
-    return levels[base]
 
 def find_similar_incidents(record):
     history_records = data_manager.load_records()
@@ -595,7 +577,7 @@ def enrich_record(record, history_records=None):
     if "weather_relevant" in record:
         weather_relevant = bool(record["weather_relevant"])
     else:
-        weather_relevant = is_weather_relevant(record)
+        weather_relevant = logic_manager.is_weather_relevant(record)
 
     enriched["weather_available"] = False
     enriched["condition"] = None
@@ -620,7 +602,7 @@ def enrich_record(record, history_records=None):
     if "time_of_day" not in enriched:
         enriched["time_of_day"] = logic_manager.get_time_of_day(record.get("timestamp"))
     if "lighting_condition" not in enriched:
-        enriched["lighting_condition"] = classify_lighting_condition(
+        enriched["lighting_condition"] = logic_manager.classify_lighting_condition(
             enriched["time_of_day"], enriched["condition"]
         )
 
