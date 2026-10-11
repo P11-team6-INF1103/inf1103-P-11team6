@@ -374,7 +374,7 @@ def _print_incident_report(record: dict, severity_levels: dict | None = None, ou
 
     # --- Weather: only when it was checked ---
     if record.get("weather_available"):
-        _section("CURRENT WEATHER", width)
+        _section("WEATHER AT THE TIME", width)
         _field("Conditions", (
             f"{str(record.get('condition')).capitalize()}, {record.get('temperature_c')}°C, "
             f"{record.get('humidity_pct')}% humidity"
