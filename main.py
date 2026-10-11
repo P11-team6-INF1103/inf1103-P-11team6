@@ -103,20 +103,18 @@ def enrich_record(record: dict, history_records: list | None = None) -> dict:
 
 
 # Lennart
-# Returns None, and saves nothing, when the AI says the text is not a real safety incident.
+# Returns None, and saves nothing, when logic_manager rejects the text as not a real safety incident.
 # interactive=False (batch, scripts, Docker) never waits on input() after a failed save.
 def process_incident(incident: dict, records: list, interactive: bool = True) -> dict | None:
     with_context = derive_context(incident)
     with io_manager.show_loading("AI is analysing the incident"):
         enriched = enrich_record(with_context, records)
-        is_valid = enriched.get("is_valid_incident", True)
-        if is_valid:
-            enriched = apply_lighting(apply_weather(enriched))
+        screening = logic_manager.screen_incident(enriched)
+        if screening["accepted"]:
+            enriched = logic_manager.apply_hazard_rules(apply_lighting(apply_weather(enriched)))
             enriched.update(generate_incident_review(enriched))
-    if not is_valid:
-        io_manager.display_message(
-            "Incident rejected: " + str(enriched.get("invalid_reason") or "not a workplace safety incident")
-        )
+    if not screening["accepted"]:
+        io_manager.display_message("Incident rejected: " + screening["reject_reason"])
         return None
 
     history = data_manager.query_by_location(
