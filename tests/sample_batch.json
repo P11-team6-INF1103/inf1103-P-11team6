@@ -1,0 +1,23 @@
+[
+  {
+    "description": "Worker fell from scaffolding about 10 metres, no harness worn, fracture",
+    "location": "Site A - Block 3",
+    "reporter_role": "safety_officer",
+    "injury": true,
+    "timestamp": "2026-09-27T20:44:00"
+  },
+  {
+    "description": "Worker slipped on a freshly mopped floor near the stairwell, no injury",
+    "location": "Site A - Block 3",
+    "reporter_role": "safety_officer",
+    "injury": false,
+    "timestamp": "2026-09-28T09:15:00"
+  },
+  {
+    "description": "Forklift reversed into a stack of pallets, nobody hurt, PPE worn",
+    "location": "Site B - Warehouse",
+    "reporter_role": "site_supervisor",
+    "injury": false,
+    "timestamp": "2026-09-29T14:05:00"
+  }
+]
