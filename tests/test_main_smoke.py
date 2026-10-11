@@ -1,7 +1,7 @@
 import json
 
+import fakes
 import main
-import trial
 
 
 def _incident(**overrides):
@@ -17,9 +17,9 @@ def _incident(**overrides):
 
 
 def _use_fakes(monkeypatch):
-    monkeypatch.setattr(main.ai_manager, "enrich_record", lambda record, history=None: trial.fake_enrich_record(record))
-    monkeypatch.setattr(main.logic_manager, "assess_severity", lambda record, weather=None, history=None: trial.fake_assess_severity(record))
-    monkeypatch.setattr(main, "decide_outcome", trial.fake_decide_outcome)
+    monkeypatch.setattr(main, "enrich_record", lambda record, history=None: fakes.fake_enrich_record(record))
+    monkeypatch.setattr(main.logic_manager, "assess_severity", lambda record, weather=None, history=None: fakes.fake_assess_severity(record))
+    monkeypatch.setattr(main, "decide_outcome", fakes.fake_decide_outcome)
 
 
 def test_start_up_returns_a_list_of_records():
@@ -37,9 +37,43 @@ def test_process_incident_saves_and_returns_a_record_with_an_outcome(monkeypatch
 
 def _ai_rejects(monkeypatch, reason="It is random text."):
     monkeypatch.setattr(
-        main.ai_manager, "enrich_record",
+        main, "enrich_record",
         lambda record, history=None: dict(record, is_valid_incident=False, invalid_reason=reason),
     )
+
+
+def test_enrich_record_stops_early_when_incident_is_invalid(monkeypatch):
+    flags = {"hazard_category": "other", "injury_severity": "none", "working_at_height": False,
+             "height_estimate_m": None, "heavy_machinery_present": False, "ppe_status": "unspecified",
+             "is_valid_incident": False, "invalid_reason": "not an incident", "context_flags_error": None}
+
+    def boom(*args, **kwargs):
+        raise AssertionError("should not be called for an invalid incident")
+
+    monkeypatch.setattr(main.ai_manager, "extract_hazard_context_flags", lambda description: flags)
+    for name in ("get_weather", "find_similar_incidents", "search_web_for_similar_incidents"):
+        monkeypatch.setattr(main.ai_manager, name, boom)
+    incident = dict(_incident(description="asdf qwerty banana"), weather_relevant=True)
+    result = main.enrich_record(incident, [])
+    assert result["is_valid_incident"] is False and result["invalid_reason"] == "not an incident"
+
+
+def test_enrich_record_runs_weather_or_similar_incidents_never_both(monkeypatch):
+    flags = {"hazard_category": "fall", "injury_severity": "none", "working_at_height": False,
+             "height_estimate_m": None, "heavy_machinery_present": False, "ppe_status": "unspecified",
+             "is_valid_incident": True, "invalid_reason": None, "context_flags_error": None}
+    weather = {"temperature_c": 30, "humidity_pct": 80, "precipitation_mm": 1.2}
+    monkeypatch.setattr(main.ai_manager, "extract_hazard_context_flags", lambda description: flags)
+    monkeypatch.setattr(main.ai_manager, "get_weather", lambda timestamp, location: weather)
+    monkeypatch.setattr(main.ai_manager, "find_similar_incidents",
+                        lambda record, history: {"similar_incidents": [], "similar_incidents_error": None})
+    monkeypatch.setattr(main.ai_manager, "search_web_for_similar_incidents",
+                        lambda record: {"web_industry_context": None, "web_incidents": [], "web_search_error": None})
+    wet = main.enrich_record(dict(_incident(), weather_relevant=True), [])
+    assert wet["weather_available"] is True and wet["precipitation_mm"] == 1.2
+    assert wet["similar_incidents_checked"] is False and wet["similar_incidents"] is None
+    dry = main.enrich_record(dict(_incident(), weather_relevant=False), [])
+    assert dry["weather_available"] is False and dry["similar_incidents_checked"] is True
 
 
 def test_process_incident_returns_none_and_saves_nothing_when_the_ai_rejects_it(monkeypatch, capsys):
