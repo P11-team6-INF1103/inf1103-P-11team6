@@ -59,3 +59,12 @@ jobs:
           tags: app:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # 7. Run the built image end to end. No API keys are passed, so every AI step
+      #    falls back to "needs manual review"; the run must still finish and print the summary.
+      - name: Run Batch In The Container
+        run: |
+          set -o pipefail
+          docker run --rm -e PYTHONUTF8=1 -v "$PWD/tests/sample_batch.json:/tmp/sample_batch.json:ro" app:latest python main.py --batch /tmp/sample_batch.json | tee batch-output.txt
+          grep -q "INCIDENT SUMMARY" batch-output.txt
+          grep -q "Total incidents: 3" batch-output.txt

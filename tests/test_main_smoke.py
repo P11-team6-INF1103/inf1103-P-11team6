@@ -191,3 +191,46 @@ def test_main_location_query_can_go_back_to_the_menu(monkeypatch):
     monkeypatch.setattr(main.data_manager, "query_by_location", lambda *a: searched.append(a) or [])
     main.main()
     assert searched == []
+
+
+def _good_flags():
+    return {"hazard_category": "fall", "injury_severity": "none", "working_at_height": False,
+            "height_estimate_m": None, "heavy_machinery_present": False, "ppe_status": "unspecified",
+            "is_valid_incident": True, "invalid_reason": None, "context_flags_error": None}
+
+
+def _boom(*args, **kwargs):
+    raise RuntimeError("step broke")
+
+
+def test_enrich_record_keeps_going_when_the_weather_step_raises(monkeypatch):
+    monkeypatch.setattr(main.ai_manager, "extract_hazard_context_flags", lambda description: _good_flags())
+    monkeypatch.setattr(main.ai_manager, "get_weather", _boom)
+    monkeypatch.setattr(main.ai_manager, "search_web_for_similar_incidents",
+                        lambda record: {"web_industry_context": None, "web_incidents": [], "web_search_error": None})
+    result = main.enrich_record(dict(_incident(), weather_relevant=True), [])
+    assert result["weather_available"] is False
+    assert result["enrichment_error"] == "Weather data unavailable or invalid"
+    assert result["hazard_category"] == "fall"
+
+
+def test_enrich_record_keeps_going_when_similar_incidents_and_web_search_raise(monkeypatch):
+    monkeypatch.setattr(main.ai_manager, "extract_hazard_context_flags", lambda description: _good_flags())
+    monkeypatch.setattr(main.ai_manager, "find_similar_incidents", _boom)
+    monkeypatch.setattr(main.ai_manager, "search_web_for_similar_incidents", _boom)
+    result = main.enrich_record(dict(_incident(), weather_relevant=False), [{"description": "earlier incident"}])
+    assert result["similar_incidents"] is None and "step broke" in result["similar_incidents_error"]
+    assert result["web_incidents"] is None and result["web_search_error"] == "step broke"
+    assert result["hazard_category"] == "fall"
+
+
+def test_enrich_record_copes_with_a_missing_description(monkeypatch):
+    seen = []
+    monkeypatch.setattr(main.ai_manager, "extract_hazard_context_flags",
+                        lambda description: seen.append(description) or _good_flags())
+    monkeypatch.setattr(main.ai_manager, "find_similar_incidents",
+                        lambda record, history: {"similar_incidents": [], "similar_incidents_error": None})
+    monkeypatch.setattr(main.ai_manager, "search_web_for_similar_incidents",
+                        lambda record: {"web_industry_context": None, "web_incidents": [], "web_search_error": None})
+    main.enrich_record(dict(_incident(), description=None, weather_relevant=False), [])
+    assert seen == [""]
