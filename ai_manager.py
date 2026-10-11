@@ -277,11 +277,10 @@ def call_weather_api(location: str) -> dict | None:
         response.raise_for_status()
         data = response.json()
         current = data.get("current", {})
-        precipitation = current.get("precipitation", 0) or 0
         return {
-            "condition": "rain" if precipitation > 0 else "clear",
             "temperature_c": current.get("temperature_2m"),
             "humidity_pct": current.get("relative_humidity_2m"),
+            "precipitation_mm": current.get("precipitation"),
         }
     except Exception:
         return None
@@ -290,14 +289,26 @@ def call_weather_api(location: str) -> dict | None:
 def validate_weather_response(response: object) -> bool:
     if not isinstance(response, dict):
         return False
-    condition = response.get("condition")
     temperature_c = response.get("temperature_c")
     humidity_pct = response.get("humidity_pct")
-    if condition not in ("rain", "clear"):
+    precipitation_mm = response.get("precipitation_mm")
+    if not isinstance(precipitation_mm, (int, float)) or precipitation_mm < 0:
         return False
     if not isinstance(temperature_c, (int, float)) or not (-10 <= temperature_c <= 50):
         return False
     return isinstance(humidity_pct, (int, float)) and 0 <= humidity_pct <= 100
+
+
+def get_weather(timestamp: str | None, location: str) -> dict | None:
+    # Same hour -> same cached answer on every run.
+    key = _cache_key("weather", str(timestamp or "")[:13])
+    weather = _RESPONSE_CACHE.get(key)
+    if not validate_weather_response(weather):
+        weather = call_weather_api(location)
+    if not validate_weather_response(weather):
+        return None
+    _RESPONSE_CACHE[key] = weather
+    return weather
 
 
 def find_similar_incidents(record: dict, history_records: list | None = None) -> list:
@@ -573,76 +584,3 @@ def generate_incident_review(record: dict) -> dict:
         logger.warning("After-action review failed: %s", error)
         result["review_error"] = f"AI review failed: {error}"
     return result
-
-
-# Lennart
-def enrich_record(record: dict, history_records: list | None = None) -> dict:
-    enriched = dict(record)
-
-    # The mandatory AI call runs first. If it says this is not a real safety incident we stop
-    # here, before the weather and web-search calls are spent on it; process_incident rejects it.
-    flags = extract_hazard_context_flags(record.get("description", ""))
-    enriched["is_valid_incident"] = flags.get("is_valid_incident", True)
-    enriched["invalid_reason"] = flags.get("invalid_reason")
-    if not enriched["is_valid_incident"]:
-        return enriched
-
-    weather_relevant = bool(record.get("weather_relevant"))
-
-    enriched["weather_available"] = False
-    enriched["condition"] = None
-    enriched["temperature_c"] = None
-    enriched["humidity_pct"] = None
-    enriched["enrichment_error"] = None
-    if weather_relevant:
-        # Same hour + same place -> same weather answer on every run.
-        weather_key = _cache_key("weather", str(record.get("timestamp", ""))[:13])
-        raw_weather = _RESPONSE_CACHE.get(weather_key)
-        if raw_weather is None:
-            raw_weather = call_weather_api(record.get("location", ""))
-        if raw_weather is not None and validate_weather_response(raw_weather):
-            _RESPONSE_CACHE[weather_key] = raw_weather
-            enriched["weather_available"] = True
-            enriched["condition"] = raw_weather["condition"]
-            enriched["temperature_c"] = raw_weather["temperature_c"]
-            enriched["humidity_pct"] = raw_weather["humidity_pct"]
-        else:
-            enriched["enrichment_error"] = "Weather data unavailable or invalid"
-
-    enriched["hazard_category"] = flags["hazard_category"]
-    enriched["injury_severity"] = flags["injury_severity"]
-    enriched["working_at_height"] = flags["working_at_height"]
-    enriched["height_estimate_m"] = flags["height_estimate_m"]
-    enriched["heavy_machinery_present"] = flags["heavy_machinery_present"]
-    enriched["ppe_status"] = flags["ppe_status"]
-    enriched["context_flags_error"] = flags["context_flags_error"]
-
-    # Similar incidents — mutually exclusive with the weather call.
-    if not weather_relevant:
-        enriched["similar_incidents_checked"] = True
-        try:
-            enriched["similar_incidents"] = find_similar_incidents(enriched, history_records or [])
-            enriched["similar_incidents_error"] = None
-        except Exception as error:
-            logger.warning("Similar-incidents lookup failed: %s", error)
-            enriched["similar_incidents"] = None
-            enriched["similar_incidents_error"] = f"Similar-incidents lookup failed: {error}"
-    else:
-        enriched["similar_incidents_checked"] = False
-        enriched["similar_incidents"] = None
-        enriched["similar_incidents_error"] = None
-
-    # Web search — every incident: is this a known industry problem, and
-    # similar real incidents with what was done about them.
-    try:
-        web = search_web_for_similar_incidents(enriched)
-        enriched["web_industry_context"] = web["industry_context"]
-        enriched["web_incidents"] = web["incidents"]
-        enriched["web_search_error"] = None
-    except Exception as error:
-        logger.warning("Web search failed: %s", error)
-        enriched["web_industry_context"] = None
-        enriched["web_incidents"] = None
-        enriched["web_search_error"] = str(error)
-
-    return enriched

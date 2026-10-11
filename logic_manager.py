@@ -76,6 +76,13 @@ def classify_lighting_condition(time_of_day: str, condition: str | None) -> str:
     base = min(base, len(levels) - 1)
     return levels[base]
 
+def apply_weather(enriched: dict) -> dict:
+    result = dict(enriched)
+    precipitation_mm = enriched.get("precipitation_mm")
+    if isinstance(precipitation_mm, (int, float)):
+        result["condition"] = "rain" if precipitation_mm > 0 else "clear"
+    return result
+
 def derive_context(incident: dict) -> dict:
     context = dict(incident)
     context["weather_relevant"] = is_weather_relevant(incident)
