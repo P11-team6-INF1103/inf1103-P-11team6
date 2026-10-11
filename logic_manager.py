@@ -18,6 +18,15 @@ _INJURY_LABELS = {"first_aid": "Minor injury, first aid only", "hospital": "Seri
 
 _ESCALATED_OUTCOMES = ("stop_work_review", "systemic_escalation")
 
+_HEAVY_MACHINERY_WORDS = (
+    "crane", "excavator", "forklift", "generator", "conveyor", "bulldozer",
+    "backhoe", "digger", "loader", "grader", "compactor", "road roller",
+    "crusher", "tractor", "truck", "lorry", "dumper", "tipper", "bobcat",
+    "skid steer", "telehandler", "paver", "trencher", "concrete pump",
+    "cement mixer", "piling", "pile driver", "drill rig", "hoist",
+    "scissor lift", "boom lift", "mewp", "elevating work platform",
+)
+
 SEVERITY_LEVELS = {
     1: ("Minimal", (
         "Near miss or no injury, low-risk hazard, controls in place "
@@ -132,6 +141,29 @@ def apply_lighting(enriched: dict) -> dict:
         enriched.get("time_of_day", "day"), enriched.get("condition")
     )
     return lit
+
+def _text_list(value):
+    """The non-empty strings in a list, lower-cased; anything else is ignored."""
+    if not isinstance(value, list):
+        return []
+    return [item.strip().lower() for item in value if isinstance(item, str) and item.strip()]
+
+def apply_hazard_rules(enriched):
+    """Adds working_at_height and heavy_machinery_present from the AI's raw
+    lists. Working at height: the AI named at least one elevated place the
+    person was on or fell from. Heavy machinery: any named equipment contains
+    a word from _HEAVY_MACHINERY_WORDS. If the AI failed the lists are empty
+    and both are False, the same as before. Run after
+    ai_manager.enrich_record() and before assess_severity() and the review.
+    Returns a new dict."""
+    result = dict(enriched)
+    equipment = _text_list(enriched.get("equipment_mentioned"))
+    places = _text_list(enriched.get("elevated_places"))
+    result["working_at_height"] = bool(places)
+    result["heavy_machinery_present"] = any(
+        word in name for name in equipment for word in _HEAVY_MACHINERY_WORDS
+    )
+    return result
 
 def assess_severity(record, weather_data=None, history=None):
     if weather_data is None:
