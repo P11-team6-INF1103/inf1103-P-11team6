@@ -4,7 +4,7 @@ from unittest import mock
 import ai_manager
 
 _GOOD_FLAGS = {
-    "hazard_category": "fall_from_height", "injury_severity": "serious",
+    "hazard_category": "fall_from_height", "injury_treatment": "hospital",
     "working_at_height": True, "height_estimate_m": 10,
     "heavy_machinery_present": False, "ppe_status": "not_worn",
 }
