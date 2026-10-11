@@ -563,7 +563,7 @@ def read_incident_file(path: str) -> tuple[list, list]:
             if not isinstance(item.get(key), str):
                 missing.append(key)
                 continue
-            item[key] = _sanitise(item[key])
+            item[key] = _sanitise(item[key]).strip()
             error = check(item[key])
             if error:
                 missing.append(f"{key} ({error})")
