@@ -1,4 +1,11 @@
+import re
 from datetime import datetime
+
+_WEATHER_WORDS = re.compile(
+    r"\b(rain|rainy|raining|wet|storm|stormy|wind|windy|flood|flooding|flooded|"
+    r"lightning|thunder|thunderstorm|haze|hazy|hot|heat|humid|humidity)\b",
+    re.IGNORECASE,
+)
 
 # classifications
 _TYPE_A_HAZARDS = ("fall_from_height", "vehicular", "struck_by_machinery")
@@ -8,19 +15,24 @@ _INJURY_POINTS = {"none": 0, "unspecified": 0, "minor": 1, "serious": 2}
 _ESCALATED_OUTCOMES = ("stop_work_review", "systemic_escalation")
 
 SEVERITY_LEVELS = {
-    1: ("Minimal", "Near miss or no injury, low-risk hazard, controls in place "
-                   "(e.g. PPE worn). Record it and carry on."),
-    2: ("Minor", "One aggravating factor, e.g. a minor injury or a ground-level "
-                 "slip/trip. Record it; supervisor fixes the cause on the spot."),
-    3: ("Moderate", "Several aggravating factors, e.g. injury in poor lighting, or "
-                    "a high-risk hazard type with no injury. Logged, but the site "
-                    "team should review the cause this week."),
-    4: ("High", "Serious injury, or a MOM Type A hazard (fall from height, vehicle, "
-                "machinery) combined with injury, height or missing PPE. Work "
-                "stops for a safety review."),
-    5: ("Critical", "Fatal, or several serious factors at once (e.g. fall from "
-                    "height, no harness, injured, at night). Work stops "
-                    "immediately; report to management and MOM as required."),
+    1: ("Minimal", (
+        "Near miss or no injury, low-risk hazard, controls in place "
+        "(e.g. PPE worn). Record it and carry on.")),
+    2: ("Minor", (
+        "One aggravating factor, e.g. a minor injury or a ground-level "
+        "slip/trip. Record it; supervisor fixes the cause on the spot.")),
+    3: ("Moderate", (
+        "Several aggravating factors, e.g. injury in poor lighting, or "
+        "a high-risk hazard type with no injury. Logged, but the site "
+        "team should review the cause this week.")),
+    4: ("High", (
+        "Serious injury, or a MOM Type A hazard (fall from height, vehicle, "
+        "machinery) combined with injury, height or missing PPE. Work "
+        "stops for a safety review.")),
+    5: ("Critical", (
+        "Fatal, or several serious factors at once (e.g. fall from "
+        "height, no harness, injured, at night). Work stops "
+        "immediately; report to management and MOM as required.")),
 }
 
 OUTCOME_ACTIONS = {
@@ -31,7 +43,7 @@ OUTCOME_ACTIONS = {
 }
 
 #daniel
-def get_time_of_day(timestamp):
+def get_time_of_day(timestamp: str | None) -> str:
     try:
         hour = datetime.fromisoformat(timestamp).hour
     except (TypeError, ValueError):
@@ -42,7 +54,50 @@ def get_time_of_day(timestamp):
         return "dusk_dawn"
     return "night"
 
-def assess_severity(record, weather_data=None, history=None):
+def get_monsoon_season(timestamp: str | None) -> str:
+    try:
+        month = datetime.fromisoformat(timestamp).month
+    except (TypeError, ValueError):
+        return "inter_monsoon"
+    if month in (12, 1, 2, 3):
+        return "northeast_monsoon"
+    if 6 <= month <= 9:
+        return "southwest_monsoon"
+    return "inter_monsoon"
+
+def is_weather_relevant(record: dict) -> bool:
+    return bool(_WEATHER_WORDS.search(record.get("description", "")))
+
+def classify_lighting_condition(time_of_day: str, condition: str | None) -> str:
+    levels = ["daylight", "low_light", "dark"]
+    base = {"day": 0, "dusk_dawn": 1, "night": 2}.get(time_of_day, 0)
+    if condition == "rain":
+        base += 1
+    base = min(base, len(levels) - 1)
+    return levels[base]
+
+def apply_weather(enriched: dict) -> dict:
+    result = dict(enriched)
+    precipitation_mm = enriched.get("precipitation_mm")
+    if isinstance(precipitation_mm, (int, float)):
+        result["condition"] = "rain" if precipitation_mm > 0 else "clear"
+    return result
+
+def derive_context(incident: dict) -> dict:
+    context = dict(incident)
+    context["weather_relevant"] = is_weather_relevant(incident)
+    context["time_of_day"] = get_time_of_day(incident.get("timestamp"))
+    context["monsoon_season"] = get_monsoon_season(incident.get("timestamp"))
+    return context
+
+def apply_lighting(enriched: dict) -> dict:
+    lit = dict(enriched)
+    lit["lighting_condition"] = classify_lighting_condition(
+        enriched.get("time_of_day", "day"), enriched.get("condition")
+    )
+    return lit
+
+def assess_severity(record: dict, weather_data: dict | None = None, history: list | None = None) -> dict:
     # Bad inputs are treated as empty rather than crashing the pipeline.
     if not isinstance(record, dict):
         record = {}
@@ -137,16 +192,16 @@ def assess_severity(record, weather_data=None, history=None):
     result["assessment_error"] = None
     return result
 
-def is_high_severity(record):
+def is_high_severity(record: dict) -> bool:
     severity = record.get("severity_estimate", 0)
     injury = record.get("injury", False)
     recurrence = record.get("likelihood_recurrence", "unknown")
     return severity >= 4 or (injury and recurrence == "high")
 
-def is_systemic_risk(record, history):
+def is_systemic_risk(record: dict, history: list) -> bool:
     return len(history) >= 3
 
-def decide_outcome(record, history):
+def decide_outcome(record: dict, history: list) -> str:
     if record.get("assessment_error"):
         return "pending_review"
     if is_high_severity(record):
