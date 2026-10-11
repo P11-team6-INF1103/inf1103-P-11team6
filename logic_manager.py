@@ -1,9 +1,12 @@
 import re
 from datetime import datetime
 
+# Whole-word match only: "window" must not count as "wind", "constraint" as
+# "rain", or "shot" as "hot".
 _WEATHER_WORDS = re.compile(
-    r"\b(rain|rainy|raining|wet|storm|stormy|wind|windy|flood|flooding|flooded|"
-    r"lightning|thunder|thunderstorm|haze|hazy|hot|heat|humid|humidity)\b",
+    r"\b(rain|rains|raining|rainy|rained|wet|storm|storms|stormy|wind|winds|windy|"
+    r"flood|floods|flooded|flooding|lightning|thunder|thunderstorm|thunderstorms|"
+    r"haze|hazy|hot|heat|humid|humidity)\b",
     re.IGNORECASE,
 )
 
@@ -54,21 +57,37 @@ def get_time_of_day(timestamp: str | None) -> str:
         return "dusk_dawn"
     return "night"
 
+# darrel
 def get_monsoon_season(timestamp: str | None) -> str:
+    """Pure function. Returns Singapore's monsoon season for the incident
+    date, using the Meteorological Service Singapore calendar:
+    'northeast_monsoon' (Dec to early Mar), 'inter_monsoon' (late Mar to
+    May, Oct to Nov), 'southwest_monsoon' (Jun to Sep). Context only,
+    never used to score. An unreadable timestamp falls back to the
+    inter-monsoon label so the result never depends on today's date."""
     try:
-        month = datetime.fromisoformat(timestamp).month
+        when = datetime.fromisoformat(timestamp)
     except (TypeError, ValueError):
         return "inter_monsoon"
-    if month in (12, 1, 2, 3):
+    month = when.month
+    if month in (12, 1, 2) or (month == 3 and when.day <= 15):
         return "northeast_monsoon"
     if 6 <= month <= 9:
         return "southwest_monsoon"
     return "inter_monsoon"
 
+# darrel
 def is_weather_relevant(record: dict) -> bool:
-    return bool(_WEATHER_WORDS.search(record.get("description", "")))
+    """Whole-word keyword match on the description: does weather context
+    matter for this incident? Decides whether the weather API is called
+    (and, because the two are mutually exclusive, whether similar past
+    incidents are searched instead)."""
+    return bool(_WEATHER_WORDS.search(str(record.get("description", ""))))
 
+# darrel
 def classify_lighting_condition(time_of_day: str, condition: str | None) -> str:
+    """One step darker than time_of_day if weather cuts visibility. Never
+    returns None."""
     levels = ["daylight", "low_light", "dark"]
     base = {"day": 0, "dusk_dawn": 1, "night": 2}.get(time_of_day, 0)
     if condition == "rain":
