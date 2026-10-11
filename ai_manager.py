@@ -333,8 +333,8 @@ def find_similar_incidents(record: dict, history_records: list | None = None) ->
         {
             "id": i,
             "description": r.get("description", ""),
-            "hazard_type": r.get("hazard_type", "other"),
-            "outcome": r.get("outcome", "log_only"),
+            "hazard_type": r.get("hazard_type", "unknown"),
+            "outcome": r.get("outcome", "unknown"),
         }
         for i, r in enumerate(recent)
     ]
@@ -391,8 +391,8 @@ def find_similar_incidents(record: dict, history_records: list | None = None) ->
             "description": saved.get("description", ""),
             "location": saved.get("location", ""),
             "timestamp": saved.get("timestamp", ""),
-            "hazard_type": saved.get("hazard_type", "other"),
-            "outcome": saved.get("outcome", "log_only"),
+            "hazard_type": saved.get("hazard_type", "unknown"),
+            "outcome": saved.get("outcome", "unknown"),
             "resolution_notes": notes if isinstance(notes, str) else None,
         })
     result["similar_incidents"] = matches

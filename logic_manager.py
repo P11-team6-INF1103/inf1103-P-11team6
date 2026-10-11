@@ -264,3 +264,12 @@ def decide_outcome(record: dict, history: list) -> str:
     if is_systemic_risk(record, history):
         return "systemic_escalation"
     return "log_only"
+
+def screen_incident(record):
+    if not isinstance(record, dict) or record.get("is_valid_incident") is not False:
+        return {"accepted": True, "reject_reason": None}
+    reason = str(record.get("invalid_reason") or "").strip()
+    return {
+        "accepted": False,
+        "reject_reason": reason or "it does not describe a workplace safety incident",
+    }
