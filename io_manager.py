@@ -4,6 +4,7 @@ import shutil
 import sys
 import textwrap
 import threading
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import datetime
 
@@ -12,7 +13,7 @@ _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 # Animated spinner while the `with` block runs. Silent when stdout is not a terminal.
 @contextmanager
-def show_loading(message="AI is thinking"):
+def show_loading(message: str = "AI is thinking") -> Iterator[None]:
     if not sys.stdout.isatty():
         yield
         return
@@ -49,12 +50,12 @@ _LOCATION_CHARS = re.compile(r"^[A-Za-z0-9 \-,./()#]+$")
 _ROLE_CHARS = re.compile(r"^[A-Za-z _/\-]+$")
 
 
-def _sanitise(text):
+def _sanitise(text: object) -> str:
     text = " ".join(str(text).split())
     return "".join(ch for ch in text if ch.isprintable())
 
 
-def _check_description(text):
+def _check_description(text: str) -> str | None:
     if text == "":
         return "Description cannot be empty."
     if len(text) < _MIN_DESCRIPTION:
@@ -71,7 +72,7 @@ def _check_description(text):
     return None
 
 
-def _check_location(text):
+def _check_location(text: str) -> str | None:
     if text == "":
         return "Location cannot be empty."
     if len(text) > _MAX_LOCATION:
@@ -83,7 +84,7 @@ def _check_location(text):
     return None
 
 
-def _check_role(text):
+def _check_role(text: str) -> str | None:
     if text == "":
         return "Role cannot be empty."
     if len(text) < 2:
@@ -96,7 +97,7 @@ def _check_role(text):
 
 
 # Asks until the sanitised answer passes `check`, saying why each answer was rejected.
-def _ask_valid(prompt, check):
+def _ask_valid(prompt: str, check: Callable[[str], str | None]) -> str:
     while True:
         value = _sanitise(input(prompt))
         error = check(value)
@@ -106,7 +107,7 @@ def _ask_valid(prompt, check):
         prompt = "Try again: "
 
 
-def _ask_yes_no(prompt):
+def _ask_yes_no(prompt: str) -> bool:
     answer = input(prompt).strip().lower()
     while answer not in ("yes", "no", "y", "n"):
         answer = input("Please answer yes or no: ").strip().lower()
@@ -114,14 +115,14 @@ def _ask_yes_no(prompt):
 
 
 # After the AI rejects an incident as not a real safety incident: asks whether to enter it again.
-def ask_try_again():
+def ask_try_again() -> bool:
     return _ask_yes_no("Enter the incident again? (yes/no): ")
 
 
 # Lennart
 # After a failed save: warns that the incident is not on disk and asks whether to try saving again.
-def ask_retry_save():
-    print("")
+def ask_retry_save() -> bool:
+    print()
     print("!" * 60)
     print("  INCIDENT NOT SAVED: it could not be written to disk and")
     print("  will be lost when you exit the program.")
@@ -130,7 +131,7 @@ def ask_retry_save():
 
 
 # Main menu
-def get_menu_choice():
+def get_menu_choice() -> str:
     print("\n=== Workplace Safety Incident Triage System ===")
     print("1. Log a new incident")
     print("2. View summary of all incidents")
@@ -149,7 +150,7 @@ def get_menu_choice():
 
 
 # Incident input interface
-def get_incident_input():
+def get_incident_input() -> dict:
     print("\n--- Log a New Incident ---")
 
     description = _ask_valid("Describe what happened: ", _check_description)
@@ -166,11 +167,11 @@ def get_incident_input():
     }
 
 
-def display_message(text):
+def display_message(text: str) -> None:
     print(text)
 
 
-def _choose_location(known_locations):
+def _choose_location(known_locations: list) -> str | None:
     if not known_locations:
         print("No incidents have been saved yet, so there are no locations to list.")
         return None
@@ -188,7 +189,7 @@ def _choose_location(known_locations):
 
 
 # Location query interface (menu option 3)
-def get_location_query(known_locations=None):
+def get_location_query(known_locations: list | None = None) -> tuple[str, int] | None:
     if known_locations is None:
         prompt = "Location to search (or press Enter to go back to the menu): "
     else:
@@ -214,7 +215,7 @@ def get_location_query(known_locations=None):
     return location, int(days_input) if days_input else 30
 
 
-def display_query_results(results):
+def display_query_results(results: list) -> None:
     if not results:
         print("No matching incidents found.")
         return
@@ -264,30 +265,30 @@ _LABEL_WIDTH = 14
 
 
 # Helper functions for formatting output
-def _format_time(timestamp):
+def _format_time(timestamp: object) -> str:
     try:
         return datetime.fromisoformat(timestamp).strftime("%d %b %Y, %H:%M")
     except (TypeError, ValueError):
         return str(timestamp)
 
 
-def _report_width():
+def _report_width() -> int:
     return min(max(shutil.get_terminal_size((100, 24)).columns, 60), 90)
 
 
 # Drops citation markers like 【9†L109-L112】 and swaps fancy hyphens/quotes for plain ones
-def _clean(text):
+def _clean(text: object) -> str:
     text = re.sub(r"【[^】]*】", "", str(text))
     text = text.translate({0x2011: "-", 0x2010: "-", 0x2019: "'", 0x2018: "'"})
     return re.sub(r"\s+([.,;])(?=\s|$)", r"\1", " ".join(text.split()))
 
 
-def _section(title, width):
+def _section(title: str, width: int) -> None:
     print(f"\n── {title} " + "─" * max(width - len(title) - 4, 3))
 
 
 # Prints `label  value` with wrapped lines hanging under the value; a list prints one '- ' bullet per item
-def _field(label, value, width, indent=2, label_width=_LABEL_WIDTH):
+def _field(label: str, value: object, width: int, indent: int = 2, label_width: int = _LABEL_WIDTH) -> None:
     items = value if isinstance(value, list) else [value]
     bullets = isinstance(value, list)
     hang = " " * (indent + label_width)
@@ -303,18 +304,18 @@ def _field(label, value, width, indent=2, label_width=_LABEL_WIDTH):
 # Plain-English text for each *_error field a record can carry. The raw
 # error text (HTTP codes, model names) goes to the log, not to the user.
 _PROBLEM_MESSAGES = (
-    ("context_flags_error", "Hazard details (type, injury, height, PPE) could not be read "
-     "automatically, so default values were used. Please check the severity score manually."),
-    ("assessment_error", "The AI service is unavailable, so this incident was not scored. "
-     "Please assess it manually and try again later."),
-    ("enrichment_error", "Current weather could not be retrieved, so weather was not "
-     "factored into this report."),
-    ("web_search_error", "We couldn't look up similar incidents or industry information "
-     "online right now. The rest of this report is unaffected."),
-    ("similar_incidents_error", "We couldn't compare this with earlier incidents on our "
-     "own sites right now."),
-    ("review_error", "Causes and prevention advice couldn't be generated. Please discuss "
-     "prevention steps with your safety officer."),
+    ("context_flags_error", ("Hazard details (type, injury, height, PPE) could not be read "
+     "automatically, so default values were used. Please check the severity score manually.")),
+    ("assessment_error", ("The AI service is unavailable, so this incident was not scored. "
+     "Please assess it manually and try again later.")),
+    ("enrichment_error", ("Current weather could not be retrieved, so weather was not "
+     "factored into this report.")),
+    ("web_search_error", ("We couldn't look up similar incidents or industry information "
+     "online right now. The rest of this report is unaffected.")),
+    ("similar_incidents_error", ("We couldn't compare this with earlier incidents on our "
+     "own sites right now.")),
+    ("review_error", ("Causes and prevention advice couldn't be generated. Please discuss "
+     "prevention steps with your safety officer.")),
 )
 _ALL_AI_DOWN_MESSAGE = (
     "AI services are currently unavailable (check your internet connection or API keys). "
@@ -322,7 +323,7 @@ _ALL_AI_DOWN_MESSAGE = (
 )
 _KEY_HINT = "An API key looks missing: check GEMINI_API_KEY and GROQ_API_KEY in the .env file."
 
-def _friendly_problems(record):
+def _friendly_problems(record: dict) -> list:
     problems = [text for field, text in _PROBLEM_MESSAGES if record.get(field)]
     if all(record.get(f) for f in ("context_flags_error", "web_search_error", "review_error")):
         problems.insert(0, _ALL_AI_DOWN_MESSAGE)
@@ -332,7 +333,7 @@ def _friendly_problems(record):
     return problems
 
 # Print incident report
-def _print_incident_report(record, severity_levels=None, outcome_actions=None, number=None):
+def _print_incident_report(record: dict, severity_levels: dict | None = None, outcome_actions: dict | None = None, number: int | None = None) -> None:
     severity_levels = severity_levels or {}
     outcome_actions = outcome_actions or {}
     width = _report_width()
@@ -373,7 +374,7 @@ def _print_incident_report(record, severity_levels=None, outcome_actions=None, n
 
     # --- Weather: only when it was checked ---
     if record.get("weather_available"):
-        _section("WEATHER AT THE TIME", width)
+        _section("CURRENT WEATHER", width)
         _field("Conditions", (
             f"{str(record.get('condition')).capitalize()}, {record.get('temperature_c')}°C, "
             f"{record.get('humidity_pct')}% humidity"
@@ -434,12 +435,12 @@ def _print_incident_report(record, severity_levels=None, outcome_actions=None, n
     print()
 
 
-def display_outcome(record, severity_levels=None, outcome_actions=None):
+def display_outcome(record: dict, severity_levels: dict | None = None, outcome_actions: dict | None = None) -> None:
     print()
     _print_incident_report(record, severity_levels, outcome_actions)
 
 
-def display_severity_guide(severity_levels):
+def display_severity_guide(severity_levels: dict) -> None:
     print("\nWHAT THE SEVERITY LEVELS MEAN")
     for level in sorted(severity_levels):
         name, meaning = severity_levels[level]
@@ -447,7 +448,7 @@ def display_severity_guide(severity_levels):
 
 
 # Boxed table; long cells wrap inside their column
-def _print_table(headers, rows, widths):
+def _print_table(headers: list, rows: list, widths: list) -> None:
     def line(left, mid, right):
         return left + mid.join("─" * (w + 2) for w in widths) + right
 
@@ -465,7 +466,7 @@ def _print_table(headers, rows, widths):
 
 # Totals and one table row per incident, then the severity guide.
 # When `interactive`, an incident # can be typed to open its full report.
-def display_summary(records, severity_levels=None, outcome_actions=None, interactive=True):
+def display_summary(records: list, severity_levels: dict | None = None, outcome_actions: dict | None = None, interactive: bool = True) -> None:
     print("\n" + "#" * _WIDTH)
     print("INCIDENT SUMMARY / AFTER-ACTION REVIEW")
     print("#" * _WIDTH)
@@ -541,7 +542,7 @@ def display_summary(records, severity_levels=None, outcome_actions=None, interac
 
 # Batch mode: reads a JSON list of incidents and validates each one like typed input.
 # Returns (incidents, problems): the valid incidents plus one message per rejected item.
-def read_incident_file(path):
+def read_incident_file(path: str) -> tuple[list, list]:
     try:
         with open(path, "r", encoding="utf-8") as f:
             items = json.load(f)

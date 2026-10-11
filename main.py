@@ -5,21 +5,21 @@ import ai_manager
 import data_manager
 import io_manager
 import logic_manager
-import trial
 
-# Real functions are used wherever a teammate's module already has them.
-# Anything not merged yet falls back to the matching stand-in in fakes.py.
-decide_outcome = getattr(logic_manager, "decide_outcome", trial.fake_decide_outcome)
-save_record = getattr(data_manager, "save_record", trial.fake_save_record)
-SEVERITY_LEVELS = getattr(logic_manager, "SEVERITY_LEVELS", None)
-OUTCOME_ACTIONS = getattr(logic_manager, "OUTCOME_ACTIONS", None)
-derive_context = getattr(logic_manager, "derive_context", dict)
-apply_lighting = getattr(logic_manager, "apply_lighting", dict)
-generate_incident_review = getattr(ai_manager, "generate_incident_review", lambda record: {})
+decide_outcome = logic_manager.decide_outcome
+save_record = data_manager.save_record
+generate_incident_review = ai_manager.generate_incident_review
+SEVERITY_LEVELS = logic_manager.SEVERITY_LEVELS
+OUTCOME_ACTIONS = logic_manager.OUTCOME_ACTIONS
+
+# Not written yet (Darrel). Until they land, each step passes the record through unchanged.
+derive_context = logic_manager.derive_context
+apply_weather = logic_manager.apply_weather
+apply_lighting = logic_manager.apply_lighting
 
 
 # Lennart
-def start_up():
+def start_up() -> list:
     log_path = data_manager.get_log_path()
     if log_path:
         logging.basicConfig(
@@ -36,15 +36,69 @@ def start_up():
 
 
 # Lennart
+# The mandatory AI call runs first. If it says this is not a real safety incident we stop
+# here, before the weather and web-search calls are spent on it; process_incident rejects it.
+def enrich_record(record: dict, history_records: list | None = None) -> dict:
+    enriched = dict(record)
+
+    flags = ai_manager.extract_hazard_context_flags(record.get("description", ""))
+    enriched["is_valid_incident"] = flags.get("is_valid_incident", True)
+    enriched["invalid_reason"] = flags.get("invalid_reason")
+    if not enriched["is_valid_incident"]:
+        return enriched
+
+    weather_relevant = bool(record.get("weather_relevant"))
+
+    enriched["weather_available"] = False
+    enriched["condition"] = None
+    enriched["temperature_c"] = None
+    enriched["humidity_pct"] = None
+    enriched["precipitation_mm"] = None
+    enriched["enrichment_error"] = None
+    if weather_relevant:
+        weather = ai_manager.get_weather(record.get("timestamp"), record.get("location", ""))
+        if weather is not None:
+            enriched["weather_available"] = True
+            enriched["temperature_c"] = weather["temperature_c"]
+            enriched["humidity_pct"] = weather["humidity_pct"]
+            enriched["precipitation_mm"] = weather["precipitation_mm"]
+        else:
+            enriched["enrichment_error"] = "Weather data unavailable or invalid"
+
+    enriched["hazard_category"] = flags["hazard_category"]
+    enriched["injury_severity"] = flags["injury_severity"]
+    enriched["working_at_height"] = flags["working_at_height"]
+    enriched["height_estimate_m"] = flags["height_estimate_m"]
+    enriched["heavy_machinery_present"] = flags["heavy_machinery_present"]
+    enriched["ppe_status"] = flags["ppe_status"]
+    enriched["context_flags_error"] = flags["context_flags_error"]
+
+    # Similar incidents — mutually exclusive with the weather call.
+    if not weather_relevant:
+        enriched["similar_incidents_checked"] = True
+        enriched.update(ai_manager.find_similar_incidents(enriched, history_records or []))
+    else:
+        enriched["similar_incidents_checked"] = False
+        enriched["similar_incidents"] = None
+        enriched["similar_incidents_error"] = None
+
+    # Web search — every incident: is this a known industry problem, and
+    # similar real incidents with what was done about them.
+    enriched.update(ai_manager.search_web_for_similar_incidents(enriched))
+
+    return enriched
+
+
+# Lennart
 # Returns None, and saves nothing, when the AI says the text is not a real safety incident.
 # interactive=False (batch, scripts, Docker) never waits on input() after a failed save.
-def process_incident(incident, records, interactive=True):
+def process_incident(incident: dict, records: list, interactive: bool = True) -> dict | None:
     with_context = derive_context(incident)
     with io_manager.show_loading("AI is analysing the incident"):
-        enriched = ai_manager.enrich_record(with_context, records)
+        enriched = enrich_record(with_context, records)
         is_valid = enriched.get("is_valid_incident", True)
         if is_valid:
-            enriched = apply_lighting(enriched)
+            enriched = apply_lighting(apply_weather(enriched))
             enriched.update(generate_incident_review(enriched))
     if not is_valid:
         io_manager.display_message(
@@ -79,7 +133,7 @@ def process_incident(incident, records, interactive=True):
 
 # Lennart
 # If the AI rejects the incident, asks whether to enter it again instead of showing a report.
-def log_incident_flow(records):
+def log_incident_flow(records: list) -> dict | None:
     while True:
         incident = io_manager.get_incident_input()
         final_record = process_incident(incident, records)
@@ -92,7 +146,7 @@ def log_incident_flow(records):
 
 
 # Lennart
-def run_batch(path):
+def run_batch(path: str) -> int:
     incidents, problems = io_manager.read_incident_file(path)
     for problem in problems:
         io_manager.display_message(f"Skipped: {problem}")
@@ -111,7 +165,7 @@ def run_batch(path):
 
 
 # Lennart
-def main():
+def main() -> None:
     records = start_up()
     while True:
         choice = io_manager.get_menu_choice()
