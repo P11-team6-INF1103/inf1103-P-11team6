@@ -13,7 +13,8 @@ _WEATHER_WORDS = re.compile(
 # classifications
 _TYPE_A_HAZARDS = ("fall_from_height", "vehicular", "struck_by_machinery")
 
-_INJURY_POINTS = {"none": 0, "unspecified": 0, "minor": 1, "serious": 2}
+_INJURY_POINTS = {"none": 0, "unspecified": 0, "first_aid": 1, "hospital": 2}
+_INJURY_LABELS = {"first_aid": "Minor injury, first aid only", "hospital": "Serious injury, hospital treatment"}
 
 _ESCALATED_OUTCOMES = ("stop_work_review", "systemic_escalation")
 
@@ -132,13 +133,10 @@ def apply_lighting(enriched: dict) -> dict:
     )
     return lit
 
-def assess_severity(record: dict, weather_data: dict | None = None, history: list | None = None) -> dict:
-    # Bad inputs are treated as empty rather than crashing the pipeline.
-    if not isinstance(record, dict):
-        record = {}
-    if not isinstance(weather_data, dict):
+def assess_severity(record, weather_data=None, history=None):
+    if weather_data is None:
         weather_data = {}
-    if not isinstance(history, list):
+    if history is None:
         history = []
 
     result = dict(record)
@@ -153,40 +151,30 @@ def assess_severity(record: dict, weather_data: dict | None = None, history: lis
             f"{record.get('context_flags_error') or 'hazard_category missing'}"
         )
         return result
-    
+
     hazard_type = record["hazard_category"]
-    # Unknown or oddly-cased values count as "unspecified", so an injured
-    # person still gets the "hurt but not described" point below.
-    injury_severity = str(record.get("injury_severity") or "unspecified").lower()
-    if injury_severity != "fatal" and injury_severity not in _INJURY_POINTS:
-        injury_severity = "unspecified"
-    # Only a real True counts; the text "false" would otherwise be truthy.
-    at_height = record.get("working_at_height") is True
-    machinery = record.get("heavy_machinery_present") is True
+    injury_treatment = record.get("injury_treatment", "unspecified")
+    at_height = record.get("working_at_height")
+    machinery = record.get("heavy_machinery_present")
     ppe_not_worn = record.get("ppe_status") == "not_worn"
     poor_light = record.get("lighting_condition") in ("dark", "low_light")
-    similar = record.get("similar_incidents")
-    if not isinstance(similar, list):
-        similar = []
-    similar_escalated = any(
-        isinstance(item, dict) and item.get("outcome") in _ESCALATED_OUTCOMES for item in similar
-    )
+    similar = record.get("similar_incidents") or []
+    similar_escalated = any(item.get("outcome") in _ESCALATED_OUTCOMES for item in similar)
 
+    #severity_estimate simple additive score capped 1-5 
     severity = 1
     reasons = []
-    if injury_severity == "fatal":
+    if injury_treatment == "died":
         severity = 5
         reasons.append("Someone died (set to 5)")
     else:
-        injury_points = _INJURY_POINTS.get(injury_severity, 0)
+        injury_points = _INJURY_POINTS.get(injury_treatment, 0)
         if injury_points:
             severity += injury_points
-            reasons.append(f"{injury_severity.capitalize()} injury (+{injury_points})")
-        # Reporter said someone was hurt but the description didn't say how badly.
-        if record.get("injury") and injury_severity in ("none", "unspecified"):
+            reasons.append(f"{_INJURY_LABELS[injury_treatment]} (+{injury_points})")
+        if record.get("injury") and injury_treatment in ("none", "unspecified"):
             severity += 1
             reasons.append("Someone was hurt, but how badly wasn't described (+1)")
-    
     if hazard_type in _TYPE_A_HAZARDS:
         severity += 1
         reasons.append("One of MOM's highest-risk hazard types (+1)")
@@ -212,14 +200,14 @@ def assess_severity(record: dict, weather_data: dict | None = None, history: lis
         severity += 1
         reasons.append("A similar past incident on our sites was escalated (+1)")
     severity = max(1, min(severity, 5))
-    
-        # --- likelihood_recurrence: simple tiered logic ---
+
+    #likelihood_recurrence: simple tiered logic
     recurrence = "low"
     if poor_light or len(history) >= 1:
         recurrence = "medium"
     if severity >= 4 or len(history) >= 3 or similar_escalated:
         recurrence = "high"
-    
+
     result["hazard_type"] = hazard_type
     result["severity_estimate"] = severity
     result["likelihood_recurrence"] = recurrence
