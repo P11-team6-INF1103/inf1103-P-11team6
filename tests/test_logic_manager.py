@@ -35,6 +35,13 @@ def test_derive_context_and_apply_lighting():
     assert "lighting_condition" not in ctx
 
 
+def test_apply_weather_turns_rainfall_into_a_condition():
+    assert lm.apply_weather({"precipitation_mm": 0.3})["condition"] == "rain"
+    assert lm.apply_weather({"precipitation_mm": 0})["condition"] == "clear"
+    assert lm.apply_weather({"condition": None})["condition"] is None
+    assert lm.apply_weather({"condition": "rain"})["condition"] == "rain"
+
+
 def _enriched(**changes):
     base = {"hazard_category": "fall_from_height", "injury_severity": "serious", "injury": True,
             "working_at_height": True, "heavy_machinery_present": False, "ppe_status": "not_worn",

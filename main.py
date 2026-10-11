@@ -14,7 +14,10 @@ OUTCOME_ACTIONS = logic_manager.OUTCOME_ACTIONS
 
 # Not written yet (Darrel). Until they land, each step passes the record through unchanged.
 derive_context = logic_manager.derive_context
+apply_weather = logic_manager.apply_weather
 apply_lighting = logic_manager.apply_lighting
+
+logger = logging.getLogger(__name__)
 
 
 # Lennart
@@ -35,15 +38,84 @@ def start_up() -> list:
 
 
 # Lennart
+# The mandatory AI call runs first. If it says this is not a real safety incident we stop
+# here, before the weather and web-search calls are spent on it; process_incident rejects it.
+def enrich_record(record: dict, history_records: list | None = None) -> dict:
+    enriched = dict(record)
+
+    flags = ai_manager.extract_hazard_context_flags(record.get("description", ""))
+    enriched["is_valid_incident"] = flags.get("is_valid_incident", True)
+    enriched["invalid_reason"] = flags.get("invalid_reason")
+    if not enriched["is_valid_incident"]:
+        return enriched
+
+    weather_relevant = bool(record.get("weather_relevant"))
+
+    enriched["weather_available"] = False
+    enriched["condition"] = None
+    enriched["temperature_c"] = None
+    enriched["humidity_pct"] = None
+    enriched["precipitation_mm"] = None
+    enriched["enrichment_error"] = None
+    if weather_relevant:
+        weather = ai_manager.get_weather(record.get("timestamp"), record.get("location", ""))
+        if weather is not None:
+            enriched["weather_available"] = True
+            enriched["temperature_c"] = weather["temperature_c"]
+            enriched["humidity_pct"] = weather["humidity_pct"]
+            enriched["precipitation_mm"] = weather["precipitation_mm"]
+        else:
+            enriched["enrichment_error"] = "Weather data unavailable or invalid"
+
+    enriched["hazard_category"] = flags["hazard_category"]
+    enriched["injury_severity"] = flags["injury_severity"]
+    enriched["working_at_height"] = flags["working_at_height"]
+    enriched["height_estimate_m"] = flags["height_estimate_m"]
+    enriched["heavy_machinery_present"] = flags["heavy_machinery_present"]
+    enriched["ppe_status"] = flags["ppe_status"]
+    enriched["context_flags_error"] = flags["context_flags_error"]
+
+    # Similar incidents — mutually exclusive with the weather call.
+    if not weather_relevant:
+        enriched["similar_incidents_checked"] = True
+        try:
+            enriched["similar_incidents"] = ai_manager.find_similar_incidents(enriched, history_records or [])
+            enriched["similar_incidents_error"] = None
+        except Exception as error:
+            logger.warning("Similar-incidents lookup failed: %s", error)
+            enriched["similar_incidents"] = None
+            enriched["similar_incidents_error"] = f"Similar-incidents lookup failed: {error}"
+    else:
+        enriched["similar_incidents_checked"] = False
+        enriched["similar_incidents"] = None
+        enriched["similar_incidents_error"] = None
+
+    # Web search — every incident: is this a known industry problem, and
+    # similar real incidents with what was done about them.
+    try:
+        web = ai_manager.search_web_for_similar_incidents(enriched)
+        enriched["web_industry_context"] = web["industry_context"]
+        enriched["web_incidents"] = web["incidents"]
+        enriched["web_search_error"] = None
+    except Exception as error:
+        logger.warning("Web search failed: %s", error)
+        enriched["web_industry_context"] = None
+        enriched["web_incidents"] = None
+        enriched["web_search_error"] = str(error)
+
+    return enriched
+
+
+# Lennart
 # Returns None, and saves nothing, when the AI says the text is not a real safety incident.
 # interactive=False (batch, scripts, Docker) never waits on input() after a failed save.
 def process_incident(incident: dict, records: list, interactive: bool = True) -> dict | None:
     with_context = derive_context(incident)
     with io_manager.show_loading("AI is analysing the incident"):
-        enriched = ai_manager.enrich_record(with_context, records)
+        enriched = enrich_record(with_context, records)
         is_valid = enriched.get("is_valid_incident", True)
         if is_valid:
-            enriched = apply_lighting(enriched)
+            enriched = apply_lighting(apply_weather(enriched))
             enriched.update(generate_incident_review(enriched))
     if not is_valid:
         io_manager.display_message(
