@@ -38,7 +38,9 @@ HAZARD_CATEGORIES = (
     "fall", "fall_from_height", "electrical", "chemical", "vehicular",
     "struck_by_machinery", "low_visibility", "other",
 )
-INJURY_SEVERITIES = ("none", "minor", "serious", "fatal", "unspecified")
+# What the description says happened to the person (a fact), not how bad it
+# is. Turning this into points is logic_manager's job.
+INJURY_TREATMENTS = ("none", "first_aid", "hospital", "died", "unspecified")
 
 # Validated replies already received, keyed by a hash of the request. The
 # same incident text therefore gets the same answer on every run (hard
@@ -162,7 +164,7 @@ def _gemini_json(client: object, prompt: str, schema: dict) -> object:
 def extract_hazard_context_flags(description: str) -> dict:
     defaults = {
         "hazard_category": None,
-        "injury_severity": "unspecified",
+        "injury_treatment": "unspecified",
         "working_at_height": False,
         "height_estimate_m": None,
         "heavy_machinery_present": False,
@@ -183,7 +185,7 @@ def extract_hazard_context_flags(description: str) -> dict:
         "type": "object",
         "properties": {
             "hazard_category": {"type": "string", "enum": list(HAZARD_CATEGORIES)},
-            "injury_severity": {"type": "string", "enum": list(INJURY_SEVERITIES)},
+            "injury_treatment": {"type": "string", "enum": list(INJURY_TREATMENTS)},
             "working_at_height": {"type": "boolean"},
             "height_estimate_m": {"type": ["number", "null"]},
             "heavy_machinery_present": {"type": "boolean"},
@@ -195,7 +197,7 @@ def extract_hazard_context_flags(description: str) -> dict:
             "invalid_reason": {"type": "string"},
         },
         "required": [
-            "hazard_category", "injury_severity", "working_at_height",
+            "hazard_category", "injury_treatment", "working_at_height",
             "heavy_machinery_present", "ppe_status",
         ],
     }
@@ -216,9 +218,11 @@ def extract_hazard_context_flags(description: str) -> dict:
         "in machinery or falling objects; 'vehicular' is a vehicle movement "
         "or collision; 'low_visibility' is a hazard caused mainly by poor "
         "lighting; otherwise 'electrical', 'chemical', or 'other'.\n"
-        "injury_severity: 'none' if explicitly no injury, 'minor' for first "
-        "aid only, 'serious' for hospital treatment, fractures or lost work "
-        "time, 'fatal' if someone died, otherwise 'unspecified'.\n"
+        "injury_treatment: report only what the description states about "
+        "treatment, do not judge how serious the injury is. 'none' if it says "
+        "nobody was hurt, 'first_aid' if first aid is mentioned, 'hospital' if "
+        "the person was taken to hospital or sent for medical treatment, "
+        "'died' if someone died, otherwise 'unspecified'.\n"
         "working_at_height: true only if someone was working on or fell from "
         "an elevated position (scaffolding, roof, ladder, edge, crane cab, "
         "mezzanine). Being near scaffolding at ground level is false.\n"
@@ -243,8 +247,8 @@ def extract_hazard_context_flags(description: str) -> dict:
             result["is_valid_incident"] = False
             result["invalid_reason"] = str(parsed.get("invalid_reason") or
                                            "it does not describe a workplace safety incident")
-        if parsed.get("injury_severity") in INJURY_SEVERITIES:
-            result["injury_severity"] = parsed["injury_severity"]
+        if parsed.get("injury_treatment") in INJURY_TREATMENTS:
+            result["injury_treatment"] = parsed["injury_treatment"]
         if isinstance(parsed.get("working_at_height"), bool):
             result["working_at_height"] = parsed["working_at_height"]
         if isinstance(parsed.get("height_estimate_m"), (int, float)):
