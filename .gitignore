@@ -36,3 +36,9 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Runtime data (written by every run, never committed)
+data/incidents.json
+data/ai_cache.json
+data/*.corrupt-*
+data/*.tmp
