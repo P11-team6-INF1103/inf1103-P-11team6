@@ -43,7 +43,7 @@ def _ai_rejects(monkeypatch, reason="It is random text."):
 
 
 def test_enrich_record_stops_early_when_incident_is_invalid(monkeypatch):
-    flags = {"hazard_category": "other", "injury_severity": "none", "working_at_height": False,
+    flags = {"hazard_category": "other", "injury_treatment": "none", "working_at_height": False,
              "height_estimate_m": None, "heavy_machinery_present": False, "ppe_status": "unspecified",
              "is_valid_incident": False, "invalid_reason": "not an incident", "context_flags_error": None}
 
@@ -59,7 +59,7 @@ def test_enrich_record_stops_early_when_incident_is_invalid(monkeypatch):
 
 
 def test_enrich_record_runs_weather_or_similar_incidents_never_both(monkeypatch):
-    flags = {"hazard_category": "fall", "injury_severity": "none", "working_at_height": False,
+    flags = {"hazard_category": "fall", "injury_treatment": "none", "working_at_height": False,
              "height_estimate_m": None, "heavy_machinery_present": False, "ppe_status": "unspecified",
              "is_valid_incident": True, "invalid_reason": None, "context_flags_error": None}
     weather = {"temperature_c": 30, "humidity_pct": 80, "precipitation_mm": 1.2}

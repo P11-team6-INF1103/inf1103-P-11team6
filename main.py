@@ -66,7 +66,7 @@ def enrich_record(record: dict, history_records: list | None = None) -> dict:
             enriched["enrichment_error"] = "Weather data unavailable or invalid"
 
     enriched["hazard_category"] = flags["hazard_category"]
-    enriched["injury_severity"] = flags["injury_severity"]
+    enriched["injury_treatment"] = flags["injury_treatment"]
     enriched["working_at_height"] = flags["working_at_height"]
     enriched["height_estimate_m"] = flags["height_estimate_m"]
     enriched["heavy_machinery_present"] = flags["heavy_machinery_present"]
