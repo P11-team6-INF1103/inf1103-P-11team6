@@ -37,18 +37,16 @@ def start_up() -> list:
 
 
 # Lennart
-# The mandatory AI call runs first. If it says this is not a real safety incident we stop
-# here, before the weather and web-search calls are spent on it; process_incident rejects it.
+# The mandatory AI call runs first. If logic_manager rejects the incident we stop here, before
+# the weather and web-search calls are spent on it; process_incident shows the reason.
 def enrich_record(record: dict, history_records: list | None = None) -> dict:
     enriched = dict(record)
 
     flags = ai_manager.extract_hazard_context_flags(str(record.get("description") or ""))
-    enriched["is_valid_incident"] = flags.get("is_valid_incident", True)
+    enriched["is_valid_incident"] = flags.get("is_valid_incident")
     enriched["invalid_reason"] = flags.get("invalid_reason")
-    if not enriched["is_valid_incident"]:
+    if not logic_manager.screen_incident(enriched)["accepted"]:
         return enriched
-
-    weather_relevant = bool(record.get("weather_relevant"))
 
     enriched["weather_available"] = False
     enriched["condition"] = None
@@ -56,7 +54,7 @@ def enrich_record(record: dict, history_records: list | None = None) -> dict:
     enriched["humidity_pct"] = None
     enriched["precipitation_mm"] = None
     enriched["enrichment_error"] = None
-    if weather_relevant:
+    if record.get("run_weather"):
         try:
             weather = ai_manager.get_weather(record.get("timestamp"), record.get("location", ""))
         except Exception as error:
@@ -72,14 +70,13 @@ def enrich_record(record: dict, history_records: list | None = None) -> dict:
 
     enriched["hazard_category"] = flags["hazard_category"]
     enriched["injury_treatment"] = flags["injury_treatment"]
-    enriched["working_at_height"] = flags["working_at_height"]
+    enriched["equipment_mentioned"] = flags["equipment_mentioned"]
+    enriched["elevated_places"] = flags["elevated_places"]
     enriched["height_estimate_m"] = flags["height_estimate_m"]
-    enriched["heavy_machinery_present"] = flags["heavy_machinery_present"]
     enriched["ppe_status"] = flags["ppe_status"]
     enriched["context_flags_error"] = flags["context_flags_error"]
 
-    # Similar incidents — mutually exclusive with the weather call.
-    if not weather_relevant:
+    if record.get("run_similar"):
         enriched["similar_incidents_checked"] = True
         try:
             enriched.update(ai_manager.find_similar_incidents(enriched, history_records or []))
