@@ -42,6 +42,13 @@ def test_apply_weather_turns_rainfall_into_a_condition():
     assert lm.apply_weather({"condition": "rain"})["condition"] == "rain"
 
 
+def test_apply_lighting_copes_with_missing_or_unknown_values():
+    assert lm.apply_lighting({})["lighting_condition"] == "daylight"
+    assert lm.apply_lighting({"time_of_day": None, "condition": None})["lighting_condition"] == "daylight"
+    assert lm.apply_lighting({"time_of_day": "midnight", "condition": "fog"})["lighting_condition"] == "daylight"
+    assert lm.apply_lighting({"time_of_day": "dusk_dawn", "condition": "rain"})["lighting_condition"] == "dark"
+
+
 def _enriched(**changes):
     base = {"hazard_category": "fall_from_height", "injury_severity": "serious", "injury": True,
             "working_at_height": True, "heavy_machinery_present": False, "ppe_status": "not_worn",
