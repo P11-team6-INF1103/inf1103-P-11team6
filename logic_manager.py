@@ -1,4 +1,13 @@
+import re
 from datetime import datetime
+
+# Whole-word match only: "window" must not count as "wind", "constraint" as
+# "rain", or "shot" as "hot".
+_WEATHER_WORDS = re.compile(
+    r"\b(rain|rains|raining|rainy|rained|wet|storm|storms|stormy|wind|winds|windy|"
+    r"flood|floods|flooded|flooding|lightning|thunder|thunderstorm|thunderstorms|"
+    r"haze|hazy|hot|heat|humid|humidity)\b"
+)
 
 # classifications
 _TYPE_A_HAZARDS = ("fall_from_height", "vehicular", "struck_by_machinery")
@@ -29,6 +38,25 @@ OUTCOME_ACTIONS = {
     "log_only": "Record the incident; no escalation needed.",
     "pending_review": "The AI could not assess it; a person must review it manually.",
 }
+# darrel
+def is_weather_relevant(record):
+    """Whole-word keyword match on the description: does weather context
+    matter for this incident? Decides whether ai_manager calls the weather
+    API (and, because the two are mutually exclusive, whether it searches
+    similar past incidents instead)."""
+    return bool(_WEATHER_WORDS.search(str(record.get("description", "")).lower()))
+
+
+# darrel
+def classify_lighting_condition(time_of_day, condition):
+    """One step darker than time_of_day if weather cuts visibility. Never
+    returns None."""
+    levels = ["daylight", "low_light", "dark"]
+    base = {"day": 0, "dusk_dawn": 1, "night": 2}.get(time_of_day, 0)
+    if condition == "rain":
+        base += 1
+    base = min(base, len(levels) - 1)
+    return levels[base]
 
 #daniel
 def get_time_of_day(timestamp):
