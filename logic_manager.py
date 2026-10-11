@@ -87,6 +87,16 @@ def derive_context(incident):
     result["monsoon_season"] = get_monsoon_season(incident.get("timestamp"))
     return result
 
+# darrel
+def apply_lighting(enriched):
+    """Adds lighting_condition once the weather result is known. Run after
+    ai_manager.enrich_record(). Returns a new dict."""
+    result = dict(enriched)
+    result["lighting_condition"] = classify_lighting_condition(
+        result.get("time_of_day"), result.get("condition")
+    )
+    return result
+
 #daniel
 def get_time_of_day(timestamp):
     try:
