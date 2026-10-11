@@ -546,7 +546,7 @@ def generate_incident_review(record: dict) -> dict:
         "description": record.get("description"),
         "injury_reported": record.get("injury"),
         "hazard_category": record.get("hazard_category"),
-        "injury_severity": record.get("injury_severity"),
+        "injury_treatment": record.get("injury_treatment"),
         "working_at_height": record.get("working_at_height"),
         "heavy_machinery_present": record.get("heavy_machinery_present"),
         "ppe_status": record.get("ppe_status"),
