@@ -6,8 +6,9 @@ import main
 
 
 def _flags(**overrides):
-    flags = {"hazard_category": "fall_from_height", "injury_severity": "serious", "working_at_height": True,
-             "height_estimate_m": 10, "heavy_machinery_present": False, "ppe_status": "not_worn",
+    flags = {"hazard_category": "fall_from_height", "injury_treatment": "hospital",
+             "equipment_mentioned": [], "elevated_places": ["scaffolding"], "height_estimate_m": 10,
+             "ppe_status": "not_worn",
              "is_valid_incident": True, "invalid_reason": None, "context_flags_error": None}
     flags.update(overrides)
     return flags
@@ -44,7 +45,7 @@ def test_serious_night_fall_is_scored_dark_and_stops_work(monkeypatch):
 
 
 def test_minor_daytime_incident_is_only_logged(monkeypatch):
-    flags = _flags(hazard_category="vehicular", injury_severity="none", working_at_height=False,
+    flags = _flags(hazard_category="vehicular", injury_treatment="none", elevated_places=[],
                    height_estimate_m=None, ppe_status="worn")
     _canned_ai(monkeypatch, flags)
     incident = _incident(description="Forklift reversed into a stack of pallets, nobody hurt, PPE worn",
@@ -56,7 +57,7 @@ def test_minor_daytime_incident_is_only_logged(monkeypatch):
 
 def test_rain_is_carried_from_the_weather_step_into_lighting_and_severity(monkeypatch):
     weather = {"temperature_c": 28, "humidity_pct": 90, "precipitation_mm": 2.0}
-    _canned_ai(monkeypatch, _flags(injury_severity="none", ppe_status="worn"), weather)
+    _canned_ai(monkeypatch, _flags(injury_treatment="none", ppe_status="worn"), weather)
     incident = _incident(description="Worker slipped on scaffolding in heavy rain, no injury, harness worn",
                          injury=False, timestamp="2026-10-06T09:00:00")
     final = main.process_incident(incident, [], interactive=False)
@@ -66,7 +67,7 @@ def test_rain_is_carried_from_the_weather_step_into_lighting_and_severity(monkey
 
 
 def test_three_earlier_incidents_at_one_site_escalate_a_minor_one(monkeypatch):
-    flags = _flags(hazard_category="fall", injury_severity="none", working_at_height=False,
+    flags = _flags(hazard_category="fall", injury_treatment="none", elevated_places=[],
                    height_estimate_m=None, ppe_status="unspecified")
     _canned_ai(monkeypatch, flags)
     records = []

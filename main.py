@@ -37,18 +37,16 @@ def start_up() -> list:
 
 
 # Lennart
-# The mandatory AI call runs first. If it says this is not a real safety incident we stop
-# here, before the weather and web-search calls are spent on it; process_incident rejects it.
+# The mandatory AI call runs first. If logic_manager rejects the incident we stop here, before
+# the weather and web-search calls are spent on it; process_incident shows the reason.
 def enrich_record(record: dict, history_records: list | None = None) -> dict:
     enriched = dict(record)
 
     flags = ai_manager.extract_hazard_context_flags(str(record.get("description") or ""))
-    enriched["is_valid_incident"] = flags.get("is_valid_incident", True)
+    enriched["is_valid_incident"] = flags.get("is_valid_incident")
     enriched["invalid_reason"] = flags.get("invalid_reason")
-    if not enriched["is_valid_incident"]:
+    if not logic_manager.screen_incident(enriched)["accepted"]:
         return enriched
-
-    weather_relevant = bool(record.get("weather_relevant"))
 
     enriched["weather_available"] = False
     enriched["condition"] = None
@@ -56,7 +54,7 @@ def enrich_record(record: dict, history_records: list | None = None) -> dict:
     enriched["humidity_pct"] = None
     enriched["precipitation_mm"] = None
     enriched["enrichment_error"] = None
-    if weather_relevant:
+    if record.get("run_weather"):
         try:
             weather = ai_manager.get_weather(record.get("timestamp"), record.get("location", ""))
         except Exception as error:
@@ -71,15 +69,14 @@ def enrich_record(record: dict, history_records: list | None = None) -> dict:
             enriched["enrichment_error"] = "Weather data unavailable or invalid"
 
     enriched["hazard_category"] = flags["hazard_category"]
-    enriched["injury_severity"] = flags["injury_severity"]
-    enriched["working_at_height"] = flags["working_at_height"]
+    enriched["injury_treatment"] = flags["injury_treatment"]
+    enriched["equipment_mentioned"] = flags["equipment_mentioned"]
+    enriched["elevated_places"] = flags["elevated_places"]
     enriched["height_estimate_m"] = flags["height_estimate_m"]
-    enriched["heavy_machinery_present"] = flags["heavy_machinery_present"]
     enriched["ppe_status"] = flags["ppe_status"]
     enriched["context_flags_error"] = flags["context_flags_error"]
 
-    # Similar incidents — mutually exclusive with the weather call.
-    if not weather_relevant:
+    if record.get("run_similar"):
         enriched["similar_incidents_checked"] = True
         try:
             enriched.update(ai_manager.find_similar_incidents(enriched, history_records or []))
@@ -106,20 +103,18 @@ def enrich_record(record: dict, history_records: list | None = None) -> dict:
 
 
 # Lennart
-# Returns None, and saves nothing, when the AI says the text is not a real safety incident.
+# Returns None, and saves nothing, when logic_manager rejects the text as not a real safety incident.
 # interactive=False (batch, scripts, Docker) never waits on input() after a failed save.
 def process_incident(incident: dict, records: list, interactive: bool = True) -> dict | None:
     with_context = derive_context(incident)
     with io_manager.show_loading("AI is analysing the incident"):
         enriched = enrich_record(with_context, records)
-        is_valid = enriched.get("is_valid_incident", True)
-        if is_valid:
-            enriched = apply_lighting(apply_weather(enriched))
+        screening = logic_manager.screen_incident(enriched)
+        if screening["accepted"]:
+            enriched = logic_manager.apply_hazard_rules(apply_lighting(apply_weather(enriched)))
             enriched.update(generate_incident_review(enriched))
-    if not is_valid:
-        io_manager.display_message(
-            "Incident rejected: " + str(enriched.get("invalid_reason") or "not a workplace safety incident")
-        )
+    if not screening["accepted"]:
+        io_manager.display_message("Incident rejected: " + screening["reject_reason"])
         return None
 
     history = data_manager.query_by_location(
