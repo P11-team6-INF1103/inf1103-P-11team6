@@ -6,13 +6,14 @@ import data_manager
 import io_manager
 import logic_manager
 
+logger = logging.getLogger(__name__)
+
 decide_outcome = logic_manager.decide_outcome
 save_record = data_manager.save_record
 generate_incident_review = ai_manager.generate_incident_review
 SEVERITY_LEVELS = logic_manager.SEVERITY_LEVELS
 OUTCOME_ACTIONS = logic_manager.OUTCOME_ACTIONS
 
-# Not written yet (Darrel). Until they land, each step passes the record through unchanged.
 derive_context = logic_manager.derive_context
 apply_weather = logic_manager.apply_weather
 apply_lighting = logic_manager.apply_lighting
@@ -41,7 +42,7 @@ def start_up() -> list:
 def enrich_record(record: dict, history_records: list | None = None) -> dict:
     enriched = dict(record)
 
-    flags = ai_manager.extract_hazard_context_flags(record.get("description", ""))
+    flags = ai_manager.extract_hazard_context_flags(str(record.get("description") or ""))
     enriched["is_valid_incident"] = flags.get("is_valid_incident", True)
     enriched["invalid_reason"] = flags.get("invalid_reason")
     if not enriched["is_valid_incident"]:
@@ -56,7 +57,11 @@ def enrich_record(record: dict, history_records: list | None = None) -> dict:
     enriched["precipitation_mm"] = None
     enriched["enrichment_error"] = None
     if weather_relevant:
-        weather = ai_manager.get_weather(record.get("timestamp"), record.get("location", ""))
+        try:
+            weather = ai_manager.get_weather(record.get("timestamp"), record.get("location", ""))
+        except Exception as error:
+            logger.warning("Weather step failed: %s", error)
+            weather = None
         if weather is not None:
             enriched["weather_available"] = True
             enriched["temperature_c"] = weather["temperature_c"]
@@ -76,7 +81,12 @@ def enrich_record(record: dict, history_records: list | None = None) -> dict:
     # Similar incidents — mutually exclusive with the weather call.
     if not weather_relevant:
         enriched["similar_incidents_checked"] = True
-        enriched.update(ai_manager.find_similar_incidents(enriched, history_records or []))
+        try:
+            enriched.update(ai_manager.find_similar_incidents(enriched, history_records or []))
+        except Exception as error:
+            logger.warning("Similar-incidents step failed: %s", error)
+            enriched["similar_incidents"] = None
+            enriched["similar_incidents_error"] = f"Similar-incidents lookup failed: {error}"
     else:
         enriched["similar_incidents_checked"] = False
         enriched["similar_incidents"] = None
@@ -84,7 +94,13 @@ def enrich_record(record: dict, history_records: list | None = None) -> dict:
 
     # Web search — every incident: is this a known industry problem, and
     # similar real incidents with what was done about them.
-    enriched.update(ai_manager.search_web_for_similar_incidents(enriched))
+    try:
+        enriched.update(ai_manager.search_web_for_similar_incidents(enriched))
+    except Exception as error:
+        logger.warning("Web search step failed: %s", error)
+        enriched["web_industry_context"] = None
+        enriched["web_incidents"] = None
+        enriched["web_search_error"] = str(error)
 
     return enriched
 
