@@ -77,6 +77,16 @@ def get_monsoon_season(timestamp):
         return "southwest_monsoon"
     return "inter_monsoon"
 
+# darrel
+def derive_context(incident):
+    """Rules that need no API: weather relevance, time of day and monsoon
+    season. Run before ai_manager.enrich_record(). Returns a new dict."""
+    result = dict(incident)
+    result["weather_relevant"] = is_weather_relevant(incident)
+    result["time_of_day"] = get_time_of_day(incident.get("timestamp"))
+    result["monsoon_season"] = get_monsoon_season(incident.get("timestamp"))
+    return result
+
 #daniel
 def get_time_of_day(timestamp):
     try:
