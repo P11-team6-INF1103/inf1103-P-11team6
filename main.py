@@ -13,8 +13,8 @@ SEVERITY_LEVELS = logic_manager.SEVERITY_LEVELS
 OUTCOME_ACTIONS = logic_manager.OUTCOME_ACTIONS
 
 # Not written yet (Darrel). Until they land, each step passes the record through unchanged.
-derive_context = getattr(logic_manager, "derive_context", dict)
-apply_lighting = getattr(logic_manager, "apply_lighting", dict)
+derive_context = logic_manager.derive_context
+apply_lighting = logic_manager.apply_lighting
 
 
 # Lennart

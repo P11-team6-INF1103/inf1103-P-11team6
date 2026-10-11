@@ -1,4 +1,11 @@
+import re
 from datetime import datetime
+
+_WEATHER_WORDS = re.compile(
+    r"\b(rain|rainy|raining|wet|storm|stormy|wind|windy|flood|flooding|flooded|"
+    r"lightning|thunder|thunderstorm|haze|hazy|hot|heat|humid|humidity)\b",
+    re.IGNORECASE,
+)
 
 # classifications
 _TYPE_A_HAZARDS = ("fall_from_height", "vehicular", "struck_by_machinery")
@@ -46,6 +53,42 @@ def get_time_of_day(timestamp: str | None) -> str:
     if 18 <= hour < 20 or 5 <= hour < 7:
         return "dusk_dawn"
     return "night"
+
+def get_monsoon_season(timestamp: str | None) -> str:
+    try:
+        month = datetime.fromisoformat(timestamp).month
+    except (TypeError, ValueError):
+        return "inter_monsoon"
+    if month in (12, 1, 2, 3):
+        return "northeast_monsoon"
+    if 6 <= month <= 9:
+        return "southwest_monsoon"
+    return "inter_monsoon"
+
+def is_weather_relevant(record: dict) -> bool:
+    return bool(_WEATHER_WORDS.search(record.get("description", "")))
+
+def classify_lighting_condition(time_of_day: str, condition: str | None) -> str:
+    levels = ["daylight", "low_light", "dark"]
+    base = {"day": 0, "dusk_dawn": 1, "night": 2}.get(time_of_day, 0)
+    if condition == "rain":
+        base += 1
+    base = min(base, len(levels) - 1)
+    return levels[base]
+
+def derive_context(incident: dict) -> dict:
+    context = dict(incident)
+    context["weather_relevant"] = is_weather_relevant(incident)
+    context["time_of_day"] = get_time_of_day(incident.get("timestamp"))
+    context["monsoon_season"] = get_monsoon_season(incident.get("timestamp"))
+    return context
+
+def apply_lighting(enriched: dict) -> dict:
+    lit = dict(enriched)
+    lit["lighting_condition"] = classify_lighting_condition(
+        enriched.get("time_of_day", "day"), enriched.get("condition")
+    )
+    return lit
 
 def assess_severity(record: dict, weather_data: dict | None = None, history: list | None = None) -> dict:
     # Bad inputs are treated as empty rather than crashing the pipeline.
