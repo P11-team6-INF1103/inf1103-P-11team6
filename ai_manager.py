@@ -1,14 +1,12 @@
 
-import os
-import json
 import hashlib
+import json
 import logging
+import os
 
 import requests
 from dotenv import load_dotenv
 from google import genai
-
-import logic_manager
 
 load_dotenv()
 
@@ -49,19 +47,19 @@ _RESPONSE_CACHE = {}
 
 # Lennart
 
-def load_response_cache(cache):
+def load_response_cache(cache: dict) -> None:
     _RESPONSE_CACHE.clear()
     if isinstance(cache, dict):
         _RESPONSE_CACHE.update(cache)
 
 
-def export_response_cache():
+def export_response_cache() -> dict:
     return dict(_RESPONSE_CACHE)
 
 
-def _cache_key(kind, *parts):
+def _cache_key(kind: str, *parts: str) -> str:
     return kind + ":" + hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()
-def _get_gemini_client():
+def _get_gemini_client() -> object | None:
    
     try:
         return genai.Client(http_options={"retry_options": {"attempts": 1}, "timeout": 25000})
@@ -71,7 +69,7 @@ def _get_gemini_client():
 
 
 # Lennart
-def _parse_json_safe(text):
+def _parse_json_safe(text: str) -> object:
    
     cleaned = text.strip()
     if cleaned.startswith("```"):
@@ -81,7 +79,7 @@ def _parse_json_safe(text):
     return json.loads(cleaned)
 
 
-def _call_gemini(client, prompt, schema):
+def _call_gemini(client: object, prompt: str, schema: dict) -> str:
    
     last_error = None
     for model in GEMINI_MODELS:
@@ -104,7 +102,7 @@ def _call_gemini(client, prompt, schema):
             last_error = error
     raise RuntimeError(f"All Gemini models failed; last error: {last_error}")
 
-def _validate_schema(data, schema, path="response"):
+def _validate_schema(data: object, schema: dict, path: str = "response") -> None:
     type_checks = {
         "object": lambda v: isinstance(v, dict),
         "array": lambda v: isinstance(v, list),
@@ -133,19 +131,35 @@ def _validate_schema(data, schema, path="response"):
             _validate_schema(item, schema["items"], f"{path}[{index}]")
 
 
-def _gemini_json(client, prompt, schema):
+def _gemini_json(client: object, prompt: str, schema: dict) -> object:
     key = _cache_key("gemini", prompt, json.dumps(schema, sort_keys=True))
-    text = _RESPONSE_CACHE.get(key)
-    if text is None:
+    cached = _RESPONSE_CACHE.get(key)
+    if cached is not None:
+        try:
+            parsed = _parse_json_safe(cached)
+            _validate_schema(parsed, schema)
+            return parsed
+        except ValueError:
+            pass
+
+    # A reply that is not valid JSON or fails the schema is asked for once more.
+    last_error = None
+    for _attempt in range(2):
         text = _call_gemini(client, prompt, schema)
-    parsed = _parse_json_safe(text)
-    _validate_schema(parsed, schema)
-    _RESPONSE_CACHE[key] = text
-    return parsed
+        try:
+            parsed = _parse_json_safe(text)
+            _validate_schema(parsed, schema)
+        except ValueError as error:
+            logger.warning("Malformed Gemini reply: %s", error)
+            last_error = error
+            continue
+        _RESPONSE_CACHE[key] = text
+        return parsed
+    raise last_error
 
 
 # Lennart
-def extract_hazard_context_flags(description):
+def extract_hazard_context_flags(description: str) -> dict:
     defaults = {
         "hazard_category": None,
         "injury_severity": "unspecified",
@@ -248,16 +262,7 @@ def extract_hazard_context_flags(description):
         return result
 
 
-_WEATHER_KEYWORDS = (
-    "rain", "wet", "storm", "wind", "windy", "flood", "lightning",
-    "thunder", "haze", "hot", "heat", "humid",
-)
-
-def is_weather_relevant(record):
-    description = record.get("description", "").lower()
-    return any(keyword in description for keyword in _WEATHER_KEYWORDS)
-
-def call_weather_api(location):
+def call_weather_api(location: str) -> dict | None:
     try:
         response = requests.get(
             "https://api.open-meteo.com/v1/forecast",
@@ -272,47 +277,54 @@ def call_weather_api(location):
         response.raise_for_status()
         data = response.json()
         current = data.get("current", {})
-        precipitation = current.get("precipitation", 0) or 0
         return {
-            "condition": "rain" if precipitation > 0 else "clear",
             "temperature_c": current.get("temperature_2m"),
             "humidity_pct": current.get("relative_humidity_2m"),
+            "precipitation_mm": current.get("precipitation"),
         }
     except Exception:
         return None
 
 
-def validate_weather_response(response):
+def validate_weather_response(response: object) -> bool:
     if not isinstance(response, dict):
         return False
-    condition = response.get("condition")
     temperature_c = response.get("temperature_c")
     humidity_pct = response.get("humidity_pct")
-    if condition not in ("rain", "clear"):
+    precipitation_mm = response.get("precipitation_mm")
+    if not isinstance(precipitation_mm, (int, float)) or precipitation_mm < 0:
         return False
     if not isinstance(temperature_c, (int, float)) or not (-10 <= temperature_c <= 50):
         return False
-    if not isinstance(humidity_pct, (int, float)) or not (0 <= humidity_pct <= 100):
-        return False
-    return True
+    return isinstance(humidity_pct, (int, float)) and 0 <= humidity_pct <= 100
 
 
-def classify_lighting_condition(time_of_day, condition):
-    levels = ["daylight", "low_light", "dark"]
-    base = {"day": 0, "dusk_dawn": 1, "night": 2}.get(time_of_day, 0)
-    if condition == "rain":
-        base += 1
-    base = min(base, len(levels) - 1)
-    return levels[base]
+def get_weather(timestamp: str | None, location: str) -> dict | None:
+    # Same hour -> same cached answer on every run.
+    key = _cache_key("weather", str(timestamp or "")[:13])
+    weather = _RESPONSE_CACHE.get(key)
+    if not validate_weather_response(weather):
+        weather = call_weather_api(location)
+    if not validate_weather_response(weather):
+        return None
+    _RESPONSE_CACHE[key] = weather
+    return weather
 
-def find_similar_incidents(record):
-    history_records = data_manager.load_records()
+
+def find_similar_incidents(record: dict, history_records: list | None = None) -> dict:
+    result = {"similar_incidents": [], "similar_incidents_error": None}
+    history_records = history_records or []
     if not history_records:
-        return []
+        return result
 
     client = _get_gemini_client()
     if client is None:
-        raise RuntimeError("Gemini client unavailable (check GEMINI_API_KEY)")
+        logger.warning("Similar-incidents lookup skipped: Gemini client unavailable")
+        result["similar_incidents"] = None
+        result["similar_incidents_error"] = (
+            "Similar-incidents lookup failed: Gemini client unavailable (check GEMINI_API_KEY)"
+        )
+        return result
 
     # Keep the prompt small: the 10 most recent records only. Each gets an
     # id so a match can be tied back to the exact saved record.
@@ -354,8 +366,13 @@ def find_similar_incidents(record):
         "problem; pending_review = waiting for a manual review."
     )
 
-    parsed = _parse_json_safe(_call_gemini(client, prompt, schema))
-    _validate_schema(parsed, schema)
+    try:
+        parsed = _gemini_json(client, prompt, schema)
+    except Exception as error:
+        logger.warning("Similar-incidents lookup failed: %s", error)
+        result["similar_incidents"] = None
+        result["similar_incidents_error"] = f"Similar-incidents lookup failed: {error}"
+        return result
 
     # Only keep ids that point at a real saved record, and copy the facts
     # from that record rather than trusting anything the model wrote.
@@ -378,10 +395,11 @@ def find_similar_incidents(record):
             "outcome": saved.get("outcome", "log_only"),
             "resolution_notes": notes if isinstance(notes, str) else None,
         })
-    return matches
+    result["similar_incidents"] = matches
+    return result
 
 
-def _extract_json_object(text):
+def _extract_json_object(text: str) -> dict | None:
     start = text.find("{")
     end = text.rfind("}")
     if start == -1 or end <= start:
@@ -416,7 +434,20 @@ WEB_SEARCH_SCHEMA = {
 }
 
 
-def search_web_for_similar_incidents(record):
+def search_web_for_similar_incidents(record: dict) -> dict:
+    try:
+        web = _search_web(record)
+    except Exception as error:
+        logger.warning("Web search failed: %s", error)
+        return {"web_industry_context": None, "web_incidents": None, "web_search_error": str(error)}
+    return {
+        "web_industry_context": web["industry_context"],
+        "web_incidents": web["incidents"],
+        "web_search_error": None,
+    }
+
+
+def _search_web(record: dict) -> dict:
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         raise RuntimeError("GROQ_API_KEY is not set in .env")
@@ -492,7 +523,7 @@ def search_web_for_similar_incidents(record):
 
 
 #Ren Xiang
-def generate_incident_review(record):
+def generate_incident_review(record: dict) -> dict:
     """Asks Gemini for after-action review notes: the likely causes of the
     incident and practical steps to prevent it happening again, using
     everything already gathered (AI flags, weather, season, lighting,
@@ -578,86 +609,3 @@ def generate_incident_review(record):
         logger.warning("After-action review failed: %s", error)
         result["review_error"] = f"AI review failed: {error}"
     return result
-
-
-# Lennart
-def enrich_record(record, history_records=None):
-    enriched = dict(record)
-
-    # The mandatory AI call runs first. If it says this is not a real safety incident we stop
-    # here, before the weather and web-search calls are spent on it; process_incident rejects it.
-    flags = extract_hazard_context_flags(record.get("description", ""))
-    enriched["is_valid_incident"] = flags.get("is_valid_incident", True)
-    enriched["invalid_reason"] = flags.get("invalid_reason")
-    if not enriched["is_valid_incident"]:
-        return enriched
-
-    if "weather_relevant" in record:
-        weather_relevant = bool(record["weather_relevant"])
-    else:
-        weather_relevant = is_weather_relevant(record)
-
-    enriched["weather_available"] = False
-    enriched["condition"] = None
-    enriched["temperature_c"] = None
-    enriched["humidity_pct"] = None
-    enriched["enrichment_error"] = None
-    if weather_relevant:
-        # Same hour + same place -> same weather answer on every run.
-        weather_key = _cache_key("weather", str(record.get("timestamp", ""))[:13])
-        raw_weather = _RESPONSE_CACHE.get(weather_key)
-        if raw_weather is None:
-            raw_weather = call_weather_api(record.get("location", ""))
-        if raw_weather is not None and validate_weather_response(raw_weather):
-            _RESPONSE_CACHE[weather_key] = raw_weather
-            enriched["weather_available"] = True
-            enriched["condition"] = raw_weather["condition"]
-            enriched["temperature_c"] = raw_weather["temperature_c"]
-            enriched["humidity_pct"] = raw_weather["humidity_pct"]
-        else:
-            enriched["enrichment_error"] = "Weather data unavailable or invalid"
-
-    if "time_of_day" not in enriched:
-        enriched["time_of_day"] = logic_manager.get_time_of_day(record.get("timestamp"))
-    if "lighting_condition" not in enriched:
-        enriched["lighting_condition"] = classify_lighting_condition(
-            enriched["time_of_day"], enriched["condition"]
-        )
-
-    enriched["hazard_category"] = flags["hazard_category"]
-    enriched["injury_severity"] = flags["injury_severity"]
-    enriched["working_at_height"] = flags["working_at_height"]
-    enriched["height_estimate_m"] = flags["height_estimate_m"]
-    enriched["heavy_machinery_present"] = flags["heavy_machinery_present"]
-    enriched["ppe_status"] = flags["ppe_status"]
-    enriched["context_flags_error"] = flags["context_flags_error"]
-
-    # Similar incidents — mutually exclusive with the weather call.
-    if not weather_relevant:
-        enriched["similar_incidents_checked"] = True
-        try:
-            enriched["similar_incidents"] = find_similar_incidents(enriched, history_records or [])
-            enriched["similar_incidents_error"] = None
-        except Exception as error:
-            logger.warning("Similar-incidents lookup failed: %s", error)
-            enriched["similar_incidents"] = None
-            enriched["similar_incidents_error"] = f"Similar-incidents lookup failed: {error}"
-    else:
-        enriched["similar_incidents_checked"] = False
-        enriched["similar_incidents"] = None
-        enriched["similar_incidents_error"] = None
-
-    # Web search — every incident: is this a known industry problem, and
-    # similar real incidents with what was done about them.
-    try:
-        web = search_web_for_similar_incidents(enriched)
-        enriched["web_industry_context"] = web["industry_context"]
-        enriched["web_incidents"] = web["incidents"]
-        enriched["web_search_error"] = None
-    except Exception as error:
-        logger.warning("Web search failed: %s", error)
-        enriched["web_industry_context"] = None
-        enriched["web_incidents"] = None
-        enriched["web_search_error"] = str(error)
-
-    return enriched

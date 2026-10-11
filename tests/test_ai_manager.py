@@ -39,15 +39,70 @@ def test_flags_treat_a_reply_without_the_new_field_or_an_ai_outage_as_valid():
         assert ai_manager.extract_hazard_context_flags("Worker fell")["is_valid_incident"] is True
 
 
-def test_enrich_record_stops_early_when_incident_is_invalid():
-    flags = {"hazard_category": "other", "injury_severity": "none", "working_at_height": False,
-             "height_estimate_m": None, "heavy_machinery_present": False, "ppe_status": "unspecified",
-             "is_valid_incident": False, "invalid_reason": "not an incident", "context_flags_error": None}
-    boom = mock.Mock(side_effect=AssertionError("should not be called for an invalid incident"))
-    with mock.patch.object(ai_manager, "extract_hazard_context_flags", return_value=flags), \
-            mock.patch.object(ai_manager, "call_weather_api", boom), \
-            mock.patch.object(ai_manager, "find_similar_incidents", boom), \
-            mock.patch.object(ai_manager, "search_web_for_similar_incidents", boom), \
-            mock.patch.object(ai_manager, "generate_incident_review", boom):
-        result = ai_manager.enrich_record(_incident("asdf qwerty banana", weather_relevant=True), [])
-    assert result["is_valid_incident"] is False and result["invalid_reason"] == "not an incident"
+def test_get_weather_returns_raw_numbers_and_caches_them_per_hour():
+    ai_manager.load_response_cache({})
+    raw = {"temperature_c": 30, "humidity_pct": 80, "precipitation_mm": 0.4}
+    with mock.patch.object(ai_manager, "call_weather_api", return_value=raw) as call:
+        assert ai_manager.get_weather("2026-09-27T20:44:10", "Site A") == raw
+        assert ai_manager.get_weather("2026-09-27T20:59:00", "Site A") == raw
+    assert call.call_count == 1
+    with mock.patch.object(ai_manager, "call_weather_api", return_value={"temperature_c": 99}):
+        assert ai_manager.get_weather("2026-09-28T01:00:00", "Site A") is None
+
+
+def test_gemini_json_asks_once_more_when_the_reply_is_malformed():
+    ai_manager.load_response_cache({})
+    schema = {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"]}
+    replies = ["not json at all", json.dumps({"ok": True})]
+    with mock.patch.object(ai_manager, "_call_gemini", side_effect=replies) as call:
+        assert ai_manager._gemini_json(object(), "prompt", schema) == {"ok": True}
+    assert call.call_count == 2
+
+
+def test_gemini_json_gives_up_after_one_retry():
+    ai_manager.load_response_cache({})
+    schema = {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"]}
+    with mock.patch.object(ai_manager, "_call_gemini", return_value=json.dumps({"ok": "yes"})) as call:
+        try:
+            ai_manager._gemini_json(object(), "prompt", schema)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("expected ValueError")
+    assert call.call_count == 2
+
+
+_HISTORY = [{"description": "Worker fell from scaffolding", "hazard_type": "fall_from_height", "outcome": "log_only"}]
+
+
+def test_find_similar_incidents_asks_once_more_when_the_reply_is_malformed():
+    ai_manager.load_response_cache({})
+    replies = ["not json at all", json.dumps([{"id": 0, "resolution_notes": "Recorded only."}])]
+    with mock.patch.object(ai_manager, "_get_gemini_client", return_value=object()), \
+            mock.patch.object(ai_manager, "_call_gemini", side_effect=replies) as call:
+        result = ai_manager.find_similar_incidents(_incident(), _HISTORY)
+    assert call.call_count == 2
+    assert result["similar_incidents_error"] is None
+    assert result["similar_incidents"][0]["description"] == "Worker fell from scaffolding"
+
+
+def test_find_similar_incidents_never_raises():
+    ai_manager.load_response_cache({})
+    with mock.patch.object(ai_manager, "_get_gemini_client", return_value=object()), \
+            mock.patch.object(ai_manager, "_call_gemini", side_effect=RuntimeError("quota")):
+        result = ai_manager.find_similar_incidents(_incident(), _HISTORY)
+    assert result["similar_incidents"] is None and "quota" in result["similar_incidents_error"]
+    with mock.patch.object(ai_manager, "_get_gemini_client", return_value=None):
+        assert ai_manager.find_similar_incidents(_incident(), _HISTORY)["similar_incidents"] is None
+    assert ai_manager.find_similar_incidents(_incident(), []) == {
+        "similar_incidents": [], "similar_incidents_error": None}
+
+
+def test_web_search_never_raises():
+    with mock.patch.object(ai_manager, "_search_web", side_effect=RuntimeError("Groq down")):
+        result = ai_manager.search_web_for_similar_incidents(_incident())
+    assert result == {"web_industry_context": None, "web_incidents": None, "web_search_error": "Groq down"}
+    web = {"industry_context": "Common problem.", "incidents": []}
+    with mock.patch.object(ai_manager, "_search_web", return_value=web):
+        result = ai_manager.search_web_for_similar_incidents(_incident())
+    assert result["web_industry_context"] == "Common problem." and result["web_search_error"] is None
