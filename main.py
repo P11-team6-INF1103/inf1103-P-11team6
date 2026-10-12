@@ -193,6 +193,24 @@ def run_batch(path: str) -> int:
 
 
 # Lennart
+def show_summary() -> list:
+    """Menu option 2: reloads the saved incidents, shows the summary and returns them."""
+    records = data_manager.load_records()
+    io_manager.display_summary(records, SEVERITY_LEVELS, OUTCOME_ACTIONS)
+    return records
+
+
+# Lennart
+def run_location_query(records: list) -> None:
+    """Menu option 3: asks for a location and a number of days and shows the incidents found."""
+    query = io_manager.get_location_query(data_manager.list_locations(records))
+    if query is None:
+        return
+    location, days = query
+    io_manager.display_query_results(data_manager.query_by_location(location, days))
+
+
+# Lennart
 def main() -> None:
     """The interactive menu loop: log an incident, view the summary, query by location, exit."""
     records = start_up()
@@ -201,14 +219,9 @@ def main() -> None:
         if choice == "1":
             log_incident_flow(records)
         elif choice == "2":
-            records = data_manager.load_records()
-            io_manager.display_summary(records, SEVERITY_LEVELS, OUTCOME_ACTIONS)
+            records = show_summary()
         elif choice == "3":
-            query = io_manager.get_location_query(data_manager.list_locations(records))
-            if query is None:
-                continue
-            location, days = query
-            io_manager.display_query_results(data_manager.query_by_location(location, days))
+            run_location_query(records)
         elif choice == "4":
             io_manager.display_message("Goodbye.")
             break
