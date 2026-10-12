@@ -1,6 +1,6 @@
 # Failed-API test scenarios
 
-Run from the `secret/` folder with the venv active. Always back up `.env` first (`cp .env .env.bak`) and restore after.
+Run from the project folder with the venv active. Always back up `.env` first (`cp .env .env.bak`) and restore after.
 Use this incident for every scenario (menu option 1):
 
 - What happened: `Worker slipped on a wet floor near the stairwell`
@@ -26,4 +26,4 @@ Checks for every scenario:
 3. The incident still appears in the summary (menu option 2) and in `data/incidents.json`.
 4. Technical detail IS in `data/app.log`.
 
-Automated checks: `python -m unittest discover -s tests -t . -p "test_*.py"` (new file: `tests/test_failure_messages.py`).
+Automated checks: `pytest tests/` (every test runs offline with no API keys).

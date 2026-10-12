@@ -20,7 +20,7 @@ def test_time_of_day_and_season_and_lighting():
     assert lm.get_monsoon_season("2026-01-10T00:00:00") == "northeast_monsoon"
     assert lm.get_monsoon_season("2026-07-10T00:00:00") == "southwest_monsoon"
     assert lm.get_monsoon_season("2026-11-10T00:00:00") == "inter_monsoon"
-    assert lm.get_monsoon_season("garbage") == "inter_monsoon"  # never depends on today's date
+    assert lm.get_monsoon_season("garbage") == "inter_monsoon"
     assert lm.classify_lighting_condition("day", "clear") == "daylight"
     assert lm.classify_lighting_condition("day", "rain") == "low_light"
     assert lm.classify_lighting_condition("night", "rain") == "dark"

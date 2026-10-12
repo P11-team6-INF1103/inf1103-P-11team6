@@ -10,7 +10,7 @@ _WEATHER_WORDS = re.compile(
     re.IGNORECASE,
 )
 
-# classifications
+# MOM "Type A" hazard types: the ones with a higher fatality risk.
 _TYPE_A_HAZARDS = ("fall_from_height", "vehicular", "struck_by_machinery")
 
 _INJURY_POINTS = {"none": 0, "unspecified": 0, "first_aid": 1, "hospital": 2}
@@ -61,10 +61,10 @@ OUTCOME_ACTIONS = {
     "pending_review": "The AI could not assess it; a person must review it manually.",
 }
 
-#daniel
+
+# Daniel
+# 'day', 'dusk_dawn' or 'night' from the timestamp hour; an unreadable timestamp counts as 'day'.
 def get_time_of_day(timestamp: str | None) -> str:
-    """'day' (07:00-17:59), 'dusk_dawn' (05:00-06:59 and 18:00-19:59) or
-    'night'. An unreadable timestamp counts as 'day'."""
     try:
         hour = datetime.fromisoformat(timestamp).hour
     except (TypeError, ValueError):
@@ -75,14 +75,10 @@ def get_time_of_day(timestamp: str | None) -> str:
         return "dusk_dawn"
     return "night"
 
-# darrel
+
+# Ren Xiang
+# Singapore's monsoon season for the incident date (context only); an unreadable timestamp gives 'inter_monsoon'.
 def get_monsoon_season(timestamp: str | None) -> str:
-    """Pure function. Returns Singapore's monsoon season for the incident
-    date, using the Meteorological Service Singapore calendar:
-    'northeast_monsoon' (Dec to early Mar), 'inter_monsoon' (late Mar to
-    May, Oct to Nov), 'southwest_monsoon' (Jun to Sep). Context only,
-    never used to score. An unreadable timestamp falls back to the
-    inter-monsoon label so the result never depends on today's date."""
     try:
         when = datetime.fromisoformat(timestamp)
     except (TypeError, ValueError):
@@ -94,29 +90,22 @@ def get_monsoon_season(timestamp: str | None) -> str:
         return "southwest_monsoon"
     return "inter_monsoon"
 
-# darrel
+
+# Darrel
+# True if the description mentions weather, so the weather API should be called.
 def is_weather_relevant(record: dict) -> bool:
-    """Whole-word keyword match on the description: does weather context
-    matter for this incident? Decides whether the weather API is called
-    (and, because the two are mutually exclusive, whether similar past
-    incidents are searched instead)."""
     return bool(_WEATHER_WORDS.search(str(record.get("description", ""))))
 
-#darrel
+
+# Decides which optional lookups to run: weather when it matters, otherwise similar past incidents.
 def plan_enrichment(record: dict) -> dict:
-    """Which optional lookups ai_manager.enrich_record() should make for this
-    incident. Returns {"run_weather": bool, "run_similar": bool}. When
-    weather matters the weather API is called and similar past incidents are
-    skipped; otherwise the other way round. The web search always runs, so
-    it needs no flag."""
     relevant = is_weather_relevant(record)
     return {"run_weather": relevant, "run_similar": not relevant}
 
 
-# darrel
+# Darrel
+# 'daylight', 'low_light' or 'dark': one step darker than the time of day when it is raining.
 def classify_lighting_condition(time_of_day: str, condition: str | None) -> str:
-    """One step darker than time_of_day if weather cuts visibility. Never
-    returns None."""
     levels = ["daylight", "low_light", "dark"]
     base = {"day": 0, "dusk_dawn": 1, "night": 2}.get(time_of_day, 0)
     if condition == "rain":
@@ -124,19 +113,18 @@ def classify_lighting_condition(time_of_day: str, condition: str | None) -> str:
     base = min(base, len(levels) - 1)
     return levels[base]
 
+
+# Turns precipitation_mm into condition ('rain' or 'clear'); returns a new dict.
 def apply_weather(enriched: dict) -> dict:
-    """Turns precipitation_mm into condition ('rain' or 'clear'). Leaves
-    condition alone when there is no usable number. Returns a new dict."""
     result = dict(enriched)
     precipitation_mm = enriched.get("precipitation_mm")
     if isinstance(precipitation_mm, (int, float)):
         result["condition"] = "rain" if precipitation_mm > 0 else "clear"
     return result
 
+
+# Adds what needs no API (weather relevance, lookup plan, time of day, monsoon season); returns a new dict.
 def derive_context(incident: dict) -> dict:
-    """Rules that need no API: weather relevance, which lookups to make
-    (run_weather, run_similar), time of day and monsoon season. Run before
-    ai_manager.enrich_record(). Returns a new dict."""
     result = dict(incident)
     result["weather_relevant"] = is_weather_relevant(incident)
     result.update(plan_enrichment(incident))
@@ -145,28 +133,24 @@ def derive_context(incident: dict) -> dict:
     return result
 
 
+# Adds lighting_condition from the time of day and the weather; returns a new dict.
 def apply_lighting(enriched: dict) -> dict:
-    """Adds lighting_condition from time_of_day and condition. Returns a new dict."""
     lit = dict(enriched)
     lit["lighting_condition"] = classify_lighting_condition(
         enriched.get("time_of_day", "day"), enriched.get("condition")
     )
     return lit
 
+
+# The non-empty strings in a list, stripped and lower-cased; anything else is ignored.
 def _text_list(value: object) -> list[str]:
-    """The non-empty strings in a list, lower-cased; anything else is ignored."""
     if not isinstance(value, list):
         return []
     return [item.strip().lower() for item in value if isinstance(item, str) and item.strip()]
 
+
+# Adds working_at_height and heavy_machinery_present from the AI's elevated-place and equipment lists; returns a new dict.
 def apply_hazard_rules(enriched: dict) -> dict:
-    """Adds working_at_height and heavy_machinery_present from the AI's raw
-    lists. Working at height: the AI named at least one elevated place the
-    person was on or fell from. Heavy machinery: any named equipment contains
-    a word from _HEAVY_MACHINERY_WORDS. If the AI failed the lists are empty
-    and both are False, the same as before. Run after
-    ai_manager.enrich_record() and before assess_severity() and the review.
-    Returns a new dict."""
     result = dict(enriched)
     equipment = _text_list(enriched.get("equipment_mentioned"))
     places = _text_list(enriched.get("elevated_places"))
@@ -176,9 +160,9 @@ def apply_hazard_rules(enriched: dict) -> dict:
     )
     return result
 
+
+# Starting severity and its reasons from what happened to the person (5 if someone died).
 def _score_injury(record: dict) -> tuple[int, list[str]]:
-    """Starting severity and its reasons from what happened to the person:
-    1 for no or unknown injury, more for treatment, 5 if someone died."""
     injury_treatment = record.get("injury_treatment", "unspecified")
     if injury_treatment == "died":
         return MAX_SEVERITY, ["Someone died (set to 5)"]
@@ -194,9 +178,8 @@ def _score_injury(record: dict) -> tuple[int, list[str]]:
     return severity, reasons
 
 
+# Points added or removed by the hazard type and the site conditions, with a reason for each.
 def _score_conditions(record: dict, weather_data: dict, hazard_type: str, similar_escalated: bool) -> tuple[int, list[str]]:
-    """Points added (or, for PPE worn, taken away) by the hazard type and the
-    conditions on site, with a reason for each. Returns (change, reasons)."""
     at_height = record.get("working_at_height")
     machinery = record.get("heavy_machinery_present")
     ppe_not_worn = record.get("ppe_status") == "not_worn"
@@ -231,16 +214,15 @@ def _score_conditions(record: dict, weather_data: dict, hazard_type: str, simila
     return change, reasons
 
 
+# Total severity capped to 1-5, with the plain-English reason for every point.
 def _score_severity(record: dict, weather_data: dict, hazard_type: str, similar_escalated: bool) -> tuple[int, list[str]]:
-    """Additive severity score, capped to 1-5, and the plain-English reason
-    for every point added or taken away. Pure: reads the record, changes nothing."""
     severity, reasons = _score_injury(record)
     change, condition_reasons = _score_conditions(record, weather_data, hazard_type, similar_escalated)
     return max(1, min(severity + change, MAX_SEVERITY)), reasons + condition_reasons
 
 
+# 'low', 'medium' or 'high' chance of this kind of incident happening again.
 def _recurrence_level(severity: int, poor_light: bool, history: list, similar_escalated: bool) -> str:
-    """'low', 'medium' or 'high' chance this kind of incident happens again."""
     if severity >= HIGH_SEVERITY or len(history) >= SYSTEMIC_INCIDENT_COUNT or similar_escalated:
         return "high"
     if poor_light or len(history) >= 1:
@@ -248,14 +230,9 @@ def _recurrence_level(severity: int, poor_light: bool, history: list, similar_es
     return "low"
 
 
+# Daniel
+# Scores one enriched incident (hazard type, severity 1-5, recurrence, reasons); sets assessment_error instead of guessing if the AI failed.
 def assess_severity(record: dict, weather_data: dict | None = None, history: list | None = None) -> dict:
-    """Scores one AI-enriched incident. Adds hazard_type, severity_estimate
-    (1-5), likelihood_recurrence, severity_reasons and assessment_error.
-    weather_data is the condition the score may use; history is this
-    location's earlier incidents (query_by_location). If the AI extraction
-    failed or has no hazard_category, nothing is guessed: severity is 0,
-    assessment_error says why, and decide_outcome() sends it to
-    pending_review. Returns a new dict."""
     weather_data = weather_data or {}
     history = history or []
 
@@ -285,23 +262,24 @@ def assess_severity(record: dict, weather_data: dict | None = None, history: lis
     return result
 
 
+# Darrel
+# Rule 1: severity 4 or more, or an injury with high recurrence likelihood.
 def is_high_severity(record: dict) -> bool:
-    """Rule 1: severity 4 or more, or an injury with high recurrence likelihood."""
     severity = record.get("severity_estimate", 0)
     injury = record.get("injury", False)
     recurrence = record.get("likelihood_recurrence", "unknown")
     return severity >= HIGH_SEVERITY or (injury and recurrence == "high")
 
 
+# Sufi
+# Rule 2: this location already has 3 or more incidents in the history window.
 def is_systemic_risk(record: dict, history: list) -> bool:
-    """Rule 2: this location already has 3 or more incidents in the window
-    the caller passed as history (30 days)."""
     return len(history) >= SYSTEMIC_INCIDENT_COUNT
 
 
+# Sufi
+# Picks the outcome in order: pending_review, stop_work_review, systemic_escalation, log_only.
 def decide_outcome(record: dict, history: list) -> str:
-    """The final call: 'pending_review' (could not assess), 'stop_work_review'
-    (Rule 1), 'systemic_escalation' (Rule 2) or 'log_only'. Checked in that order."""
     if record.get("assessment_error"):
         return "pending_review"
     if is_high_severity(record):
@@ -311,11 +289,8 @@ def decide_outcome(record: dict, history: list) -> str:
     return "log_only"
 
 
+# Rejects an incident only when the AI said it is not a real safety incident; accepts it if the AI is down.
 def screen_incident(record: dict) -> dict:
-    """Accepts or rejects an incident before any scoring. Returns
-    {"accepted": bool, "reject_reason": str or None}. Rejects only when the
-    AI said is_valid_incident is False; None (AI down) is accepted so a real
-    incident is never lost because of an outage."""
     if not isinstance(record, dict) or record.get("is_valid_incident") is not False:
         return {"accepted": True, "reject_reason": None}
     reason = str(record.get("invalid_reason") or "").strip()
