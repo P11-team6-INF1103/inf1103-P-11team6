@@ -340,25 +340,22 @@ def _friendly_problems(record: dict) -> list:
         problems.append(_KEY_HINT)
     return problems
 
-# Print incident report
-def _print_incident_report(record: dict, severity_levels: dict | None = None, outcome_actions: dict | None = None, number: int | None = None) -> None:
-    severity_levels = severity_levels or {}
-    outcome_actions = outcome_actions or {}
-    width = _report_width()
-
+def _print_report_header(record: dict, width: int, number: int | None) -> None:
+    """The report banner and the 'what was logged' fields."""
     title = f"INCIDENT #{number}" if number else "INCIDENT REPORT"
     print("═" * width)
     print(f" {title}   {record.get('location')}   {_format_time(record.get('timestamp'))}")
     print("═" * width)
 
-    # --- What was logged ---
     hazard = record.get("hazard_type")
     _field("What happened", record.get("description"), width, indent=1, label_width=15)
     _field("Reported by", record.get("reporter_role"), width, indent=1, label_width=15)
     _field("Anyone injured", "Yes" if record.get("injury") else "No", width, indent=1, label_width=15)
     _field("Type of hazard", _HAZARD_NAMES.get(hazard, hazard), width, indent=1, label_width=15)
 
-    # --- Severity and action ---
+
+def _print_severity_section(record: dict, width: int, severity_levels: dict, outcome_actions: dict) -> None:
+    """Severity gauge, the reasons behind it, how likely it is to recur, and the action to take."""
     outcome = record.get("outcome")
     severity = record.get("severity_estimate")
     _section("SEVERITY AND ACTION", width)
@@ -380,7 +377,9 @@ def _print_incident_report(record: dict, severity_levels: dict | None = None, ou
     if outcome in outcome_actions:
         _field("", outcome_actions[outcome], width)
 
-    # --- Weather: only when it was checked ---
+
+def _print_weather_section(record: dict, width: int) -> None:
+    """Weather and season at the time; nothing if the weather was not checked."""
     if record.get("weather_available"):
         _section("WEATHER AT THE TIME", width)
         _field("Conditions", (
@@ -390,12 +389,13 @@ def _print_incident_report(record: dict, severity_levels: dict | None = None, ou
         if record.get("monsoon_season") in _SEASON_TEXT:
             _field("Season", _SEASON_TEXT[record["monsoon_season"]], width)
 
-    # --- Known industry issue (web) ---
+
+def _print_web_sections(record: dict, width: int) -> None:
+    """The web-search evidence: is this a known industry issue, and similar incidents reported elsewhere."""
     if record.get("web_industry_context"):
         _section("IS THIS A KNOWN ISSUE IN THE INDUSTRY?", width)
         _field("", record["web_industry_context"], width, label_width=0)
 
-    # --- Similar real incidents (web) ---
     if record.get("web_incidents"):
         _section("SIMILAR INCIDENTS REPORTED ELSEWHERE", width)
         for i, item in enumerate(record["web_incidents"], start=1):
@@ -407,7 +407,9 @@ def _print_incident_report(record: dict, severity_levels: dict | None = None, ou
             if i < len(record["web_incidents"]):
                 print()
 
-    # --- Similar incidents on our own sites ---
+
+def _print_similar_sites_section(record: dict, width: int) -> None:
+    """Similar incidents found in our own saved records."""
     if record.get("similar_incidents"):
         _section("SIMILAR INCIDENTS ON OUR OWN SITES", width)
         for i, item in enumerate(record["similar_incidents"], start=1):
@@ -418,7 +420,9 @@ def _print_incident_report(record: dict, severity_levels: dict | None = None, ou
                 initial_indent=f"  {i}. ", subsequent_indent="     ", break_long_words=False))
             _field("Action taken", outcome_name, width, indent=5)
 
-    # --- After-action review (AI) ---
+
+def _print_review_sections(record: dict, width: int) -> None:
+    """The AI after-action review: likely causes and prevention actions."""
     if record.get("review_likely_causes"):
         _section("WHY IT LIKELY HAPPENED", width)
         _field("", record["review_likely_causes"], width, label_width=0)
@@ -426,7 +430,9 @@ def _print_incident_report(record: dict, severity_levels: dict | None = None, ou
         _section("HOW TO PREVENT IT", width)
         _field("", record["review_prevention_actions"], width, label_width=0)
 
-    # --- Anything the AI couldn't do, in one place ---
+
+def _print_problems_section(record: dict, width: int) -> None:
+    """Everything the AI could not do, in one place; nothing if every step worked."""
     problems = _friendly_problems(record)
     if record.get("assessment_error"):
         problems.append(f"Assessment: {record['assessment_error']}")
@@ -439,6 +445,22 @@ def _print_incident_report(record: dict, severity_levels: dict | None = None, ou
     if problems:
         _section("NOTE: SOME AI STEPS DID NOT WORK", width)
         _field("", problems, width, label_width=0)
+
+
+def _print_incident_report(record: dict, severity_levels: dict | None = None, outcome_actions: dict | None = None, number: int | None = None) -> None:
+    """Prints the full report for one incident, one section after another.
+    Sections with nothing to show are left out."""
+    severity_levels = severity_levels or {}
+    outcome_actions = outcome_actions or {}
+    width = _report_width()
+
+    _print_report_header(record, width, number)
+    _print_severity_section(record, width, severity_levels, outcome_actions)
+    _print_weather_section(record, width)
+    _print_web_sections(record, width)
+    _print_similar_sites_section(record, width)
+    _print_review_sections(record, width)
+    _print_problems_section(record, width)
     print("═" * width)
     print()
 
@@ -474,17 +496,8 @@ def _print_table(headers: list, rows: list, widths: list) -> None:
     print(line("└", "┴", "┘"))
 
 
-# Totals and one table row per incident, then the severity guide.
-# When `interactive`, an incident # can be typed to open its full report.
-def display_summary(records: list, severity_levels: dict | None = None, outcome_actions: dict | None = None, interactive: bool = True) -> None:
-    """Prints counts by outcome and hazard and a table of all incidents, pending review first, then highest severity. interactive=True can offer to open a full report."""
-    print("\n" + "#" * _WIDTH)
-    print("INCIDENT SUMMARY / AFTER-ACTION REVIEW")
-    print("#" * _WIDTH)
-    if not records:
-        print("No incidents logged yet.")
-        return
-
+def _count_by_outcome_and_hazard(records: list) -> tuple[dict, dict]:
+    """How many incidents have each outcome and each hazard, by display name."""
     outcome_counts = {}
     hazard_counts = {}
     for record in records:
@@ -493,10 +506,24 @@ def display_summary(records: list, severity_levels: dict | None = None, outcome_
         outcome_counts[outcome] = outcome_counts.get(outcome, 0) + 1
         hazard_counts[hazard] = hazard_counts.get(hazard, 0) + 1
 
-    print(f"Total incidents: {len(records)}")
-    print("By action: " + ", ".join(f"{k} ({v})" for k, v in sorted(outcome_counts.items())))
-    print("By hazard: " + ", ".join(f"{k} ({v})" for k, v in sorted(hazard_counts.items())))
+    return outcome_counts, hazard_counts
 
+
+def _summary_columns() -> list[int]:
+    """Column widths for the summary table; Location and Description share
+    whatever width the terminal has left after the fixed columns."""
+    fixed = [3, 11, 18, 3, 13]
+    total_width = max(shutil.get_terminal_size((100, 24)).columns, 100)
+    spare = total_width - sum(fixed) - (3 * 7 + 1)
+    location_width = max(spare * 2 // 5, 12)
+    description_width = max(spare - location_width, 20)
+    widths = [fixed[0], fixed[1], location_width, fixed[2], fixed[3], fixed[4], description_width]
+    return widths
+
+
+def _summary_rows(records: list) -> list[list]:
+    """One table row per incident, numbered in saved order but sorted so
+    incidents needing manual review come first, then the most severe."""
     ordered = sorted(
         enumerate(records, start=1),
         key=lambda pair: (
@@ -505,14 +532,6 @@ def display_summary(records: list, severity_levels: dict | None = None, outcome_
         ),
         reverse=True,
     )
-
-    # Fixed-width columns first; Location and Description share what is left.
-    fixed = [3, 11, 18, 3, 13]
-    total_width = max(shutil.get_terminal_size((100, 24)).columns, 100)
-    spare = total_width - sum(fixed) - (3 * 7 + 1)
-    location_width = max(spare * 2 // 5, 12)
-    description_width = max(spare - location_width, 20)
-    widths = [fixed[0], fixed[1], location_width, fixed[2], fixed[3], fixed[4], description_width]
 
     rows = []
     for number, record in ordered:
@@ -528,15 +547,13 @@ def display_summary(records: list, severity_levels: dict | None = None, outcome_
             _OUTCOME_SHORT.get(outcome, outcome),
             record.get("description"),
         ])
+    return rows
 
-    print("\nOVERVIEW (needs manual review first, then most severe)")
-    _print_table(["#", "When", "Location", "Hazard", "Sev", "Action", "What happened"], rows, widths)
 
-    if severity_levels:
-        display_severity_guide(severity_levels)
-
-    print()
-    while interactive:
+def _open_report_loop(records: list, severity_levels: dict | None, outcome_actions: dict | None) -> None:
+    """Asks for an incident number and prints its full report, until the user
+    presses Enter (or input ends)."""
+    while True:
         try:
             choice = input("Enter an incident # for its full report (or press Enter to go back): ").strip()
         except EOFError:
@@ -549,6 +566,70 @@ def display_summary(records: list, severity_levels: dict | None = None, outcome_
                                    number=int(choice))
         else:
             print(f"Please enter a number from 1 to {len(records)}.")
+
+
+# Totals and one table row per incident, then the severity guide.
+# When `interactive`, an incident # can be typed to open its full report.
+def display_summary(records: list, severity_levels: dict | None = None, outcome_actions: dict | None = None, interactive: bool = True) -> None:
+    """Prints counts by outcome and hazard and a table of all incidents, pending review first, then highest severity. interactive=True can offer to open a full report."""
+    print("\n" + "#" * _WIDTH)
+    print("INCIDENT SUMMARY / AFTER-ACTION REVIEW")
+    print("#" * _WIDTH)
+    if not records:
+        print("No incidents logged yet.")
+        return
+
+    outcome_counts, hazard_counts = _count_by_outcome_and_hazard(records)
+    print(f"Total incidents: {len(records)}")
+    print("By action: " + ", ".join(f"{k} ({v})" for k, v in sorted(outcome_counts.items())))
+    print("By hazard: " + ", ".join(f"{k} ({v})" for k, v in sorted(hazard_counts.items())))
+
+    print("\nOVERVIEW (needs manual review first, then most severe)")
+    _print_table(["#", "When", "Location", "Hazard", "Sev", "Action", "What happened"],
+                 _summary_rows(records), _summary_columns())
+
+    if severity_levels:
+        display_severity_guide(severity_levels)
+
+    print()
+    if interactive:
+        _open_report_loop(records, severity_levels, outcome_actions)
+
+
+def _validate_incident_item(item: dict) -> tuple[dict | None, list[str]]:
+    """Checks one batch item with the same rules as typed input. Returns
+    (incident, []) when it is valid, or (None, the names of the bad fields).
+    A missing timestamp becomes the current time; 'yes'/'no' is accepted for injury."""
+    bad = []
+    for key, check in (("description", _check_description),
+                       ("location", _check_location),
+                       ("reporter_role", _check_role)):
+        if not isinstance(item.get(key), str):
+            bad.append(key)
+            continue
+        item[key] = _sanitise(item[key]).strip()
+        error = check(item[key])
+        if error:
+            bad.append(f"{key} ({error})")
+    injury = item.get("injury")
+    if isinstance(injury, str) and injury.strip().lower() in ("yes", "y", "no", "n"):
+        injury = injury.strip().lower() in ("yes", "y")
+    if not isinstance(injury, bool):
+        bad.append("injury (true/false)")
+    timestamp = item.get("timestamp") or datetime.now().isoformat()
+    try:
+        datetime.fromisoformat(timestamp)
+    except (TypeError, ValueError):
+        bad.append("timestamp (ISO format)")
+    if bad:
+        return None, bad
+    return {
+        "description": item["description"],
+        "location": item["location"],
+        "reporter_role": item["reporter_role"],
+        "injury": injury,
+        "timestamp": timestamp,
+    }, []
 
 
 # Batch mode: reads a JSON list of incidents and validates each one like typed input.
@@ -568,35 +649,9 @@ def read_incident_file(path: str) -> tuple[list, list]:
         if not isinstance(item, dict):
             problems.append(f"Item {number}: not an object")
             continue
-        missing = []
-        for key, check in (("description", _check_description),
-                           ("location", _check_location),
-                           ("reporter_role", _check_role)):
-            if not isinstance(item.get(key), str):
-                missing.append(key)
-                continue
-            item[key] = _sanitise(item[key]).strip()
-            error = check(item[key])
-            if error:
-                missing.append(f"{key} ({error})")
-        injury = item.get("injury")
-        if isinstance(injury, str) and injury.strip().lower() in ("yes", "y", "no", "n"):
-            injury = injury.strip().lower() in ("yes", "y")
-        if not isinstance(injury, bool):
-            missing.append("injury (true/false)")
-        timestamp = item.get("timestamp") or datetime.now().isoformat()
-        try:
-            datetime.fromisoformat(timestamp)
-        except (TypeError, ValueError):
-            missing.append("timestamp (ISO format)")
-        if missing:
-            problems.append(f"Item {number}: missing or invalid " + ", ".join(missing))
-            continue
-        incidents.append({
-            "description": item["description"],
-            "location": item["location"],
-            "reporter_role": item["reporter_role"],
-            "injury": injury,
-            "timestamp": timestamp,
-        })
+        incident, bad = _validate_incident_item(item)
+        if incident is None:
+            problems.append(f"Item {number}: missing or invalid " + ", ".join(bad))
+        else:
+            incidents.append(incident)
     return incidents, problems

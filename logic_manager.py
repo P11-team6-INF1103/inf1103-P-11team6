@@ -176,53 +176,67 @@ def apply_hazard_rules(enriched: dict) -> dict:
     )
     return result
 
-def _score_severity(record: dict, weather_data: dict, hazard_type: str, similar_escalated: bool) -> tuple[int, list[str]]:
-    """Additive severity score, capped to 1-5, and the plain-English reason
-    for every point added or taken away. Pure: reads the record, changes nothing."""
+def _score_injury(record: dict) -> tuple[int, list[str]]:
+    """Starting severity and its reasons from what happened to the person:
+    1 for no or unknown injury, more for treatment, 5 if someone died."""
     injury_treatment = record.get("injury_treatment", "unspecified")
+    if injury_treatment == "died":
+        return MAX_SEVERITY, ["Someone died (set to 5)"]
+    severity = 1
+    reasons = []
+    injury_points = _INJURY_POINTS.get(injury_treatment, 0)
+    if injury_points:
+        severity += injury_points
+        reasons.append(f"{_INJURY_LABELS[injury_treatment]} (+{injury_points})")
+    if record.get("injury") and injury_treatment in ("none", "unspecified"):
+        severity += 1
+        reasons.append("Someone was hurt, but how badly wasn't described (+1)")
+    return severity, reasons
+
+
+def _score_conditions(record: dict, weather_data: dict, hazard_type: str, similar_escalated: bool) -> tuple[int, list[str]]:
+    """Points added (or, for PPE worn, taken away) by the hazard type and the
+    conditions on site, with a reason for each. Returns (change, reasons)."""
     at_height = record.get("working_at_height")
     machinery = record.get("heavy_machinery_present")
     ppe_not_worn = record.get("ppe_status") == "not_worn"
     poor_light = record.get("lighting_condition") in _POOR_LIGHT_LEVELS
 
-    severity = 1
+    change = 0
     reasons = []
-    if injury_treatment == "died":
-        severity = MAX_SEVERITY
-        reasons.append("Someone died (set to 5)")
-    else:
-        injury_points = _INJURY_POINTS.get(injury_treatment, 0)
-        if injury_points:
-            severity += injury_points
-            reasons.append(f"{_INJURY_LABELS[injury_treatment]} (+{injury_points})")
-        if record.get("injury") and injury_treatment in ("none", "unspecified"):
-            severity += 1
-            reasons.append("Someone was hurt, but how badly wasn't described (+1)")
     if hazard_type in _TYPE_A_HAZARDS:
-        severity += 1
+        change += 1
         reasons.append("One of MOM's highest-risk hazard types (+1)")
     if at_height:
-        severity += 1
+        change += 1
         reasons.append("Working at height (+1)")
     if machinery and ppe_not_worn:
-        severity += 1
+        change += 1
         reasons.append("Heavy machinery around, without safety gear (+1)")
     if ppe_not_worn:
-        severity += 1
+        change += 1
         reasons.append("Safety gear (PPE) not worn (+1)")
     elif record.get("ppe_status") == "worn":
-        severity -= 1
+        change -= 1
         reasons.append("Safety gear (PPE) was worn (-1)")
     if poor_light:
-        severity += 1
+        change += 1
         reasons.append("Poor lighting or dark (+1)")
     if weather_data.get("condition") == "rain" and (at_height or machinery):
-        severity += 1
+        change += 1
         reasons.append("Raining during work at height or with machinery (+1)")
     if similar_escalated:
-        severity += 1
+        change += 1
         reasons.append("A similar past incident on our sites was escalated (+1)")
-    return max(1, min(severity, MAX_SEVERITY)), reasons
+    return change, reasons
+
+
+def _score_severity(record: dict, weather_data: dict, hazard_type: str, similar_escalated: bool) -> tuple[int, list[str]]:
+    """Additive severity score, capped to 1-5, and the plain-English reason
+    for every point added or taken away. Pure: reads the record, changes nothing."""
+    severity, reasons = _score_injury(record)
+    change, condition_reasons = _score_conditions(record, weather_data, hazard_type, similar_escalated)
+    return max(1, min(severity + change, MAX_SEVERITY)), reasons + condition_reasons
 
 
 def _recurrence_level(severity: int, poor_light: bool, history: list, similar_escalated: bool) -> str:

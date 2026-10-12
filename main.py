@@ -37,6 +37,64 @@ def start_up() -> list:
     return records
 
 
+# Fields copied from the hazard extraction onto the record (the validity fields are copied first).
+_HAZARD_FLAG_KEYS = (
+    "hazard_category", "injury_treatment", "equipment_mentioned", "elevated_places",
+    "height_estimate_m", "ppe_status", "context_flags_error",
+)
+
+
+def _weather_fields(record: dict) -> dict:
+    """The weather step. Returns the weather fields to add to the record.
+    Without run_weather, or when the lookup fails or raises, weather_available
+    is False and enrichment_error says why. Never raises."""
+    fields = {
+        "weather_available": False, "condition": None, "temperature_c": None,
+        "humidity_pct": None, "precipitation_mm": None, "enrichment_error": None,
+    }
+    if not record.get("run_weather"):
+        return fields
+    try:
+        weather = ai_manager.get_weather(record.get("timestamp"), record.get("location", ""))
+    except Exception as error:
+        logger.warning("Weather step failed: %s", error)
+        weather = None
+    if weather is None:
+        fields["enrichment_error"] = "Weather data unavailable or invalid"
+        return fields
+    fields["weather_available"] = True
+    for key in ("temperature_c", "humidity_pct", "precipitation_mm"):
+        fields[key] = weather[key]
+    return fields
+
+
+def _similar_incident_fields(enriched: dict, history_records: list | None) -> dict:
+    """The similar-incidents step. Returns its fields; a lookup that raises
+    becomes similar_incidents_error instead of an exception."""
+    if not enriched.get("run_similar"):
+        return {"similar_incidents_checked": False, "similar_incidents": None, "similar_incidents_error": None}
+    try:
+        found = ai_manager.find_similar_incidents(enriched, history_records or [], OUTCOME_ACTIONS)
+    except Exception as error:
+        logger.warning("Similar-incidents step failed: %s", error)
+        return {
+            "similar_incidents_checked": True, "similar_incidents": None,
+            "similar_incidents_error": f"Similar-incidents lookup failed: {error}",
+        }
+    return {"similar_incidents_checked": True, **found}
+
+
+def _web_search_fields(enriched: dict) -> dict:
+    """The web-search step, run for every incident: is this a known industry
+    problem, and which similar real incidents were there. A search that
+    raises becomes web_search_error instead of an exception."""
+    try:
+        return ai_manager.search_web_for_similar_incidents(enriched)
+    except Exception as error:
+        logger.warning("Web search step failed: %s", error)
+        return {"web_industry_context": None, "web_incidents": None, "web_search_error": str(error)}
+
+
 # Lennart
 # The mandatory AI call runs first. If logic_manager rejects the incident we stop here, before
 # the weather and web-search calls are spent on it; process_incident shows the reason.
@@ -50,57 +108,11 @@ def enrich_record(record: dict, history_records: list | None = None) -> dict:
     if not logic_manager.screen_incident(enriched)["accepted"]:
         return enriched
 
-    enriched["weather_available"] = False
-    enriched["condition"] = None
-    enriched["temperature_c"] = None
-    enriched["humidity_pct"] = None
-    enriched["precipitation_mm"] = None
-    enriched["enrichment_error"] = None
-    if record.get("run_weather"):
-        try:
-            weather = ai_manager.get_weather(record.get("timestamp"), record.get("location", ""))
-        except Exception as error:
-            logger.warning("Weather step failed: %s", error)
-            weather = None
-        if weather is not None:
-            enriched["weather_available"] = True
-            enriched["temperature_c"] = weather["temperature_c"]
-            enriched["humidity_pct"] = weather["humidity_pct"]
-            enriched["precipitation_mm"] = weather["precipitation_mm"]
-        else:
-            enriched["enrichment_error"] = "Weather data unavailable or invalid"
-
-    enriched["hazard_category"] = flags["hazard_category"]
-    enriched["injury_treatment"] = flags["injury_treatment"]
-    enriched["equipment_mentioned"] = flags["equipment_mentioned"]
-    enriched["elevated_places"] = flags["elevated_places"]
-    enriched["height_estimate_m"] = flags["height_estimate_m"]
-    enriched["ppe_status"] = flags["ppe_status"]
-    enriched["context_flags_error"] = flags["context_flags_error"]
-
-    if record.get("run_similar"):
-        enriched["similar_incidents_checked"] = True
-        try:
-            enriched.update(ai_manager.find_similar_incidents(enriched, history_records or [], OUTCOME_ACTIONS))
-        except Exception as error:
-            logger.warning("Similar-incidents step failed: %s", error)
-            enriched["similar_incidents"] = None
-            enriched["similar_incidents_error"] = f"Similar-incidents lookup failed: {error}"
-    else:
-        enriched["similar_incidents_checked"] = False
-        enriched["similar_incidents"] = None
-        enriched["similar_incidents_error"] = None
-
-    # Web search — every incident: is this a known industry problem, and
-    # similar real incidents with what was done about them.
-    try:
-        enriched.update(ai_manager.search_web_for_similar_incidents(enriched))
-    except Exception as error:
-        logger.warning("Web search step failed: %s", error)
-        enriched["web_industry_context"] = None
-        enriched["web_incidents"] = None
-        enriched["web_search_error"] = str(error)
-
+    enriched.update(_weather_fields(record))
+    for key in _HAZARD_FLAG_KEYS:
+        enriched[key] = flags[key]
+    enriched.update(_similar_incident_fields(enriched, history_records))
+    enriched.update(_web_search_fields(enriched))
     return enriched
 
 
@@ -181,6 +193,24 @@ def run_batch(path: str) -> int:
 
 
 # Lennart
+def show_summary() -> list:
+    """Menu option 2: reloads the saved incidents, shows the summary and returns them."""
+    records = data_manager.load_records()
+    io_manager.display_summary(records, SEVERITY_LEVELS, OUTCOME_ACTIONS)
+    return records
+
+
+# Lennart
+def run_location_query(records: list) -> None:
+    """Menu option 3: asks for a location and a number of days and shows the incidents found."""
+    query = io_manager.get_location_query(data_manager.list_locations(records))
+    if query is None:
+        return
+    location, days = query
+    io_manager.display_query_results(data_manager.query_by_location(location, days))
+
+
+# Lennart
 def main() -> None:
     """The interactive menu loop: log an incident, view the summary, query by location, exit."""
     records = start_up()
@@ -189,14 +219,9 @@ def main() -> None:
         if choice == "1":
             log_incident_flow(records)
         elif choice == "2":
-            records = data_manager.load_records()
-            io_manager.display_summary(records, SEVERITY_LEVELS, OUTCOME_ACTIONS)
+            records = show_summary()
         elif choice == "3":
-            query = io_manager.get_location_query(data_manager.list_locations(records))
-            if query is None:
-                continue
-            location, days = query
-            io_manager.display_query_results(data_manager.query_by_location(location, days))
+            run_location_query(records)
         elif choice == "4":
             io_manager.display_message("Goodbye.")
             break

@@ -160,9 +160,31 @@ def _gemini_json(client: object, prompt: str, schema: dict) -> object:
     raise last_error
 
 
-# Lennart
-def extract_hazard_context_flags(description: str) -> dict:
-    defaults = {
+_HAZARD_FLAGS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "hazard_category": {"type": "string", "enum": list(HAZARD_CATEGORIES)},
+        "injury_treatment": {"type": "string", "enum": list(INJURY_TREATMENTS)},
+        "equipment_mentioned": {"type": "array", "items": {"type": "string"}},
+        "elevated_places": {"type": "array", "items": {"type": "string"}},
+        "height_estimate_m": {"type": ["number", "null"]},
+        "ppe_status": {
+            "type": "string",
+            "enum": ["worn", "not_worn", "unspecified"],
+        },
+        "is_valid_incident": {"type": "boolean"},
+        "invalid_reason": {"type": "string"},
+    },
+    "required": [
+        "hazard_category", "injury_treatment", "equipment_mentioned",
+        "elevated_places", "ppe_status",
+    ],
+}
+
+
+def _hazard_flag_defaults() -> dict:
+    """A fresh result for when the AI gave nothing: every flag unknown, no error."""
+    return {
         "hazard_category": None,
         "injury_treatment": "unspecified",
         "equipment_mentioned": [],
@@ -174,35 +196,11 @@ def extract_hazard_context_flags(description: str) -> dict:
         "context_flags_error": None,
     }
 
-    client = _get_gemini_client()
-    if client is None:
-        logger.warning("Hazard extraction skipped: Gemini client unavailable")
-        result = dict(defaults)
-        result["context_flags_error"] = "Gemini client unavailable (check GEMINI_API_KEY)"
-        return result
 
-    schema = {
-        "type": "object",
-        "properties": {
-            "hazard_category": {"type": "string", "enum": list(HAZARD_CATEGORIES)},
-            "injury_treatment": {"type": "string", "enum": list(INJURY_TREATMENTS)},
-            "equipment_mentioned": {"type": "array", "items": {"type": "string"}},
-            "elevated_places": {"type": "array", "items": {"type": "string"}},
-            "height_estimate_m": {"type": ["number", "null"]},
-            "ppe_status": {
-                "type": "string",
-                "enum": ["worn", "not_worn", "unspecified"],
-            },
-            "is_valid_incident": {"type": "boolean"},
-            "invalid_reason": {"type": "string"},
-        },
-        "required": [
-            "hazard_category", "injury_treatment", "equipment_mentioned",
-            "elevated_places", "ppe_status",
-        ],
-    }
-
-    prompt = (
+def _build_hazard_prompt(description: str) -> str:
+    """The Gemini prompt asking for hazard-context facts from one description.
+    The description is passed as data, never as instructions."""
+    return (
         "Read this workplace safety incident description from a Singapore "
         "construction site and extract hazard-context flags as JSON.\n\n"
         f"Description: \"{description}\"\n\n"
@@ -238,32 +236,51 @@ def extract_hazard_context_flags(description: str) -> dict:
         "otherwise 'unspecified'."
     )
 
-    try:
-        parsed = _gemini_json(client, prompt, schema)
 
-        if parsed.get("hazard_category") not in HAZARD_CATEGORIES:
-            raise ValueError(f"invalid hazard_category: {parsed.get('hazard_category')!r}")
+def _clean_hazard_flags(parsed: dict) -> dict:
+    """Turns a schema-valid Gemini reply into the flags dict. Anything of the
+    wrong type or outside the allowed values keeps its default. Raises
+    ValueError when hazard_category is not an allowed value."""
+    if parsed.get("hazard_category") not in HAZARD_CATEGORIES:
+        raise ValueError(f"invalid hazard_category: {parsed.get('hazard_category')!r}")
 
-        result = dict(defaults)
-        result["hazard_category"] = parsed["hazard_category"]
-        if isinstance(parsed.get("is_valid_incident"), bool):
-            result["is_valid_incident"] = parsed["is_valid_incident"]
-        if isinstance(parsed.get("invalid_reason"), str) and parsed["invalid_reason"].strip():
-            result["invalid_reason"] = parsed["invalid_reason"].strip()
-        if parsed.get("injury_treatment") in INJURY_TREATMENTS:
-            result["injury_treatment"] = parsed["injury_treatment"]
-        for key in ("equipment_mentioned", "elevated_places"):
-            result[key] = [item.strip() for item in parsed.get(key) or []
-                           if isinstance(item, str) and item.strip()]
-        if isinstance(parsed.get("height_estimate_m"), (int, float)):
-            result["height_estimate_m"] = parsed["height_estimate_m"]
-        if parsed.get("ppe_status") in ("worn", "not_worn", "unspecified"):
-            result["ppe_status"] = parsed["ppe_status"]
+    result = _hazard_flag_defaults()
+    result["hazard_category"] = parsed["hazard_category"]
+    if isinstance(parsed.get("is_valid_incident"), bool):
+        result["is_valid_incident"] = parsed["is_valid_incident"]
+    if isinstance(parsed.get("invalid_reason"), str) and parsed["invalid_reason"].strip():
+        result["invalid_reason"] = parsed["invalid_reason"].strip()
+    if parsed.get("injury_treatment") in INJURY_TREATMENTS:
+        result["injury_treatment"] = parsed["injury_treatment"]
+    for key in ("equipment_mentioned", "elevated_places"):
+        result[key] = [item.strip() for item in parsed.get(key) or []
+                       if isinstance(item, str) and item.strip()]
+    if isinstance(parsed.get("height_estimate_m"), (int, float)):
+        result["height_estimate_m"] = parsed["height_estimate_m"]
+    if parsed.get("ppe_status") in ("worn", "not_worn", "unspecified"):
+        result["ppe_status"] = parsed["ppe_status"]
+    return result
+
+
+# Lennart
+def extract_hazard_context_flags(description: str) -> dict:
+    """Asks Gemini for the hazard facts in one description (category, injury
+    treatment, equipment, elevated places, height, PPE, validity) and
+    validates the reply. Never raises: with no client or a bad reply it
+    returns the defaults and sets context_flags_error."""
+    client = _get_gemini_client()
+    if client is None:
+        logger.warning("Hazard extraction skipped: Gemini client unavailable")
+        result = _hazard_flag_defaults()
+        result["context_flags_error"] = "Gemini client unavailable (check GEMINI_API_KEY)"
         return result
 
+    try:
+        parsed = _gemini_json(client, _build_hazard_prompt(description), _HAZARD_FLAGS_SCHEMA)
+        return _clean_hazard_flags(parsed)
     except Exception as error:
         logger.warning("Hazard extraction failed: %s", error)
-        result = dict(defaults)
+        result = _hazard_flag_defaults()
         result["context_flags_error"] = f"AI extraction failed: {error}"
         return result
 
@@ -317,26 +334,23 @@ def get_weather(timestamp: str | None, location: str) -> dict | None:
     return weather
 
 
-def find_similar_incidents(record: dict, history_records: list | None = None,
-                           outcome_meanings: dict | None = None) -> dict:
-    result = {"similar_incidents": [], "similar_incidents_error": None}
-    history_records = history_records or []
-    if not history_records:
-        return result
+_SIMILAR_SCHEMA = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "id": {"type": "integer"},
+            "resolution_notes": {"type": "string"},
+        },
+        "required": ["id", "resolution_notes"],
+    },
+}
 
-    client = _get_gemini_client()
-    if client is None:
-        logger.warning("Similar-incidents lookup skipped: Gemini client unavailable")
-        result["similar_incidents"] = None
-        result["similar_incidents_error"] = (
-            "Similar-incidents lookup failed: Gemini client unavailable (check GEMINI_API_KEY)"
-        )
-        return result
 
-    # Keep the prompt small: the 10 most recent records only. Each gets an
-    # id so a match can be tied back to the exact saved record.
-    recent = history_records[-10:]
-    candidates = [
+def _similar_candidates(recent: list) -> list[dict]:
+    """The past incidents shown to the AI, each with an id so a match can be
+    tied back to the exact saved record."""
+    return [
         {
             "id": i,
             "description": r.get("description", ""),
@@ -346,18 +360,10 @@ def find_similar_incidents(record: dict, history_records: list | None = None,
         for i, r in enumerate(recent)
     ]
 
-    schema = {
-        "type": "array",
-        "items": {
-            "type": "object",
-            "properties": {
-                "id": {"type": "integer"},
-                "resolution_notes": {"type": "string"},
-            },
-            "required": ["id", "resolution_notes"],
-        },
-    }
 
+def _build_similar_prompt(record: dict, candidates: list, outcome_meanings: dict | None = None) -> str:
+    """The Gemini prompt asking which past incidents share the new one's hazard,
+    with what each recorded outcome means when the caller supplies it."""
     prompt = (
         "Here is a new workplace safety incident:\n"
         f"\"{record.get('description', '')}\"\n\n"
@@ -374,17 +380,12 @@ def find_similar_incidents(record: dict, history_records: list | None = None,
             " What each recorded outcome means (JSON): "
             f"{json.dumps(outcome_meanings, sort_keys=True)}"
         )
+    return prompt
 
-    try:
-        parsed = _gemini_json(client, prompt, schema)
-    except Exception as error:
-        logger.warning("Similar-incidents lookup failed: %s", error)
-        result["similar_incidents"] = None
-        result["similar_incidents_error"] = f"Similar-incidents lookup failed: {error}"
-        return result
 
-    # Only keep ids that point at a real saved record, and copy the facts
-    # from that record rather than trusting anything the model wrote.
+def _match_saved_incidents(parsed: list, recent: list) -> list[dict]:
+    """Keeps only ids that point at a real saved record, once each, and copies
+    the facts from that record rather than trusting anything the model wrote."""
     matches = []
     seen = set()
     for item in parsed:
@@ -404,7 +405,45 @@ def find_similar_incidents(record: dict, history_records: list | None = None,
             "outcome": saved.get("outcome", "unknown"),
             "resolution_notes": notes if isinstance(notes, str) else None,
         })
-    result["similar_incidents"] = matches
+    return matches
+
+
+def find_similar_incidents(record: dict, history_records: list | None = None,
+                           outcome_meanings: dict | None = None) -> dict:
+    """Asks Gemini which of the 10 most recent saved incidents share this
+    incident's hazard and what was done about them. Returns
+    {"similar_incidents": list or None, "similar_incidents_error": str or None}:
+    an empty list means nothing similar (or no history); None plus an error
+    means the lookup failed. outcome_meanings ({outcome: sentence}) comes from
+    logic_manager.OUTCOME_ACTIONS, so what each outcome means is decided there,
+    not here. Never raises."""
+    result = {"similar_incidents": [], "similar_incidents_error": None}
+    history_records = history_records or []
+    if not history_records:
+        return result
+
+    client = _get_gemini_client()
+    if client is None:
+        logger.warning("Similar-incidents lookup skipped: Gemini client unavailable")
+        result["similar_incidents"] = None
+        result["similar_incidents_error"] = (
+            "Similar-incidents lookup failed: Gemini client unavailable (check GEMINI_API_KEY)"
+        )
+        return result
+
+    # Keep the prompt small: the 10 most recent records only.
+    recent = history_records[-10:]
+    prompt = _build_similar_prompt(record, _similar_candidates(recent), outcome_meanings)
+
+    try:
+        parsed = _gemini_json(client, prompt, _SIMILAR_SCHEMA)
+    except Exception as error:
+        logger.warning("Similar-incidents lookup failed: %s", error)
+        result["similar_incidents"] = None
+        result["similar_incidents_error"] = f"Similar-incidents lookup failed: {error}"
+        return result
+
+    result["similar_incidents"] = _match_saved_incidents(parsed, recent)
     return result
 
 
@@ -456,12 +495,10 @@ def search_web_for_similar_incidents(record: dict) -> dict:
     }
 
 
-def _search_web(record: dict) -> dict:
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        raise RuntimeError("GROQ_API_KEY is not set in .env")
-
-    prompt = (
+def _build_web_search_prompt(record: dict) -> str:
+    """The Groq prompt: is this a known industry problem, and which real
+    incidents with the same hazard were reported. Asks for one JSON object."""
+    return (
         "A workplace safety incident was just reported on a construction site "
         "in Singapore:\n"
         f"\"{record.get('description', '')}\"\n"
@@ -484,6 +521,58 @@ def _search_web(record: dict) -> dict:
         "If you find no incidents, use an empty list for incidents."
     )
 
+
+def _call_groq(model: str, prompt: str, api_key: str) -> dict:
+    """One Groq browser-search call with one model. Returns the JSON object in
+    the reply, checked against WEB_SEARCH_SCHEMA. Raises on an HTTP error, a
+    reply with no JSON, or a reply that fails the schema."""
+    response = requests.post(
+        GROQ_URL,
+        headers={"Authorization": f"Bearer {api_key}"},
+        json={
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "tools": [{"type": "browser_search"}],
+            "tool_choice": "required",
+            "reasoning_effort": "low",
+            "max_completion_tokens": 4096,
+            "temperature": 0.2,
+            "seed": AI_SEED,
+        },
+        timeout=60,
+    )
+    response.raise_for_status()
+    content = response.json()["choices"][0]["message"].get("content") or ""
+    parsed = _extract_json_object(content)
+    if parsed is None:
+        raise ValueError("Groq reply had no JSON object")
+    _validate_schema(parsed, WEB_SEARCH_SCHEMA)
+    return parsed
+
+
+def _clean_web_result(parsed: dict) -> dict:
+    """Industry context plus at most 3 incidents. Incidents without a real
+    web link or a summary are dropped, since they cannot be checked."""
+    incidents = [
+        {key: item[key].strip() for key in WEB_SEARCH_SCHEMA["properties"]["incidents"]["items"]["required"]}
+        for item in parsed["incidents"][:3]
+        if item["source_url"].startswith(("http://", "https://")) and item["summary"].strip()
+    ]
+    return {
+        "industry_context": parsed["industry_context"].strip() or None,
+        "incidents": incidents,
+    }
+
+
+def _search_web(record: dict) -> dict:
+    """Groq web search for the industry context and similar real incidents.
+    Tries each model in GROQ_SEARCH_MODELS; replies are cached. Raises
+    RuntimeError if no key is set or every model fails."""
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise RuntimeError("GROQ_API_KEY is not set in .env")
+
+    prompt = _build_web_search_prompt(record)
     cache_key = _cache_key("groq", prompt)
     if cache_key in _RESPONSE_CACHE:
         return _RESPONSE_CACHE[cache_key]
@@ -491,38 +580,7 @@ def _search_web(record: dict) -> dict:
     last_error = None
     for model in GROQ_SEARCH_MODELS:
         try:
-            response = requests.post(
-                GROQ_URL,
-                headers={"Authorization": f"Bearer {api_key}"},
-                json={
-                    "model": model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "tools": [{"type": "browser_search"}],
-                    "tool_choice": "required",
-                    "reasoning_effort": "low",
-                    "max_completion_tokens": 4096,
-                    "temperature": 0.2,
-                    "seed": AI_SEED,
-                },
-                timeout=60,
-            )
-            response.raise_for_status()
-            content = response.json()["choices"][0]["message"].get("content") or ""
-            parsed = _extract_json_object(content)
-            if parsed is None:
-                raise ValueError("Groq reply had no JSON object")
-            _validate_schema(parsed, WEB_SEARCH_SCHEMA)
-
-            # Drop incidents without a real web link — they can't be checked.
-            incidents = [
-                {key: item[key].strip() for key in WEB_SEARCH_SCHEMA["properties"]["incidents"]["items"]["required"]}
-                for item in parsed["incidents"][:3]
-                if item["source_url"].startswith(("http://", "https://")) and item["summary"].strip()
-            ]
-            result = {
-                "industry_context": parsed["industry_context"].strip() or None,
-                "incidents": incidents,
-            }
+            result = _clean_web_result(_call_groq(model, prompt, api_key))
             _RESPONSE_CACHE[cache_key] = result
             return result
         except Exception as error:
@@ -531,27 +589,20 @@ def _search_web(record: dict) -> dict:
     raise RuntimeError(f"Groq web search failed; last error: {last_error}")
 
 
-#Ren Xiang
-def generate_incident_review(record: dict) -> dict:
-    """Asks Gemini for after-action review notes: the likely causes of the
-    incident and practical steps to prevent it happening again, using
-    everything already gathered (AI flags, weather, season, lighting,
-    similar local and web incidents). Advisory text only — it does not
-    rate severity or decide the outcome; that is logic_manager's job.
-    Never raises: returns a dict with review_error set on failure."""
-    result = {
-        "review_likely_causes": None,
-        "review_prevention_actions": None,
-        "review_error": None,
-    }
+_REVIEW_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "likely_causes": {"type": "array", "items": {"type": "string"}},
+        "prevention_actions": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["likely_causes", "prevention_actions"],
+}
 
-    client = _get_gemini_client()
-    if client is None:
-        logger.warning("After-action review skipped: Gemini client unavailable")
-        result["review_error"] = "Gemini client unavailable (check GEMINI_API_KEY)"
-        return result
 
-    context = {
+def _review_context(record: dict) -> dict:
+    """Everything already gathered about the incident, as the plain dict the
+    review prompt is built from."""
+    return {
         "description": record.get("description"),
         "injury_reported": record.get("injury"),
         "hazard_category": record.get("hazard_category"),
@@ -578,16 +629,10 @@ def generate_incident_review(record: dict) -> dict:
         "industry_context": record.get("web_industry_context"),
     }
 
-    schema = {
-        "type": "object",
-        "properties": {
-            "likely_causes": {"type": "array", "items": {"type": "string"}},
-            "prevention_actions": {"type": "array", "items": {"type": "string"}},
-        },
-        "required": ["likely_causes", "prevention_actions"],
-    }
 
-    prompt = (
+def _build_review_prompt(context: dict) -> str:
+    """The Gemini prompt asking for likely causes and prevention actions."""
+    return (
         "You are helping a Singapore construction company write an after-action "
         "review for a workplace safety incident. Here is everything recorded "
         "about it (JSON):\n"
@@ -606,14 +651,42 @@ def generate_incident_review(record: dict) -> dict:
         "decided elsewhere."
     )
 
+
+def _clean_review(parsed: dict) -> tuple[list, list]:
+    """The non-empty causes (at most 3) and prevention actions (at most 4)
+    from a schema-valid reply. Raises ValueError if either list is empty."""
+    causes = [c for c in parsed.get("likely_causes") or [] if isinstance(c, str) and c.strip()]
+    actions = [a for a in parsed.get("prevention_actions") or [] if isinstance(a, str) and a.strip()]
+    if not causes or not actions:
+        raise ValueError("AI response was missing causes or prevention actions")
+    return causes[:3], actions[:4]
+
+
+#Ren Xiang
+def generate_incident_review(record: dict) -> dict:
+    """Asks Gemini for after-action review notes: the likely causes of the
+    incident and practical steps to prevent it happening again, using
+    everything already gathered (AI flags, weather, season, lighting,
+    similar local and web incidents). Advisory text only — it does not
+    rate severity or decide the outcome; that is logic_manager's job.
+    Never raises: returns a dict with review_error set on failure."""
+    result = {
+        "review_likely_causes": None,
+        "review_prevention_actions": None,
+        "review_error": None,
+    }
+
+    client = _get_gemini_client()
+    if client is None:
+        logger.warning("After-action review skipped: Gemini client unavailable")
+        result["review_error"] = "Gemini client unavailable (check GEMINI_API_KEY)"
+        return result
+
+    prompt = _build_review_prompt(_review_context(record))
+
     try:
-        parsed = _gemini_json(client, prompt, schema)
-        causes = [c for c in parsed.get("likely_causes") or [] if isinstance(c, str) and c.strip()]
-        actions = [a for a in parsed.get("prevention_actions") or [] if isinstance(a, str) and a.strip()]
-        if not causes or not actions:
-            raise ValueError("AI response was missing causes or prevention actions")
-        result["review_likely_causes"] = causes[:3]
-        result["review_prevention_actions"] = actions[:4]
+        parsed = _gemini_json(client, prompt, _REVIEW_SCHEMA)
+        result["review_likely_causes"], result["review_prevention_actions"] = _clean_review(parsed)
     except Exception as error:
         logger.warning("After-action review failed: %s", error)
         result["review_error"] = f"AI review failed: {error}"
