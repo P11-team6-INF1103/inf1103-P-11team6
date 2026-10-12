@@ -13,4 +13,3 @@ __pycache__/
 .DS_Store
 *.log
 data/*.corrupt-*
-manual_test.py

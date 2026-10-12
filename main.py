@@ -8,20 +8,12 @@ import logic_manager
 
 logger = logging.getLogger(__name__)
 
-decide_outcome = logic_manager.decide_outcome
-save_record = data_manager.save_record
-generate_incident_review = ai_manager.generate_incident_review
 SEVERITY_LEVELS = logic_manager.SEVERITY_LEVELS
 OUTCOME_ACTIONS = logic_manager.OUTCOME_ACTIONS
 
-derive_context = logic_manager.derive_context
-apply_weather = logic_manager.apply_weather
-apply_lighting = logic_manager.apply_lighting
 
-
-# Lennart
+# Sets up logging, warns about a corrupt incidents file, loads the saved incidents and the AI cache.
 def start_up() -> list:
-    """Sets up logging, warns about a corrupt incidents file, loads saved incidents and the AI cache. Returns the saved incidents."""
     log_path = data_manager.get_log_path()
     if log_path:
         logging.basicConfig(
@@ -44,10 +36,8 @@ _HAZARD_FLAG_KEYS = (
 )
 
 
+# The weather step: returns the weather fields to add, with enrichment_error set if the lookup failed.
 def _weather_fields(record: dict) -> dict:
-    """The weather step. Returns the weather fields to add to the record.
-    Without run_weather, or when the lookup fails or raises, weather_available
-    is False and enrichment_error says why. Never raises."""
     fields = {
         "weather_available": False, "condition": None, "temperature_c": None,
         "humidity_pct": None, "precipitation_mm": None, "enrichment_error": None,
@@ -68,9 +58,8 @@ def _weather_fields(record: dict) -> dict:
     return fields
 
 
+# The similar-incidents step: returns its fields; a lookup that raises becomes similar_incidents_error.
 def _similar_incident_fields(enriched: dict, history_records: list | None) -> dict:
-    """The similar-incidents step. Returns its fields; a lookup that raises
-    becomes similar_incidents_error instead of an exception."""
     if not enriched.get("run_similar"):
         return {"similar_incidents_checked": False, "similar_incidents": None, "similar_incidents_error": None}
     try:
@@ -84,10 +73,8 @@ def _similar_incident_fields(enriched: dict, history_records: list | None) -> di
     return {"similar_incidents_checked": True, **found}
 
 
+# The web-search step: returns its fields; a search that raises becomes web_search_error.
 def _web_search_fields(enriched: dict) -> dict:
-    """The web-search step, run for every incident: is this a known industry
-    problem, and which similar real incidents were there. A search that
-    raises becomes web_search_error instead of an exception."""
     try:
         return ai_manager.search_web_for_similar_incidents(enriched)
     except Exception as error:
@@ -96,10 +83,8 @@ def _web_search_fields(enriched: dict) -> dict:
 
 
 # Lennart
-# The mandatory AI call runs first. If logic_manager rejects the incident we stop here, before
-# the weather and web-search calls are spent on it; process_incident shows the reason.
+# Runs the AI steps for one incident (hazard flags first, then weather, similar incidents and web search); never raises.
 def enrich_record(record: dict, history_records: list | None = None) -> dict:
-    """Runs the AI steps for one incident and returns the enriched record. The mandatory hazard extraction goes first; a rejected incident is returned at once. Then the optional weather, similar-incident and web-search steps, each of which fails safe: an error is recorded on the record, never raised."""
     enriched = dict(record)
 
     flags = ai_manager.extract_hazard_context_flags(str(record.get("description") or ""))
@@ -116,18 +101,17 @@ def enrich_record(record: dict, history_records: list | None = None) -> dict:
     return enriched
 
 
-# Lennart
-# Returns None, and saves nothing, when logic_manager rejects the text as not a real safety incident.
-# interactive=False (batch, scripts, Docker) never waits on input() after a failed save.
+# The whole pipeline for one incident: enrich, score, decide the outcome, save; returns the record, or None if rejected.
 def process_incident(incident: dict, records: list, interactive: bool = True) -> dict | None:
-    """The whole pipeline for one incident: derive context, AI enrichment, severity, outcome, save. Returns the saved record, or None if the incident was rejected. interactive=False never asks questions."""
-    with_context = derive_context(incident)
+    with_context = logic_manager.derive_context(incident)
     with io_manager.show_loading("AI is analysing the incident"):
         enriched = enrich_record(with_context, records)
         screening = logic_manager.screen_incident(enriched)
         if screening["accepted"]:
-            enriched = logic_manager.apply_hazard_rules(apply_lighting(apply_weather(enriched)))
-            enriched.update(generate_incident_review(enriched))
+            enriched = logic_manager.apply_weather(enriched)
+            enriched = logic_manager.apply_lighting(enriched)
+            enriched = logic_manager.apply_hazard_rules(enriched)
+            enriched.update(ai_manager.generate_incident_review(enriched))
     if not screening["accepted"]:
         io_manager.display_message("Incident rejected: " + screening["reject_reason"])
         return None
@@ -144,11 +128,11 @@ def process_incident(incident: dict, records: list, interactive: bool = True) ->
     assessed = logic_manager.assess_severity(enriched, weather_data, history)
 
     final_record = dict(assessed)
-    final_record["outcome"] = decide_outcome(assessed, history)
+    final_record["outcome"] = logic_manager.decide_outcome(assessed, history)
 
-    saved = save_record(final_record)
+    saved = data_manager.save_record(final_record)
     while saved is False and interactive and io_manager.ask_retry_save():
-        saved = save_record(final_record)
+        saved = data_manager.save_record(final_record)
     if saved is False:
         io_manager.display_message("Warning: could not save this incident to disk.")
     records.append(final_record)
@@ -157,10 +141,8 @@ def process_incident(incident: dict, records: list, interactive: bool = True) ->
     return final_record
 
 
-# Lennart
-# If the AI rejects the incident, asks whether to enter it again instead of showing a report.
+# Menu option 1: asks for an incident, processes it, shows the report, and offers to re-enter it if rejected.
 def log_incident_flow(records: list) -> dict | None:
-    """Menu option 1: asks for an incident, processes it and shows the result. Offers to re-enter it if it was rejected. Returns the record, or None if the user gave up."""
     while True:
         incident = io_manager.get_incident_input()
         final_record = process_incident(incident, records)
@@ -172,9 +154,8 @@ def log_incident_flow(records: list) -> dict | None:
     return final_record
 
 
-# Lennart
+# Processes every valid incident in a JSON file without prompting; returns 0, or 1 if there was nothing valid.
 def run_batch(path: str) -> int:
-    """Processes every valid incident in a JSON file without prompting and prints a summary. Returns 0, or 1 if the file had no valid incidents."""
     incidents, problems = io_manager.read_incident_file(path)
     for problem in problems:
         io_manager.display_message(f"Skipped: {problem}")
@@ -192,17 +173,15 @@ def run_batch(path: str) -> int:
     return 0
 
 
-# Lennart
+# Menu option 2: reloads the saved incidents and shows the summary.
 def show_summary() -> list:
-    """Menu option 2: reloads the saved incidents, shows the summary and returns them."""
     records = data_manager.load_records()
     io_manager.display_summary(records, SEVERITY_LEVELS, OUTCOME_ACTIONS)
     return records
 
 
-# Lennart
+# Menu option 3: asks for a location and a number of days and shows the incidents found.
 def run_location_query(records: list) -> None:
-    """Menu option 3: asks for a location and a number of days and shows the incidents found."""
     query = io_manager.get_location_query(data_manager.list_locations(records))
     if query is None:
         return
@@ -210,9 +189,8 @@ def run_location_query(records: list) -> None:
     io_manager.display_query_results(data_manager.query_by_location(location, days))
 
 
-# Lennart
+# The interactive menu loop: log an incident, view the summary, query by location, exit.
 def main() -> None:
-    """The interactive menu loop: log an incident, view the summary, query by location, exit."""
     records = start_up()
     while True:
         choice = io_manager.get_menu_choice()

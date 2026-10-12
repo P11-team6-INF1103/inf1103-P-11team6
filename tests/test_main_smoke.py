@@ -1,6 +1,5 @@
 import json
 
-import fakes
 import main
 
 
@@ -16,10 +15,16 @@ def _incident(**overrides):
     return incident
 
 
-def _use_fakes(monkeypatch):
-    monkeypatch.setattr(main, "enrich_record", lambda record, history=None: fakes.fake_enrich_record(record))
-    monkeypatch.setattr(main.logic_manager, "assess_severity", lambda record, weather=None, history=None: fakes.fake_assess_severity(record))
-    monkeypatch.setattr(main, "decide_outcome", fakes.fake_decide_outcome)
+def _use_canned_ai(monkeypatch):
+    monkeypatch.setattr(main.ai_manager, "extract_hazard_context_flags", lambda description: _good_flags())
+    monkeypatch.setattr(main.ai_manager, "get_weather", lambda timestamp, location: None)
+    monkeypatch.setattr(main.ai_manager, "find_similar_incidents",
+                        lambda record, history, outcome_meanings=None: {"similar_incidents": [], "similar_incidents_error": None})
+    monkeypatch.setattr(main.ai_manager, "search_web_for_similar_incidents",
+                        lambda record: {"web_industry_context": None, "web_incidents": [], "web_search_error": None})
+    monkeypatch.setattr(main.ai_manager, "generate_incident_review",
+                        lambda record: {"review_likely_causes": None, "review_prevention_actions": None,
+                                        "review_error": None})
 
 
 def test_start_up_returns_a_list_of_records():
@@ -27,7 +32,7 @@ def test_start_up_returns_a_list_of_records():
 
 
 def test_process_incident_saves_and_returns_a_record_with_an_outcome(monkeypatch):
-    _use_fakes(monkeypatch)
+    _use_canned_ai(monkeypatch)
     records = []
     final_record = main.process_incident(_incident(), records)
     assert final_record["outcome"] in ("log_only", "pending_review", "systemic_escalation", "stop_work_review")
@@ -77,7 +82,7 @@ def test_enrich_record_runs_weather_or_similar_incidents_never_both(monkeypatch)
 
 
 def test_process_incident_returns_none_and_saves_nothing_when_the_ai_rejects_it(monkeypatch, capsys):
-    _use_fakes(monkeypatch)
+    _use_canned_ai(monkeypatch)
     _ai_rejects(monkeypatch)
     records = []
     assert main.process_incident(_incident(description="asdf qwerty banana"), records) is None
@@ -86,9 +91,9 @@ def test_process_incident_returns_none_and_saves_nothing_when_the_ai_rejects_it(
 
 
 def test_failed_save_offers_retry_and_keeps_record_in_memory(monkeypatch, capsys):
-    _use_fakes(monkeypatch)
+    _use_canned_ai(monkeypatch)
     attempts = []
-    monkeypatch.setattr(main, "save_record", lambda record: attempts.append(record) or len(attempts) >= 3)
+    monkeypatch.setattr(main.data_manager, "save_record", lambda record: attempts.append(record) or len(attempts) >= 3)
     answers = iter(["y", "y"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
     records = []
@@ -106,8 +111,8 @@ def test_failed_save_offers_retry_and_keeps_record_in_memory(monkeypatch, capsys
 
 
 def test_failed_save_never_prompts_when_not_interactive(monkeypatch, capsys):
-    _use_fakes(monkeypatch)
-    monkeypatch.setattr(main, "save_record", lambda record: False)
+    _use_canned_ai(monkeypatch)
+    monkeypatch.setattr(main.data_manager, "save_record", lambda record: False)
 
     def no_typing(prompt=""):
         raise AssertionError("input() called")
@@ -118,7 +123,7 @@ def test_failed_save_never_prompts_when_not_interactive(monkeypatch, capsys):
 
 
 def test_log_incident_flow_runs_one_incident(monkeypatch, capsys):
-    _use_fakes(monkeypatch)
+    _use_canned_ai(monkeypatch)
     monkeypatch.setattr(main.io_manager, "get_incident_input", lambda: _incident())
     final_record = main.log_incident_flow([])
     assert "outcome" in final_record
@@ -126,7 +131,7 @@ def test_log_incident_flow_runs_one_incident(monkeypatch, capsys):
 
 
 def test_log_incident_flow_asks_again_after_a_rejection_and_can_be_declined(monkeypatch, capsys):
-    _use_fakes(monkeypatch)
+    _use_canned_ai(monkeypatch)
     _ai_rejects(monkeypatch)
     monkeypatch.setattr(main.io_manager, "get_incident_input", lambda: _incident())
     answers = iter(["y", "n"])
@@ -137,7 +142,7 @@ def test_log_incident_flow_asks_again_after_a_rejection_and_can_be_declined(monk
 
 
 def test_run_batch_processes_every_incident_in_the_file(monkeypatch, tmp_path):
-    _use_fakes(monkeypatch)
+    _use_canned_ai(monkeypatch)
     path = tmp_path / "batch.json"
     path.write_text(json.dumps([_incident(), _incident(location="Site B")]))
     assert main.run_batch(str(path)) == 0
@@ -145,7 +150,7 @@ def test_run_batch_processes_every_incident_in_the_file(monkeypatch, tmp_path):
 
 
 def test_run_batch_skips_an_incident_the_ai_rejects(monkeypatch, tmp_path, capsys):
-    _use_fakes(monkeypatch)
+    _use_canned_ai(monkeypatch)
     _ai_rejects(monkeypatch)
     path = tmp_path / "batch.json"
     path.write_text(json.dumps([_incident(description="asdf qwerty banana")]))
@@ -155,8 +160,8 @@ def test_run_batch_skips_an_incident_the_ai_rejects(monkeypatch, tmp_path, capsy
 
 
 def test_run_batch_never_prompts_after_a_failed_save(monkeypatch, tmp_path, capsys):
-    _use_fakes(monkeypatch)
-    monkeypatch.setattr(main, "save_record", lambda record: False)
+    _use_canned_ai(monkeypatch)
+    monkeypatch.setattr(main.data_manager, "save_record", lambda record: False)
 
     def no_typing(prompt=""):
         raise AssertionError("input() called")
@@ -173,7 +178,7 @@ def test_run_batch_returns_1_for_an_unreadable_file(tmp_path):
 
 
 def test_main_menu_logs_an_incident_then_exits(monkeypatch):
-    _use_fakes(monkeypatch)
+    _use_canned_ai(monkeypatch)
     choices = iter(["1", "2", "4"])
     monkeypatch.setattr(main.io_manager, "get_menu_choice", lambda: next(choices))
     monkeypatch.setattr(main.io_manager, "get_incident_input", lambda: _incident())
@@ -183,7 +188,7 @@ def test_main_menu_logs_an_incident_then_exits(monkeypatch):
 
 
 def test_main_location_query_can_go_back_to_the_menu(monkeypatch):
-    _use_fakes(monkeypatch)
+    _use_canned_ai(monkeypatch)
     choices = iter(["3", "4"])
     monkeypatch.setattr(main.io_manager, "get_menu_choice", lambda: next(choices))
     monkeypatch.setattr(main.io_manager, "get_location_query", lambda *a: None)
