@@ -101,10 +101,20 @@ def _check_role(text: str) -> str | None:
     return None
 
 
-# Asks until the sanitised answer passes the check, saying why each answer was rejected.
-def _ask_valid(prompt: str, check: Callable[[str], str | None]) -> str:
+# Asks until the sanitised answer passes the check, saying why each answer was rejected; pressing Enter twice on a blank answer returns None.
+def _ask_valid(prompt: str, check: Callable[[str], str | None]) -> str | None:
+    blank_before = False
     while True:
-        value = _sanitise(input(prompt))
+        answer = input(prompt)
+        if answer.strip() == "":
+            if blank_before:
+                return None
+            blank_before = True
+            print("Nothing entered. Type your answer, or press Enter again to go back to the main menu.")
+            prompt = "Try again: "
+            continue
+        blank_before = False
+        value = _sanitise(answer)
         error = check(value)
         if error is None:
             return value
@@ -112,11 +122,20 @@ def _ask_valid(prompt: str, check: Callable[[str], str | None]) -> str:
         prompt = "Try again: "
 
 
-# Asks until the answer is yes or no; returns True for yes.
-def _ask_yes_no(prompt: str) -> bool:
+# Asks until the answer is yes or no; returns True for yes, or None if allow_back is set and the user presses Enter twice on a blank answer.
+def _ask_yes_no(prompt: str, allow_back: bool = False) -> bool | None:
     answer = input(prompt).strip().lower()
+    blank_before = False
     while answer not in ("yes", "no", "y", "n"):
-        answer = input("Please answer yes or no: ").strip().lower()
+        if allow_back and answer == "":
+            if blank_before:
+                return None
+            blank_before = True
+            message = "Please answer yes or no, or press Enter again to go back: "
+        else:
+            blank_before = False
+            message = "Please answer yes or no: "
+        answer = input(message).strip().lower()
     return answer in ("yes", "y")
 
 
@@ -136,32 +155,63 @@ def ask_retry_save() -> bool:
 
 
 # Daniel
-# Shows the main menu and returns '1' to '4'; Ctrl+C or closed input returns '4'.
+# Shows the main menu and returns '1' to '5'; Ctrl+C or closed input returns '5'.
 def get_menu_choice() -> str:
     print("\n=== Workplace Safety Incident Triage System ===")
     print("1. Log a new incident")
     print("2. View summary of all incidents")
     print("3. Query incidents by location")
-    print("4. Exit")
+    print("4. Delete an incident")
+    print("5. Exit")
     try:
-        choice = input("Choose an option (1-4): ").strip()
-        while choice not in ("1", "2", "3", "4"):
-            choice = input("Invalid choice. Please enter 1, 2, 3 or 4: ").strip()
+        choice = input("Choose an option (1-5): ").strip()
+        while choice not in ("1", "2", "3", "4", "5"):
+            choice = input("Invalid choice. Please enter 1, 2, 3, 4 or 5: ").strip()
     except (EOFError, KeyboardInterrupt):
         print()
-        return "4"
+        return "5"
     return choice
 
 
+# Asks which incident number to delete; returns it, or None if the user presses Enter, Ctrl+C or closes the input.
+def get_delete_choice(count: int) -> int | None:
+    while True:
+        try:
+            choice = input(f"Enter the incident # to delete (1-{count}, or press Enter to go back): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return None
+        if choice == "":
+            return None
+        if choice.isdigit() and 1 <= int(choice) <= count:
+            return int(choice)
+        print(f"Please enter a number from 1 to {count}.")
+
+
+# Shows the incident about to be deleted and asks the user to confirm.
+def confirm_delete(record: dict, number: int) -> bool:
+    print(f"\nIncident #{number}: {record.get('location')} - {record.get('description')}")
+    return _ask_yes_no("Delete this incident permanently? (yes/no): ")
+
+
 # Ren Xiang
-# Asks for description, location, reporter role and injury, re-prompting until each is valid.
-def get_incident_input() -> dict:
+# Asks for description, location, reporter role and injury, re-prompting until each is valid; pressing Enter twice on a blank answer returns None.
+def get_incident_input() -> dict | None:
     print("\n--- Log a New Incident ---")
+    print("(Press Enter twice on a blank answer to return to the main menu.)")
 
     description = _ask_valid("Describe what happened: ", _check_description)
+    if description is None:
+        return None
     location = _ask_valid("Location (e.g. 'Site A - Block 3'): ", _check_location)
+    if location is None:
+        return None
     reporter_role = _ask_valid("Your role (e.g. 'site_supervisor'): ", _check_role)
-    injury = _ask_yes_no("Was anyone injured? (yes/no): ")
+    if reporter_role is None:
+        return None
+    injury = _ask_yes_no("Was anyone injured? (yes/no): ", allow_back=True)
+    if injury is None:
+        return None
 
     return {
         "description": description,

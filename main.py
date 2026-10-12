@@ -141,10 +141,13 @@ def process_incident(incident: dict, records: list, interactive: bool = True) ->
     return final_record
 
 
-# Menu option 1: asks for an incident, processes it, shows the report, and offers to re-enter it if rejected.
+# Menu option 1: asks for an incident (pressing Enter twice on a blank answer returns to the menu), processes it, shows the report, and offers to re-enter it if rejected.
 def log_incident_flow(records: list) -> dict | None:
     while True:
         incident = io_manager.get_incident_input()
+        if incident is None:
+            io_manager.display_message("Cancelled. Returning to the main menu.")
+            return None
         final_record = process_incident(incident, records)
         if final_record is not None:
             break
@@ -189,7 +192,24 @@ def run_location_query(records: list) -> None:
     io_manager.display_query_results(data_manager.query_by_location(location, days))
 
 
-# The interactive menu loop: log an incident, view the summary, query by location, exit.
+# Menu option 4: shows the incidents, asks which one to delete, confirms, and removes it from the file.
+def run_delete_flow() -> list:
+    records = data_manager.load_records()
+    if not records:
+        io_manager.display_message("No incidents to delete.")
+        return records
+    io_manager.display_summary(records, SEVERITY_LEVELS, OUTCOME_ACTIONS, interactive=False)
+    number = io_manager.get_delete_choice(len(records))
+    if number is None or not io_manager.confirm_delete(records[number - 1], number):
+        return records
+    if data_manager.delete_record(number - 1):
+        io_manager.display_message(f"Incident #{number} deleted.")
+    else:
+        io_manager.display_message("Could not delete the incident: the data file could not be updated.")
+    return data_manager.load_records()
+
+
+# The interactive menu loop: log an incident, view the summary, query by location, delete an incident, exit.
 def main() -> None:
     records = start_up()
     while True:
@@ -201,6 +221,8 @@ def main() -> None:
         elif choice == "3":
             run_location_query(records)
         elif choice == "4":
+            records = run_delete_flow()
+        elif choice == "5":
             io_manager.display_message("Goodbye.")
             break
 
