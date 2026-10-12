@@ -113,3 +113,29 @@ def test_ai_cache_roundtrip_and_corruption():
 
 def load_tests(loader, tests, pattern):
     return suite_from(globals())
+
+def test_delete_record_removes_only_the_chosen_incident():
+    with temp_data_dir():
+        for name in ("A", "B", "C"):
+            dm.save_record({"location": name})
+        assert dm.delete_record(1) is True
+        assert dm.load_records() == [{"location": "A"}, {"location": "C"}]
+
+
+def test_delete_record_out_of_range_changes_nothing():
+    with temp_data_dir():
+        dm.save_record({"location": "A"})
+        assert dm.delete_record(5) is False
+        assert dm.delete_record(-1) is False
+        assert dm.load_records() == [{"location": "A"}]
+
+
+def test_delete_record_on_missing_file_returns_false():
+    with temp_data_dir():
+        assert dm.delete_record(0) is False
+
+
+def test_delete_record_on_corrupt_file_returns_false():
+    with temp_data_dir() as folder:
+        _write(folder, "incidents.json", "{not json")
+        assert dm.delete_record(0) is False
