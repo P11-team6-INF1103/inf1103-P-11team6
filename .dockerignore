@@ -14,4 +14,3 @@ __pycache__/
 *.log
 data/*.corrupt-*
 manual_test.py
-tests/
