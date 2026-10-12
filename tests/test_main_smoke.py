@@ -66,7 +66,7 @@ def test_enrich_record_runs_weather_or_similar_incidents_never_both(monkeypatch)
     monkeypatch.setattr(main.ai_manager, "extract_hazard_context_flags", lambda description: flags)
     monkeypatch.setattr(main.ai_manager, "get_weather", lambda timestamp, location: weather)
     monkeypatch.setattr(main.ai_manager, "find_similar_incidents",
-                        lambda record, history: {"similar_incidents": [], "similar_incidents_error": None})
+                        lambda record, history, outcome_meanings=None: {"similar_incidents": [], "similar_incidents_error": None})
     monkeypatch.setattr(main.ai_manager, "search_web_for_similar_incidents",
                         lambda record: {"web_industry_context": None, "web_incidents": [], "web_search_error": None})
     wet = main.enrich_record(dict(_incident(), run_weather=True, run_similar=False), [])
@@ -229,7 +229,7 @@ def test_enrich_record_copes_with_a_missing_description(monkeypatch):
     monkeypatch.setattr(main.ai_manager, "extract_hazard_context_flags",
                         lambda description: seen.append(description) or _good_flags())
     monkeypatch.setattr(main.ai_manager, "find_similar_incidents",
-                        lambda record, history: {"similar_incidents": [], "similar_incidents_error": None})
+                        lambda record, history, outcome_meanings=None: {"similar_incidents": [], "similar_incidents_error": None})
     monkeypatch.setattr(main.ai_manager, "search_web_for_similar_incidents",
                         lambda record: {"web_industry_context": None, "web_incidents": [], "web_search_error": None})
     main.enrich_record(dict(_incident(), description=None, run_weather=False, run_similar=True), [])
