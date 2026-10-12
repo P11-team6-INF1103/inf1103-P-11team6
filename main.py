@@ -21,6 +21,7 @@ apply_lighting = logic_manager.apply_lighting
 
 # Lennart
 def start_up() -> list:
+    """Sets up logging, warns about a corrupt incidents file, loads saved incidents and the AI cache. Returns the saved incidents."""
     log_path = data_manager.get_log_path()
     if log_path:
         logging.basicConfig(
@@ -40,6 +41,7 @@ def start_up() -> list:
 # The mandatory AI call runs first. If logic_manager rejects the incident we stop here, before
 # the weather and web-search calls are spent on it; process_incident shows the reason.
 def enrich_record(record: dict, history_records: list | None = None) -> dict:
+    """Runs the AI steps for one incident and returns the enriched record. The mandatory hazard extraction goes first; a rejected incident is returned at once. Then the optional weather, similar-incident and web-search steps, each of which fails safe: an error is recorded on the record, never raised."""
     enriched = dict(record)
 
     flags = ai_manager.extract_hazard_context_flags(str(record.get("description") or ""))
@@ -106,6 +108,7 @@ def enrich_record(record: dict, history_records: list | None = None) -> dict:
 # Returns None, and saves nothing, when logic_manager rejects the text as not a real safety incident.
 # interactive=False (batch, scripts, Docker) never waits on input() after a failed save.
 def process_incident(incident: dict, records: list, interactive: bool = True) -> dict | None:
+    """The whole pipeline for one incident: derive context, AI enrichment, severity, outcome, save. Returns the saved record, or None if the incident was rejected. interactive=False never asks questions."""
     with_context = derive_context(incident)
     with io_manager.show_loading("AI is analysing the incident"):
         enriched = enrich_record(with_context, records)
@@ -145,6 +148,7 @@ def process_incident(incident: dict, records: list, interactive: bool = True) ->
 # Lennart
 # If the AI rejects the incident, asks whether to enter it again instead of showing a report.
 def log_incident_flow(records: list) -> dict | None:
+    """Menu option 1: asks for an incident, processes it and shows the result. Offers to re-enter it if it was rejected. Returns the record, or None if the user gave up."""
     while True:
         incident = io_manager.get_incident_input()
         final_record = process_incident(incident, records)
@@ -158,6 +162,7 @@ def log_incident_flow(records: list) -> dict | None:
 
 # Lennart
 def run_batch(path: str) -> int:
+    """Processes every valid incident in a JSON file without prompting and prints a summary. Returns 0, or 1 if the file had no valid incidents."""
     incidents, problems = io_manager.read_incident_file(path)
     for problem in problems:
         io_manager.display_message(f"Skipped: {problem}")
@@ -177,6 +182,7 @@ def run_batch(path: str) -> int:
 
 # Lennart
 def main() -> None:
+    """The interactive menu loop: log an incident, view the summary, query by location, exit."""
     records = start_up()
     while True:
         choice = io_manager.get_menu_choice()
