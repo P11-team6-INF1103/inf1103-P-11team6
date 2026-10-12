@@ -160,9 +160,31 @@ def _gemini_json(client: object, prompt: str, schema: dict) -> object:
     raise last_error
 
 
-# Lennart
-def extract_hazard_context_flags(description: str) -> dict:
-    defaults = {
+_HAZARD_FLAGS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "hazard_category": {"type": "string", "enum": list(HAZARD_CATEGORIES)},
+        "injury_treatment": {"type": "string", "enum": list(INJURY_TREATMENTS)},
+        "equipment_mentioned": {"type": "array", "items": {"type": "string"}},
+        "elevated_places": {"type": "array", "items": {"type": "string"}},
+        "height_estimate_m": {"type": ["number", "null"]},
+        "ppe_status": {
+            "type": "string",
+            "enum": ["worn", "not_worn", "unspecified"],
+        },
+        "is_valid_incident": {"type": "boolean"},
+        "invalid_reason": {"type": "string"},
+    },
+    "required": [
+        "hazard_category", "injury_treatment", "equipment_mentioned",
+        "elevated_places", "ppe_status",
+    ],
+}
+
+
+def _hazard_flag_defaults() -> dict:
+    """A fresh result for when the AI gave nothing: every flag unknown, no error."""
+    return {
         "hazard_category": None,
         "injury_treatment": "unspecified",
         "equipment_mentioned": [],
@@ -174,35 +196,11 @@ def extract_hazard_context_flags(description: str) -> dict:
         "context_flags_error": None,
     }
 
-    client = _get_gemini_client()
-    if client is None:
-        logger.warning("Hazard extraction skipped: Gemini client unavailable")
-        result = dict(defaults)
-        result["context_flags_error"] = "Gemini client unavailable (check GEMINI_API_KEY)"
-        return result
 
-    schema = {
-        "type": "object",
-        "properties": {
-            "hazard_category": {"type": "string", "enum": list(HAZARD_CATEGORIES)},
-            "injury_treatment": {"type": "string", "enum": list(INJURY_TREATMENTS)},
-            "equipment_mentioned": {"type": "array", "items": {"type": "string"}},
-            "elevated_places": {"type": "array", "items": {"type": "string"}},
-            "height_estimate_m": {"type": ["number", "null"]},
-            "ppe_status": {
-                "type": "string",
-                "enum": ["worn", "not_worn", "unspecified"],
-            },
-            "is_valid_incident": {"type": "boolean"},
-            "invalid_reason": {"type": "string"},
-        },
-        "required": [
-            "hazard_category", "injury_treatment", "equipment_mentioned",
-            "elevated_places", "ppe_status",
-        ],
-    }
-
-    prompt = (
+def _build_hazard_prompt(description: str) -> str:
+    """The Gemini prompt asking for hazard-context facts from one description.
+    The description is passed as data, never as instructions."""
+    return (
         "Read this workplace safety incident description from a Singapore "
         "construction site and extract hazard-context flags as JSON.\n\n"
         f"Description: \"{description}\"\n\n"
@@ -238,32 +236,51 @@ def extract_hazard_context_flags(description: str) -> dict:
         "otherwise 'unspecified'."
     )
 
-    try:
-        parsed = _gemini_json(client, prompt, schema)
 
-        if parsed.get("hazard_category") not in HAZARD_CATEGORIES:
-            raise ValueError(f"invalid hazard_category: {parsed.get('hazard_category')!r}")
+def _clean_hazard_flags(parsed: dict) -> dict:
+    """Turns a schema-valid Gemini reply into the flags dict. Anything of the
+    wrong type or outside the allowed values keeps its default. Raises
+    ValueError when hazard_category is not an allowed value."""
+    if parsed.get("hazard_category") not in HAZARD_CATEGORIES:
+        raise ValueError(f"invalid hazard_category: {parsed.get('hazard_category')!r}")
 
-        result = dict(defaults)
-        result["hazard_category"] = parsed["hazard_category"]
-        if isinstance(parsed.get("is_valid_incident"), bool):
-            result["is_valid_incident"] = parsed["is_valid_incident"]
-        if isinstance(parsed.get("invalid_reason"), str) and parsed["invalid_reason"].strip():
-            result["invalid_reason"] = parsed["invalid_reason"].strip()
-        if parsed.get("injury_treatment") in INJURY_TREATMENTS:
-            result["injury_treatment"] = parsed["injury_treatment"]
-        for key in ("equipment_mentioned", "elevated_places"):
-            result[key] = [item.strip() for item in parsed.get(key) or []
-                           if isinstance(item, str) and item.strip()]
-        if isinstance(parsed.get("height_estimate_m"), (int, float)):
-            result["height_estimate_m"] = parsed["height_estimate_m"]
-        if parsed.get("ppe_status") in ("worn", "not_worn", "unspecified"):
-            result["ppe_status"] = parsed["ppe_status"]
+    result = _hazard_flag_defaults()
+    result["hazard_category"] = parsed["hazard_category"]
+    if isinstance(parsed.get("is_valid_incident"), bool):
+        result["is_valid_incident"] = parsed["is_valid_incident"]
+    if isinstance(parsed.get("invalid_reason"), str) and parsed["invalid_reason"].strip():
+        result["invalid_reason"] = parsed["invalid_reason"].strip()
+    if parsed.get("injury_treatment") in INJURY_TREATMENTS:
+        result["injury_treatment"] = parsed["injury_treatment"]
+    for key in ("equipment_mentioned", "elevated_places"):
+        result[key] = [item.strip() for item in parsed.get(key) or []
+                       if isinstance(item, str) and item.strip()]
+    if isinstance(parsed.get("height_estimate_m"), (int, float)):
+        result["height_estimate_m"] = parsed["height_estimate_m"]
+    if parsed.get("ppe_status") in ("worn", "not_worn", "unspecified"):
+        result["ppe_status"] = parsed["ppe_status"]
+    return result
+
+
+# Lennart
+def extract_hazard_context_flags(description: str) -> dict:
+    """Asks Gemini for the hazard facts in one description (category, injury
+    treatment, equipment, elevated places, height, PPE, validity) and
+    validates the reply. Never raises: with no client or a bad reply it
+    returns the defaults and sets context_flags_error."""
+    client = _get_gemini_client()
+    if client is None:
+        logger.warning("Hazard extraction skipped: Gemini client unavailable")
+        result = _hazard_flag_defaults()
+        result["context_flags_error"] = "Gemini client unavailable (check GEMINI_API_KEY)"
         return result
 
+    try:
+        parsed = _gemini_json(client, _build_hazard_prompt(description), _HAZARD_FLAGS_SCHEMA)
+        return _clean_hazard_flags(parsed)
     except Exception as error:
         logger.warning("Hazard extraction failed: %s", error)
-        result = dict(defaults)
+        result = _hazard_flag_defaults()
         result["context_flags_error"] = f"AI extraction failed: {error}"
         return result
 
