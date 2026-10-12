@@ -8,6 +8,7 @@ import unittest
 from unittest import mock
 
 
+# Blocks the network and empties the API keys while the with-block runs.
 @contextlib.contextmanager
 def offline():
     def blocked(*args, **kwargs):
@@ -18,6 +19,7 @@ def offline():
         yield
 
 
+# Wraps a test so it runs inside offline().
 def _offline(test):
     @functools.wraps(test)
     def run():
@@ -26,6 +28,7 @@ def _offline(test):
     return run
 
 
+# Builds a unittest suite from every test_ function in a module's namespace.
 def suite_from(namespace):
     suite = unittest.TestSuite()
     for name in sorted(namespace):
@@ -34,6 +37,7 @@ def suite_from(namespace):
     return suite
 
 
+# Points INCIDENT_DATA_DIR at a temporary folder while the with-block runs.
 @contextlib.contextmanager
 def temp_data_dir():
     with tempfile.TemporaryDirectory() as folder, \
@@ -41,6 +45,7 @@ def temp_data_dir():
         yield folder
 
 
+# Feeds the given lines to input() and captures what is printed.
 @contextlib.contextmanager
 def typed(lines):
     feed = iter(lines)
@@ -57,6 +62,7 @@ def typed(lines):
         yield buffer
 
 
+# Collects the messages logged by the named logger.
 @contextlib.contextmanager
 def captured_logs(name):
     messages = []

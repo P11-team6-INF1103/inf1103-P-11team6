@@ -21,7 +21,7 @@ def _canned_ai(monkeypatch, flags, weather=None):
                         lambda record, history, outcome_meanings=None: {"similar_incidents": [], "similar_incidents_error": None})
     monkeypatch.setattr(main.ai_manager, "search_web_for_similar_incidents",
                         lambda record: {"web_industry_context": None, "web_incidents": [], "web_search_error": None})
-    monkeypatch.setattr(main, "generate_incident_review",
+    monkeypatch.setattr(main.ai_manager, "generate_incident_review",
                         lambda record: {"review_likely_causes": None, "review_prevention_actions": None,
                                         "review_error": None})
 

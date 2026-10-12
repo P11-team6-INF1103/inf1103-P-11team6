@@ -11,27 +11,27 @@ from datetime import datetime
 _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 
-# Animated spinner while the `with` block runs. Silent when stdout is not a terminal.
+# Draws the spinner on one line until stop is set.
+def _animate_spinner(stop: threading.Event, message: str) -> None:
+    frame = 0
+    while not stop.is_set():
+        dots = "." * (frame // 3 % 4)
+        spinner = _SPINNER_FRAMES[frame % len(_SPINNER_FRAMES)]
+        sys.stdout.write(f"\r{spinner} {message}{dots:<3}")
+        sys.stdout.flush()
+        frame += 1
+        stop.wait(0.1)
+
+
+# Shows a spinner and message while the with-block runs; does nothing if output is not a terminal.
 @contextmanager
 def show_loading(message: str = "AI is thinking") -> Iterator[None]:
-    """Context manager that shows a spinner with message while the block runs. Does nothing when output is not a terminal."""
     if not sys.stdout.isatty():
         yield
         return
 
     stop = threading.Event()
-
-    def animate():
-        frame = 0
-        while not stop.is_set():
-            dots = "." * (frame // 3 % 4)
-            spinner = _SPINNER_FRAMES[frame % len(_SPINNER_FRAMES)]
-            sys.stdout.write(f"\r{spinner} {message}{dots:<3}")
-            sys.stdout.flush()
-            frame += 1
-            stop.wait(0.1)
-
-    thread = threading.Thread(target=animate, daemon=True)
+    thread = threading.Thread(target=_animate_spinner, args=(stop, message), daemon=True)
     thread.start()
     try:
         yield
@@ -51,11 +51,13 @@ _LOCATION_CHARS = re.compile(r"^[A-Za-z0-9 \-,./()#]+$")
 _ROLE_CHARS = re.compile(r"^[A-Za-z _/\-]+$")
 
 
+# Collapses whitespace and drops unprintable characters from typed text.
 def _sanitise(text: object) -> str:
     text = " ".join(str(text).split())
     return "".join(ch for ch in text if ch.isprintable())
 
 
+# Error message if the description is not acceptable (empty, too short or long, not words), else None.
 def _check_description(text: str) -> str | None:
     if text == "":
         return "Description cannot be empty."
@@ -73,6 +75,7 @@ def _check_description(text: str) -> str | None:
     return None
 
 
+# Error message if the location is not acceptable, else None.
 def _check_location(text: str) -> str | None:
     if text == "":
         return "Location cannot be empty."
@@ -85,6 +88,7 @@ def _check_location(text: str) -> str | None:
     return None
 
 
+# Error message if the reporter role is not acceptable, else None.
 def _check_role(text: str) -> str | None:
     if text == "":
         return "Role cannot be empty."
@@ -97,7 +101,7 @@ def _check_role(text: str) -> str | None:
     return None
 
 
-# Asks until the sanitised answer passes `check`, saying why each answer was rejected.
+# Asks until the sanitised answer passes the check, saying why each answer was rejected.
 def _ask_valid(prompt: str, check: Callable[[str], str | None]) -> str:
     while True:
         value = _sanitise(input(prompt))
@@ -108,6 +112,7 @@ def _ask_valid(prompt: str, check: Callable[[str], str | None]) -> str:
         prompt = "Try again: "
 
 
+# Asks until the answer is yes or no; returns True for yes.
 def _ask_yes_no(prompt: str) -> bool:
     answer = input(prompt).strip().lower()
     while answer not in ("yes", "no", "y", "n"):
@@ -115,16 +120,13 @@ def _ask_yes_no(prompt: str) -> bool:
     return answer in ("yes", "y")
 
 
-# After the AI rejects an incident as not a real safety incident: asks whether to enter it again.
+# Asks whether to enter a rejected incident again.
 def ask_try_again() -> bool:
-    """Asks whether to enter a rejected incident again."""
     return _ask_yes_no("Enter the incident again? (yes/no): ")
 
 
-# Lennart
-# After a failed save: warns that the incident is not on disk and asks whether to try saving again.
+# Warns that the incident is not on disk and asks whether to try saving again.
 def ask_retry_save() -> bool:
-    """Warns that the incident is not on disk and asks whether to try saving again."""
     print()
     print("!" * 60)
     print("  INCIDENT NOT SAVED: it could not be written to disk and")
@@ -133,16 +135,14 @@ def ask_retry_save() -> bool:
     return _ask_yes_no("Try saving again? (yes/no): ")
 
 
-# Main menu
+# Daniel
+# Shows the main menu and returns '1' to '4'; Ctrl+C or closed input returns '4'.
 def get_menu_choice() -> str:
-    """Shows the main menu and returns '1' to '4'. Re-prompts on anything else; Ctrl+C or closed input returns '4'."""
     print("\n=== Workplace Safety Incident Triage System ===")
     print("1. Log a new incident")
     print("2. View summary of all incidents")
     print("3. Query incidents by location")
     print("4. Exit")
-    # Ctrl+C or closed input (Ctrl+D / end of piped input) means "Exit",
-    # so main.py says goodbye instead of showing a traceback.
     try:
         choice = input("Choose an option (1-4): ").strip()
         while choice not in ("1", "2", "3", "4"):
@@ -153,9 +153,9 @@ def get_menu_choice() -> str:
     return choice
 
 
-# Incident input interface
+# Ren Xiang
+# Asks for description, location, reporter role and injury, re-prompting until each is valid.
 def get_incident_input() -> dict:
-    """Asks for description, location, reporter role and injury, re-prompting until each is valid. Returns the incident dict with the current time."""
     print("\n--- Log a New Incident ---")
 
     description = _ask_valid("Describe what happened: ", _check_description)
@@ -172,11 +172,12 @@ def get_incident_input() -> dict:
     }
 
 
+# Prints one line of text; the only way other modules show messages.
 def display_message(text: str) -> None:
-    """Prints one line of text. The only way other modules show messages."""
     print(text)
 
 
+# Lists the saved locations and returns the one picked, or None to go back.
 def _choose_location(known_locations: list) -> str | None:
     if not known_locations:
         print("No incidents have been saved yet, so there are no locations to list.")
@@ -194,9 +195,8 @@ def _choose_location(known_locations: list) -> str | None:
         print(f"Please enter a number from 1 to {len(known_locations)}.")
 
 
-# Location query interface (menu option 3)
+# Asks for a location (or 'list') and a number of days; returns (location, days), or None to go back.
 def get_location_query(known_locations: list | None = None) -> tuple[str, int] | None:
-    """Asks for a location (or 'list' to pick a saved one) and a number of days. Returns (location, days), or None to go back to the menu."""
     if known_locations is None:
         prompt = "Location to search (or press Enter to go back to the menu): "
     else:
@@ -222,8 +222,8 @@ def get_location_query(known_locations: list | None = None) -> tuple[str, int] |
     return location, int(days_input) if days_input else 30
 
 
+# Prints the incidents found by a location query.
 def display_query_results(results: list) -> None:
-    """Prints the incidents found by a location query."""
     if not results:
         print("No matching incidents found.")
         return
@@ -272,7 +272,7 @@ _WIDTH = 64
 _LABEL_WIDTH = 14
 
 
-# Helper functions for formatting output
+# Formats an ISO timestamp as '05 Oct 2026, 09:00', or returns it unchanged if unreadable.
 def _format_time(timestamp: object) -> str:
     try:
         return datetime.fromisoformat(timestamp).strftime("%d %b %Y, %H:%M")
@@ -280,22 +280,24 @@ def _format_time(timestamp: object) -> str:
         return str(timestamp)
 
 
+# Report width: the terminal width kept between 60 and 90 columns.
 def _report_width() -> int:
     return min(max(shutil.get_terminal_size((100, 24)).columns, 60), 90)
 
 
-# Drops citation markers like 【9†L109-L112】 and swaps fancy hyphens/quotes for plain ones
+# Removes citation markers and swaps fancy hyphens and quotes for plain ones.
 def _clean(text: object) -> str:
     text = re.sub(r"【[^】]*】", "", str(text))
     text = text.translate({0x2011: "-", 0x2010: "-", 0x2019: "'", 0x2018: "'"})
     return re.sub(r"\s+([.,;])(?=\s|$)", r"\1", " ".join(text.split()))
 
 
+# Prints a section heading line.
 def _section(title: str, width: int) -> None:
     print(f"\n── {title} " + "─" * max(width - len(title) - 4, 3))
 
 
-# Prints `label  value` with wrapped lines hanging under the value; a list prints one '- ' bullet per item
+# Prints 'label  value' with wrapped lines hanging under the value; a list prints one bullet per item.
 def _field(label: str, value: object, width: int, indent: int = 2, label_width: int = _LABEL_WIDTH) -> None:
     items = value if isinstance(value, list) else [value]
     bullets = isinstance(value, list)
@@ -331,6 +333,8 @@ _ALL_AI_DOWN_MESSAGE = (
 )
 _KEY_HINT = "An API key looks missing: check GEMINI_API_KEY and GROQ_API_KEY in the .env file."
 
+
+# Plain-English messages for each *_error field on the record.
 def _friendly_problems(record: dict) -> list:
     problems = [text for field, text in _PROBLEM_MESSAGES if record.get(field)]
     if all(record.get(f) for f in ("context_flags_error", "web_search_error", "review_error")):
@@ -340,8 +344,9 @@ def _friendly_problems(record: dict) -> list:
         problems.append(_KEY_HINT)
     return problems
 
+
+# Prints the report banner and the fields the supervisor logged.
 def _print_report_header(record: dict, width: int, number: int | None) -> None:
-    """The report banner and the 'what was logged' fields."""
     title = f"INCIDENT #{number}" if number else "INCIDENT REPORT"
     print("═" * width)
     print(f" {title}   {record.get('location')}   {_format_time(record.get('timestamp'))}")
@@ -354,8 +359,8 @@ def _print_report_header(record: dict, width: int, number: int | None) -> None:
     _field("Type of hazard", _HAZARD_NAMES.get(hazard, hazard), width, indent=1, label_width=15)
 
 
+# Prints the severity gauge, the reasons behind it, how likely it is to recur and the action to take.
 def _print_severity_section(record: dict, width: int, severity_levels: dict, outcome_actions: dict) -> None:
-    """Severity gauge, the reasons behind it, how likely it is to recur, and the action to take."""
     outcome = record.get("outcome")
     severity = record.get("severity_estimate")
     _section("SEVERITY AND ACTION", width)
@@ -378,8 +383,8 @@ def _print_severity_section(record: dict, width: int, severity_levels: dict, out
         _field("", outcome_actions[outcome], width)
 
 
+# Prints the weather and season at the time; nothing if the weather was not checked.
 def _print_weather_section(record: dict, width: int) -> None:
-    """Weather and season at the time; nothing if the weather was not checked."""
     if record.get("weather_available"):
         _section("WEATHER AT THE TIME", width)
         _field("Conditions", (
@@ -390,8 +395,8 @@ def _print_weather_section(record: dict, width: int) -> None:
             _field("Season", _SEASON_TEXT[record["monsoon_season"]], width)
 
 
+# Prints the web-search findings: industry context and similar incidents reported elsewhere.
 def _print_web_sections(record: dict, width: int) -> None:
-    """The web-search evidence: is this a known industry issue, and similar incidents reported elsewhere."""
     if record.get("web_industry_context"):
         _section("IS THIS A KNOWN ISSUE IN THE INDUSTRY?", width)
         _field("", record["web_industry_context"], width, label_width=0)
@@ -408,8 +413,8 @@ def _print_web_sections(record: dict, width: int) -> None:
                 print()
 
 
+# Prints similar incidents found in our own saved records.
 def _print_similar_sites_section(record: dict, width: int) -> None:
-    """Similar incidents found in our own saved records."""
     if record.get("similar_incidents"):
         _section("SIMILAR INCIDENTS ON OUR OWN SITES", width)
         for i, item in enumerate(record["similar_incidents"], start=1):
@@ -421,8 +426,8 @@ def _print_similar_sites_section(record: dict, width: int) -> None:
             _field("Action taken", outcome_name, width, indent=5)
 
 
+# Prints the AI after-action review: likely causes and prevention actions.
 def _print_review_sections(record: dict, width: int) -> None:
-    """The AI after-action review: likely causes and prevention actions."""
     if record.get("review_likely_causes"):
         _section("WHY IT LIKELY HAPPENED", width)
         _field("", record["review_likely_causes"], width, label_width=0)
@@ -431,8 +436,8 @@ def _print_review_sections(record: dict, width: int) -> None:
         _field("", record["review_prevention_actions"], width, label_width=0)
 
 
+# Prints everything the AI could not do, in one place; nothing if every step worked.
 def _print_problems_section(record: dict, width: int) -> None:
-    """Everything the AI could not do, in one place; nothing if every step worked."""
     problems = _friendly_problems(record)
     if record.get("assessment_error"):
         problems.append(f"Assessment: {record['assessment_error']}")
@@ -447,9 +452,8 @@ def _print_problems_section(record: dict, width: int) -> None:
         _field("", problems, width, label_width=0)
 
 
+# Prints the full report for one incident, one section after another, leaving out empty sections.
 def _print_incident_report(record: dict, severity_levels: dict | None = None, outcome_actions: dict | None = None, number: int | None = None) -> None:
-    """Prints the full report for one incident, one section after another.
-    Sections with nothing to show are left out."""
     severity_levels = severity_levels or {}
     outcome_actions = outcome_actions or {}
     width = _report_width()
@@ -465,26 +469,30 @@ def _print_incident_report(record: dict, severity_levels: dict | None = None, ou
     print()
 
 
+# Ren Xiang
+# Prints the full report for one processed incident.
 def display_outcome(record: dict, severity_levels: dict | None = None, outcome_actions: dict | None = None) -> None:
-    """Prints the full report for one processed incident."""
     print()
     _print_incident_report(record, severity_levels, outcome_actions)
 
 
+# Ren Xiang
+# Prints what each severity level means.
 def display_severity_guide(severity_levels: dict) -> None:
-    """Prints what each severity level means."""
     print("\nWHAT THE SEVERITY LEVELS MEAN")
     for level in sorted(severity_levels):
         name, meaning = severity_levels[level]
         print(f"  {level} {name:<9} {meaning}")
 
 
-# Boxed table; long cells wrap inside their column
-def _print_table(headers: list, rows: list, widths: list) -> None:
-    def line(left, mid, right):
-        return left + mid.join("─" * (w + 2) for w in widths) + right
+# One horizontal border line of the boxed table.
+def _table_border(widths: list, left: str, mid: str, right: str) -> str:
+    return left + mid.join("─" * (w + 2) for w in widths) + right
 
-    print(line("┌", "┬", "┐"))
+
+# Prints a boxed table; long cells wrap inside their column.
+def _print_table(headers: list, rows: list, widths: list) -> None:
+    print(_table_border(widths, "┌", "┬", "┐"))
     all_rows = [headers] + rows
     for index, row in enumerate(all_rows):
         cells = [textwrap.wrap(str(cell), w) or [""] for cell, w in zip(row, widths)]
@@ -492,12 +500,12 @@ def _print_table(headers: list, rows: list, widths: list) -> None:
             parts = [(c[i] if i < len(c) else "").ljust(w) for c, w in zip(cells, widths)]
             print("│ " + " │ ".join(parts) + " │")
         if index < len(all_rows) - 1:
-            print(line("├", "┼", "┤"))
-    print(line("└", "┴", "┘"))
+            print(_table_border(widths, "├", "┼", "┤"))
+    print(_table_border(widths, "└", "┴", "┘"))
 
 
+# How many incidents have each outcome and each hazard, by display name.
 def _count_by_outcome_and_hazard(records: list) -> tuple[dict, dict]:
-    """How many incidents have each outcome and each hazard, by display name."""
     outcome_counts = {}
     hazard_counts = {}
     for record in records:
@@ -509,9 +517,8 @@ def _count_by_outcome_and_hazard(records: list) -> tuple[dict, dict]:
     return outcome_counts, hazard_counts
 
 
+# Column widths for the summary table; Location and Description share the width left over.
 def _summary_columns() -> list[int]:
-    """Column widths for the summary table; Location and Description share
-    whatever width the terminal has left after the fixed columns."""
     fixed = [3, 11, 18, 3, 13]
     total_width = max(shutil.get_terminal_size((100, 24)).columns, 100)
     spare = total_width - sum(fixed) - (3 * 7 + 1)
@@ -521,9 +528,8 @@ def _summary_columns() -> list[int]:
     return widths
 
 
+# One table row per incident, with pending review first and then the most severe.
 def _summary_rows(records: list) -> list[list]:
-    """One table row per incident, numbered in saved order but sorted so
-    incidents needing manual review come first, then the most severe."""
     ordered = sorted(
         enumerate(records, start=1),
         key=lambda pair: (
@@ -550,9 +556,8 @@ def _summary_rows(records: list) -> list[list]:
     return rows
 
 
+# Asks for an incident number and prints its full report, until the user presses Enter.
 def _open_report_loop(records: list, severity_levels: dict | None, outcome_actions: dict | None) -> None:
-    """Asks for an incident number and prints its full report, until the user
-    presses Enter (or input ends)."""
     while True:
         try:
             choice = input("Enter an incident # for its full report (or press Enter to go back): ").strip()
@@ -568,10 +573,9 @@ def _open_report_loop(records: list, severity_levels: dict | None, outcome_actio
             print(f"Please enter a number from 1 to {len(records)}.")
 
 
-# Totals and one table row per incident, then the severity guide.
-# When `interactive`, an incident # can be typed to open its full report.
+# Ren Xiang
+# Prints counts by outcome and hazard, a table of all incidents and the severity guide; can open a full report.
 def display_summary(records: list, severity_levels: dict | None = None, outcome_actions: dict | None = None, interactive: bool = True) -> None:
-    """Prints counts by outcome and hazard and a table of all incidents, pending review first, then highest severity. interactive=True can offer to open a full report."""
     print("\n" + "#" * _WIDTH)
     print("INCIDENT SUMMARY / AFTER-ACTION REVIEW")
     print("#" * _WIDTH)
@@ -596,10 +600,8 @@ def display_summary(records: list, severity_levels: dict | None = None, outcome_
         _open_report_loop(records, severity_levels, outcome_actions)
 
 
+# Checks one batch item with the same rules as typed input; returns (incident, []) or (None, bad fields).
 def _validate_incident_item(item: dict) -> tuple[dict | None, list[str]]:
-    """Checks one batch item with the same rules as typed input. Returns
-    (incident, []) when it is valid, or (None, the names of the bad fields).
-    A missing timestamp becomes the current time; 'yes'/'no' is accepted for injury."""
     bad = []
     for key, check in (("description", _check_description),
                        ("location", _check_location),
@@ -632,10 +634,8 @@ def _validate_incident_item(item: dict) -> tuple[dict | None, list[str]]:
     }, []
 
 
-# Batch mode: reads a JSON list of incidents and validates each one like typed input.
-# Returns (incidents, problems): the valid incidents plus one message per rejected item.
+# Reads a JSON list of incidents for batch mode; returns (valid incidents, problem messages), never raises.
 def read_incident_file(path: str) -> tuple[list, list]:
-    """Reads a JSON list of incidents for batch mode and validates each item with the same checks as typed input. Returns (valid incidents, problem messages); never raises."""
     try:
         with open(path, "r", encoding="utf-8") as f:
             items = json.load(f)
