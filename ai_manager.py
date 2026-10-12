@@ -317,7 +317,8 @@ def get_weather(timestamp: str | None, location: str) -> dict | None:
     return weather
 
 
-def find_similar_incidents(record: dict, history_records: list | None = None) -> dict:
+def find_similar_incidents(record: dict, history_records: list | None = None,
+                           outcome_meanings: dict | None = None) -> dict:
     result = {"similar_incidents": [], "similar_incidents_error": None}
     history_records = history_records or []
     if not history_records:
@@ -366,11 +367,13 @@ def find_similar_incidents(record: dict, history_records: list | None = None) ->
         "similar hazard signature with the new one (same kind of hazard). If "
         "none are similar, return an empty array. For each match, always add a "
         "one-sentence resolution_notes saying what its recorded outcome means "
-        "was done on site: log_only = recorded, no further action; "
-        "stop_work_review = work was stopped for a safety review; "
-        "systemic_escalation = escalated to management as a recurring site "
-        "problem; pending_review = waiting for a manual review."
+        "was done on site."
     )
+    if outcome_meanings:
+        prompt += (
+            " What each recorded outcome means (JSON): "
+            f"{json.dumps(outcome_meanings, sort_keys=True)}"
+        )
 
     try:
         parsed = _gemini_json(client, prompt, schema)
