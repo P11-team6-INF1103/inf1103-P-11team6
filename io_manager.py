@@ -553,6 +553,42 @@ def display_summary(records: list, severity_levels: dict | None = None, outcome_
 
 # Batch mode: reads a JSON list of incidents and validates each one like typed input.
 # Returns (incidents, problems): the valid incidents plus one message per rejected item.
+def _validate_incident_item(item: dict) -> tuple[dict | None, list[str]]:
+    """Checks one batch item with the same rules as typed input. Returns
+    (incident, []) when it is valid, or (None, the names of the bad fields).
+    A missing timestamp becomes the current time; 'yes'/'no' is accepted for injury."""
+    bad = []
+    for key, check in (("description", _check_description),
+                       ("location", _check_location),
+                       ("reporter_role", _check_role)):
+        if not isinstance(item.get(key), str):
+            bad.append(key)
+            continue
+        item[key] = _sanitise(item[key]).strip()
+        error = check(item[key])
+        if error:
+            bad.append(f"{key} ({error})")
+    injury = item.get("injury")
+    if isinstance(injury, str) and injury.strip().lower() in ("yes", "y", "no", "n"):
+        injury = injury.strip().lower() in ("yes", "y")
+    if not isinstance(injury, bool):
+        bad.append("injury (true/false)")
+    timestamp = item.get("timestamp") or datetime.now().isoformat()
+    try:
+        datetime.fromisoformat(timestamp)
+    except (TypeError, ValueError):
+        bad.append("timestamp (ISO format)")
+    if bad:
+        return None, bad
+    return {
+        "description": item["description"],
+        "location": item["location"],
+        "reporter_role": item["reporter_role"],
+        "injury": injury,
+        "timestamp": timestamp,
+    }, []
+
+
 def read_incident_file(path: str) -> tuple[list, list]:
     """Reads a JSON list of incidents for batch mode and validates each item with the same checks as typed input. Returns (valid incidents, problem messages); never raises."""
     try:
@@ -568,35 +604,9 @@ def read_incident_file(path: str) -> tuple[list, list]:
         if not isinstance(item, dict):
             problems.append(f"Item {number}: not an object")
             continue
-        missing = []
-        for key, check in (("description", _check_description),
-                           ("location", _check_location),
-                           ("reporter_role", _check_role)):
-            if not isinstance(item.get(key), str):
-                missing.append(key)
-                continue
-            item[key] = _sanitise(item[key]).strip()
-            error = check(item[key])
-            if error:
-                missing.append(f"{key} ({error})")
-        injury = item.get("injury")
-        if isinstance(injury, str) and injury.strip().lower() in ("yes", "y", "no", "n"):
-            injury = injury.strip().lower() in ("yes", "y")
-        if not isinstance(injury, bool):
-            missing.append("injury (true/false)")
-        timestamp = item.get("timestamp") or datetime.now().isoformat()
-        try:
-            datetime.fromisoformat(timestamp)
-        except (TypeError, ValueError):
-            missing.append("timestamp (ISO format)")
-        if missing:
-            problems.append(f"Item {number}: missing or invalid " + ", ".join(missing))
-            continue
-        incidents.append({
-            "description": item["description"],
-            "location": item["location"],
-            "reporter_role": item["reporter_role"],
-            "injury": injury,
-            "timestamp": timestamp,
-        })
+        incident, bad = _validate_incident_item(item)
+        if incident is None:
+            problems.append(f"Item {number}: missing or invalid " + ", ".join(bad))
+        else:
+            incidents.append(incident)
     return incidents, problems
