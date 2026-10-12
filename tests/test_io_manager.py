@@ -31,7 +31,7 @@ def test_incident_input_reprompts_until_valid(monkeypatch, capsys):
     assert incident["location"] == "Site A - Block 3"
     assert incident["reporter_role"] == "site_supervisor" and incident["injury"] is True
     out = capsys.readouterr().out
-    assert out.count("Error:") == 4 and any(p.startswith("Please answer yes or no") for p in prompts)
+    assert out.count("Error:") == 3 and "press Enter again to go back" in out and any(p.startswith("Please answer yes or no") for p in prompts)
 
 
 def test_checks_reject_junk_and_accept_real_input():
@@ -92,7 +92,7 @@ def test_menu_treats_ctrl_c_and_closed_input_as_exit(monkeypatch, capsys):
         def stop(prompt="", interrupt=interrupt):
             raise interrupt
         monkeypatch.setattr("builtins.input", stop)
-        assert io.get_menu_choice() == "4"
+        assert io.get_menu_choice() == "5"
 
 
 def test_clean_keeps_dot_env_and_closes_up_punctuation():
@@ -157,3 +157,48 @@ def test_read_incident_file_validates_every_item(tmp_path):
     assert io.read_incident_file(str(tmp_path / "missing.json"))[0] == []
     path.write_text("{bad", encoding="utf-8")
     assert io.read_incident_file(str(path))[0] == []
+
+
+def test_get_delete_choice_reprompts_until_valid_number(monkeypatch, capsys):
+    _type(monkeypatch, ["0", "9", "abc", "2"])
+    assert io.get_delete_choice(3) == 2
+    assert "Please enter a number from 1 to 3" in capsys.readouterr().out
+
+
+def test_get_delete_choice_enter_or_closed_input_goes_back(monkeypatch):
+    _type(monkeypatch, [""])
+    assert io.get_delete_choice(3) is None
+    for interrupt in (EOFError, KeyboardInterrupt):
+        def stop(prompt="", interrupt=interrupt):
+            raise interrupt
+        monkeypatch.setattr("builtins.input", stop)
+        assert io.get_delete_choice(3) is None
+
+
+def test_confirm_delete_shows_the_incident_and_asks_yes_or_no(monkeypatch, capsys):
+    _type(monkeypatch, ["maybe", "y"])
+    assert io.confirm_delete({"location": "Site A", "description": "Slip"}, 2) is True
+    assert "Incident #2: Site A - Slip" in capsys.readouterr().out
+    _type(monkeypatch, ["no"])
+    assert io.confirm_delete({"location": "Site A", "description": "Slip"}, 2) is False
+
+
+def test_pressing_enter_twice_at_any_incident_question_returns_none(monkeypatch):
+    first = "worker slipped on a wet floor"
+    for answers in (["", ""], [first, "  ", ""], [first, "Site A", "", ""], [first, "Site A", "site_supervisor", "", ""]):
+        _type(monkeypatch, answers)
+        assert io.get_incident_input() is None
+
+
+def test_one_blank_answer_only_shows_the_hint_and_asks_again(monkeypatch, capsys):
+    _type(monkeypatch, ["", "worker slipped on a wet floor", "", "***", "Site A - Block 3", "site_supervisor", "n"])
+    incident = io.get_incident_input()
+    assert incident["description"] == "worker slipped on a wet floor"
+    assert incident["location"] == "Site A - Block 3" and incident["injury"] is False
+    assert capsys.readouterr().out.count("press Enter again to go back") == 2
+
+
+def test_blank_enter_is_not_special_for_other_yes_no_questions(monkeypatch):
+    prompts = _type(monkeypatch, ["", "", "n"])
+    assert io._ask_yes_no("Enter the incident again? (yes/no): ") is False
+    assert prompts[1].startswith("Please answer yes or no") and "go back" not in prompts[1]

@@ -179,7 +179,7 @@ def test_run_batch_returns_1_for_an_unreadable_file(tmp_path):
 
 def test_main_menu_logs_an_incident_then_exits(monkeypatch):
     _use_canned_ai(monkeypatch)
-    choices = iter(["1", "2", "4"])
+    choices = iter(["1", "2", "5"])
     monkeypatch.setattr(main.io_manager, "get_menu_choice", lambda: next(choices))
     monkeypatch.setattr(main.io_manager, "get_incident_input", lambda: _incident())
     monkeypatch.setattr("builtins.input", lambda prompt="": "")
@@ -189,7 +189,7 @@ def test_main_menu_logs_an_incident_then_exits(monkeypatch):
 
 def test_main_location_query_can_go_back_to_the_menu(monkeypatch):
     _use_canned_ai(monkeypatch)
-    choices = iter(["3", "4"])
+    choices = iter(["3", "5"])
     monkeypatch.setattr(main.io_manager, "get_menu_choice", lambda: next(choices))
     monkeypatch.setattr(main.io_manager, "get_location_query", lambda *a: None)
     searched = []
@@ -239,3 +239,53 @@ def test_enrich_record_copes_with_a_missing_description(monkeypatch):
                         lambda record: {"web_industry_context": None, "web_incidents": [], "web_search_error": None})
     main.enrich_record(dict(_incident(), description=None, run_weather=False, run_similar=True), [])
     assert seen == [""]
+
+
+def _save_two(monkeypatch):
+    _use_canned_ai(monkeypatch)
+    for location in ("Site A", "Site B"):
+        main.data_manager.save_record(_incident(location=location))
+
+
+def test_main_delete_removes_the_confirmed_incident(monkeypatch):
+    _save_two(monkeypatch)
+    choices = iter(["4", "5"])
+    monkeypatch.setattr(main.io_manager, "get_menu_choice", lambda: next(choices))
+    monkeypatch.setattr(main.io_manager, "get_delete_choice", lambda count: 1)
+    monkeypatch.setattr(main.io_manager, "confirm_delete", lambda record, number: True)
+    main.main()
+    assert [r["location"] for r in main.data_manager.load_records()] == ["Site B"]
+
+
+def test_main_delete_keeps_the_incident_when_not_confirmed_or_cancelled(monkeypatch):
+    _save_two(monkeypatch)
+    monkeypatch.setattr(main.io_manager, "get_delete_choice", lambda count: 1)
+    monkeypatch.setattr(main.io_manager, "confirm_delete", lambda record, number: False)
+    assert len(main.run_delete_flow()) == 2
+    monkeypatch.setattr(main.io_manager, "get_delete_choice", lambda count: None)
+    assert len(main.run_delete_flow()) == 2
+    assert len(main.data_manager.load_records()) == 2
+
+
+def test_main_delete_with_no_incidents_says_so(monkeypatch, capsys):
+    assert main.run_delete_flow() == []
+    assert "No incidents to delete" in capsys.readouterr().out
+
+
+def test_main_delete_reports_a_failed_write(monkeypatch, capsys):
+    _save_two(monkeypatch)
+    monkeypatch.setattr(main.io_manager, "get_delete_choice", lambda count: 1)
+    monkeypatch.setattr(main.io_manager, "confirm_delete", lambda record, number: True)
+    monkeypatch.setattr(main.data_manager, "delete_record", lambda index: False)
+    assert len(main.run_delete_flow()) == 2
+    assert "Could not delete" in capsys.readouterr().out
+
+
+def test_main_log_incident_back_returns_to_menu_without_saving(monkeypatch, capsys):
+    _use_canned_ai(monkeypatch)
+    choices = iter(["1", "5"])
+    monkeypatch.setattr(main.io_manager, "get_menu_choice", lambda: next(choices))
+    monkeypatch.setattr(main.io_manager, "get_incident_input", lambda: None)
+    main.main()
+    assert main.data_manager.load_records() == []
+    assert "Returning to the main menu" in capsys.readouterr().out
