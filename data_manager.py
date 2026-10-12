@@ -8,6 +8,7 @@ _DATA_PATH = os.path.join(_DATA_DIR, "incidents.json")
 
 # Lennart
 def _data_dir() -> str:
+    """The data folder: INCIDENT_DATA_DIR if set, otherwise ./data."""
     return os.environ.get("INCIDENT_DATA_DIR") or _DATA_DIR
 
 
@@ -22,6 +23,7 @@ def _cache_path() -> str:
 
 
 def _set_aside_corrupt(path: str) -> str | None:
+    """Renames a bad file to <name>.corrupt-<timestamp> so it is kept, not overwritten. Returns the new path, or None if it could not be moved."""
     backup = f"{path}.corrupt-{datetime.now().strftime('%Y%m%d-%H%M%S-%f')}"
     try:
         os.replace(path, backup)
@@ -31,6 +33,7 @@ def _set_aside_corrupt(path: str) -> str | None:
 
 
 def _read_json(path: str, expected_type: type) -> tuple[dict | list, str | None]:
+    """Reads a JSON file that must hold an expected_type (list or dict). Never raises: a missing file gives an empty value and no problem; a corrupt, wrong-shape or unreadable file gives an empty value and a message saying what happened."""
     if not os.path.exists(path):
         return expected_type(), None
     try:
@@ -47,6 +50,7 @@ def _read_json(path: str, expected_type: type) -> tuple[dict | list, str | None]
     return data, None
 
 def _write_json(path: str, data: dict | list) -> bool:
+    """Writes data to path through a temp file, so a crash cannot leave half a file. Returns False instead of raising if it cannot write."""
     temp_path = path + ".tmp"
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -63,6 +67,7 @@ def _write_json(path: str, data: dict | list) -> bool:
 
 # Lennart
 def get_log_path() -> str | None:
+    """Path of data/app.log, or None if the data folder cannot be created."""
     try:
         os.makedirs(_data_dir(), exist_ok=True)
     except OSError:
@@ -72,26 +77,31 @@ def get_log_path() -> str | None:
 
 # Lennart
 def load_records() -> list:
+    """Every saved incident, loaded on start-up. A missing or corrupt file gives an empty list."""
     data, _problem = _read_json(_incidents_path(), list)
     return [item for item in data if isinstance(item, dict)]
 
 
 # Lennart
 def check_records_file() -> str | None:
+    """A message describing what is wrong with the incidents file (corrupt, wrong format, unreadable), or None if it is fine or missing."""
     _data, problem = _read_json(_incidents_path(), list)
     return problem
 
 
 # Lennart
 def load_ai_cache() -> dict:
+    """The saved AI reply cache, or an empty dict if missing or corrupt."""
     data, _problem = _read_json(_cache_path(), dict)
     return data
 
 def save_ai_cache(cache: dict) -> bool:
+    """Saves the AI reply cache. Returns False if it could not be written."""
     return _write_json(_cache_path(), cache)
 
 #Daniel
 def save_record(record: dict) -> bool:
+    """Appends one incident to incidents.json. Returns False, and leaves the file alone, if the existing file is corrupt or cannot be written."""
     path = _incidents_path()
     records, problem = _read_json(path, list)
     if problem and os.path.exists(path):
@@ -102,6 +112,7 @@ def save_record(record: dict) -> bool:
 
 #Ren Xiang
 def query_by_location(location: str, days: int, as_of: str | None = None, records: list | None = None) -> list:
+    """Incidents at an exact location within the last `days` days before as_of (default now), newest first, as {location, timestamp, outcome}. Records with a bad timestamp are skipped. Pass records to skip reading the file."""
     try:
         reference = datetime.fromisoformat(as_of) if as_of else datetime.now()
     except (TypeError, ValueError):
@@ -125,6 +136,7 @@ def query_by_location(location: str, days: int, as_of: str | None = None, record
     return matches
 
 def list_locations(records: list | None = None) -> list:
+    """Saved locations as (location, incident count) pairs, sorted by name. Pass records to skip reading the file."""
     counts = {}
     for record in (load_records() if records is None else records):
         if not isinstance(record, dict):
