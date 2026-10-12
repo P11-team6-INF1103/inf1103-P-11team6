@@ -14,6 +14,7 @@ _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 # Animated spinner while the `with` block runs. Silent when stdout is not a terminal.
 @contextmanager
 def show_loading(message: str = "AI is thinking") -> Iterator[None]:
+    """Context manager that shows a spinner with message while the block runs. Does nothing when output is not a terminal."""
     if not sys.stdout.isatty():
         yield
         return
@@ -116,12 +117,14 @@ def _ask_yes_no(prompt: str) -> bool:
 
 # After the AI rejects an incident as not a real safety incident: asks whether to enter it again.
 def ask_try_again() -> bool:
+    """Asks whether to enter a rejected incident again."""
     return _ask_yes_no("Enter the incident again? (yes/no): ")
 
 
 # Lennart
 # After a failed save: warns that the incident is not on disk and asks whether to try saving again.
 def ask_retry_save() -> bool:
+    """Warns that the incident is not on disk and asks whether to try saving again."""
     print()
     print("!" * 60)
     print("  INCIDENT NOT SAVED: it could not be written to disk and")
@@ -132,6 +135,7 @@ def ask_retry_save() -> bool:
 
 # Main menu
 def get_menu_choice() -> str:
+    """Shows the main menu and returns '1' to '4'. Re-prompts on anything else; Ctrl+C or closed input returns '4'."""
     print("\n=== Workplace Safety Incident Triage System ===")
     print("1. Log a new incident")
     print("2. View summary of all incidents")
@@ -151,6 +155,7 @@ def get_menu_choice() -> str:
 
 # Incident input interface
 def get_incident_input() -> dict:
+    """Asks for description, location, reporter role and injury, re-prompting until each is valid. Returns the incident dict with the current time."""
     print("\n--- Log a New Incident ---")
 
     description = _ask_valid("Describe what happened: ", _check_description)
@@ -168,6 +173,7 @@ def get_incident_input() -> dict:
 
 
 def display_message(text: str) -> None:
+    """Prints one line of text. The only way other modules show messages."""
     print(text)
 
 
@@ -190,6 +196,7 @@ def _choose_location(known_locations: list) -> str | None:
 
 # Location query interface (menu option 3)
 def get_location_query(known_locations: list | None = None) -> tuple[str, int] | None:
+    """Asks for a location (or 'list' to pick a saved one) and a number of days. Returns (location, days), or None to go back to the menu."""
     if known_locations is None:
         prompt = "Location to search (or press Enter to go back to the menu): "
     else:
@@ -216,6 +223,7 @@ def get_location_query(known_locations: list | None = None) -> tuple[str, int] |
 
 
 def display_query_results(results: list) -> None:
+    """Prints the incidents found by a location query."""
     if not results:
         print("No matching incidents found.")
         return
@@ -436,11 +444,13 @@ def _print_incident_report(record: dict, severity_levels: dict | None = None, ou
 
 
 def display_outcome(record: dict, severity_levels: dict | None = None, outcome_actions: dict | None = None) -> None:
+    """Prints the full report for one processed incident."""
     print()
     _print_incident_report(record, severity_levels, outcome_actions)
 
 
 def display_severity_guide(severity_levels: dict) -> None:
+    """Prints what each severity level means."""
     print("\nWHAT THE SEVERITY LEVELS MEAN")
     for level in sorted(severity_levels):
         name, meaning = severity_levels[level]
@@ -467,6 +477,7 @@ def _print_table(headers: list, rows: list, widths: list) -> None:
 # Totals and one table row per incident, then the severity guide.
 # When `interactive`, an incident # can be typed to open its full report.
 def display_summary(records: list, severity_levels: dict | None = None, outcome_actions: dict | None = None, interactive: bool = True) -> None:
+    """Prints counts by outcome and hazard and a table of all incidents, pending review first, then highest severity. interactive=True can offer to open a full report."""
     print("\n" + "#" * _WIDTH)
     print("INCIDENT SUMMARY / AFTER-ACTION REVIEW")
     print("#" * _WIDTH)
@@ -543,6 +554,7 @@ def display_summary(records: list, severity_levels: dict | None = None, outcome_
 # Batch mode: reads a JSON list of incidents and validates each one like typed input.
 # Returns (incidents, problems): the valid incidents plus one message per rejected item.
 def read_incident_file(path: str) -> tuple[list, list]:
+    """Reads a JSON list of incidents for batch mode and validates each item with the same checks as typed input. Returns (valid incidents, problem messages); never raises."""
     try:
         with open(path, "r", encoding="utf-8") as f:
             items = json.load(f)
