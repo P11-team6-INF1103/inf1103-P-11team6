@@ -67,6 +67,12 @@ docker run -it --env-file .env -v "$(pwd)/data:/app/data" inf1103project1
 `.env` is kept out of the image by `.dockerignore`; the keys are passed in at run time.
 The `-v` option keeps saved incidents on your machine between runs.
 
+The tests also run inside the image (offline, no keys needed):
+
+```bash
+docker run --rm inf1103project1 python -m pytest tests/
+```
+
 ## Published image
 
 Every merge to `main` publishes an image to GitHub Container Registry:

@@ -2,7 +2,7 @@ name: CI Pipeline
 
 on:
   push:
-    branches: [ "main", "feature/io-and-location" ]
+    branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
 
@@ -60,7 +60,11 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # 7. Run the built image end to end. No API keys are passed, so every AI step
+      # 7. Run the test suite inside the built image
+      - name: Run Tests In The Container
+        run: docker run --rm app:latest python -m pytest tests/
+
+      # 8. Run the built image end to end. No API keys are passed, so every AI step
       #    falls back to "needs manual review"; the run must still finish and print the summary.
       - name: Run Batch In The Container
         run: |
