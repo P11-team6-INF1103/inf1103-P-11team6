@@ -79,7 +79,7 @@ def enrich_record(record: dict, history_records: list | None = None) -> dict:
     if record.get("run_similar"):
         enriched["similar_incidents_checked"] = True
         try:
-            enriched.update(ai_manager.find_similar_incidents(enriched, history_records or []))
+            enriched.update(ai_manager.find_similar_incidents(enriched, history_records or [], OUTCOME_ACTIONS))
         except Exception as error:
             logger.warning("Similar-incidents step failed: %s", error)
             enriched["similar_incidents"] = None

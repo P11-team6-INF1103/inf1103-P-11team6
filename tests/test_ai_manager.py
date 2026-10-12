@@ -110,6 +110,23 @@ def test_find_similar_incidents_never_raises():
         "similar_incidents": [], "similar_incidents_error": None}
 
 
+def test_similar_incidents_prompt_gets_outcome_meanings_from_the_caller():
+    ai_manager.load_response_cache({})
+    prompts = []
+
+    def fake_gemini(client, prompt, schema):
+        prompts.append(prompt)
+        return json.dumps([])
+
+    with mock.patch.object(ai_manager, "_get_gemini_client", return_value=object()), \
+            mock.patch.object(ai_manager, "_call_gemini", fake_gemini):
+        ai_manager.find_similar_incidents(
+            _incident("slipped again"), _HISTORY, {"log_only": "MEANING-X"})
+        ai_manager.find_similar_incidents(_incident("slipped again"), _HISTORY)
+    assert "MEANING-X" in prompts[0]
+    assert "stop_work_review" not in prompts[1] and "systemic_escalation" not in prompts[1]
+
+
 def test_web_search_never_raises():
     with mock.patch.object(ai_manager, "_search_web", side_effect=RuntimeError("Groq down")):
         result = ai_manager.search_web_for_similar_incidents(_incident())
