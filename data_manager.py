@@ -110,6 +110,19 @@ def save_record(record: dict) -> bool:
     return _write_json(path, records)
 
 
+# Removes the incident at a 0-based position in incidents.json; returns False and leaves the file alone if it is corrupt, out of range or cannot be written.
+def delete_record(index: int) -> bool:
+    path = _incidents_path()
+    records, problem = _read_json(path, list)
+    if problem and os.path.exists(path):
+        return False
+    records = [item for item in records if isinstance(item, dict)]
+    if not 0 <= index < len(records):
+        return False
+    del records[index]
+    return _write_json(path, records)
+
+
 # Ren Xiang
 # Incidents at one location in the last N days, newest first; records with a bad timestamp are skipped.
 def query_by_location(location: str, days: int, as_of: str | None = None, records: list | None = None) -> list:
