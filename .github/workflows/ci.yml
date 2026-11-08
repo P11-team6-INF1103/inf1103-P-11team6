@@ -9,10 +9,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
@@ -29,14 +25,13 @@ jobs:
         with:
           python-version: "3.11"
           cache: "pip" # Caching speeds up dependency installation
-          cache-dependency-path: "library.txt"
+          cache-dependency-path: "requirements.txt"
 
-      # 3. Install dependencies from library.txt
+      # 3. Install dependencies from requirements.txt
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r library.txt
-          pip install pytest ruff
+          pip install -r requirements.txt ruff==0.17.2
 
       # 4. Ruff (blocking)
       - name: Run Ruff Check
@@ -44,31 +39,35 @@ jobs:
 
       # 5. Pytest (blocking: any failure or an empty test run fails the job)
       - name: Run Pytest
-        run: pytest tests/
+        run: pytest -v
 
-      # 6. Docker build (validation only, no push), with GitHub Actions layer caching
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
- 
-      - name: Build Docker Image
-        uses: docker/build-push-action@v6
+      - name: Set up Node 22  
+        uses: actions/setup-node@v4
         with:
-          context: .
-          push: false
-          load: true
-          tags: app:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: "frontend/package-lock.json"
 
-      # 7. Run the test suite inside the built image
+      - name: Build React Dashboard
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build Docker Image
+        run: docker build -t app:latest .
+
       - name: Run Tests In The Container
-        run: docker run --rm app:latest python -m pytest tests/
+        run: docker run --rm app:latest python -m pytest
 
-      # 8. Run the built image end to end. No API keys are passed, so every AI step
-      #    falls back to "needs manual review"; the run must still finish and print the summary.
+      # Nothing is passed in: no API keys and no DATABASE_URL, which is how an assessor first runs the container.
+      # Every AI step falls back to "needs manual review", incidents go to local files inside the container, and the
+      # run must still finish and print the summary. The files disappear with the container.
       - name: Run Batch In The Container
         run: |
           set -o pipefail
-          docker run --rm -e PYTHONUTF8=1 -v "$PWD/tests/sample_batch.json:/tmp/sample_batch.json:ro" app:latest python main.py --batch /tmp/sample_batch.json | tee batch-output.txt
+          docker run --rm -e PYTHONUTF8=1 app:latest python main.py --batch tests/sample_batch.json | tee batch-output.txt
+          grep -q "saved in local files" batch-output.txt
           grep -q "INCIDENT SUMMARY" batch-output.txt
           grep -q "Total incidents: 3" batch-output.txt
+          grep -q "With a photo: 1" batch-output.txt
