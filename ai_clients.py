@@ -5,7 +5,6 @@ import os
 import threading
 
 import requests
-
 from models import IncidentPhoto
 
 # Ren Xiang
