@@ -1,13 +1,14 @@
 # macOS drops ._ metadata files next to every file on the shared USB drive
 extend-exclude = ["._*"]
 
+line-length = 120
+extend-exclude = ["._*"]
+
 [lint]
 ignore = [
-    # The spec says an API failure must be logged and never crash the app, so
-    # the AI, weather and web-search calls catch Exception on purpose.
+    # The brief says an API failure must never crash the app, so each AI step and
+    # API client catches Exception on purpose, logs it and carries on.
     "BLE001",
-    # Incident timestamps are local wall-clock time on purpose (ISO 8601, no zone).
-    "DTZ005",
-    # File mode on the shared USB drive, not a code problem.
-    "EXE002",
+    # Class-level lookup tables (schemas, display names) are read-only constants.
+    "RUF012",
 ]
