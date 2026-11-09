@@ -1,5 +1,4 @@
 # macOS drops ._ metadata files next to every file on the shared USB drive
-extend-exclude = ["._*"]
 
 line-length = 120
 extend-exclude = ["._*"]
