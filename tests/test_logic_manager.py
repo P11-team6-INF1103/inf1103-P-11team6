@@ -12,6 +12,17 @@ def test_severity_and_outcome_constants_fit_together():
     assert all(action for action in lm.OUTCOME_ACTIONS.values())
 
 
+def test_scoring_tables_fit_together():
+    # Every treatment that adds points has a label for its reason, and "died" is handled separately.
+    for treatment, points in lm._INJURY_POINTS.items():
+        assert points >= 0
+        assert (treatment in lm._INJURY_LABELS) == (points > 0), treatment
+    assert "died" not in lm._INJURY_POINTS
+    assert set(lm._ESCALATED_OUTCOMES) <= set(lm.OUTCOME_ACTIONS)
+    assert set(lm._POOR_LIGHT_LEVELS) == {"low_light", "dark"}
+    assert lm._TYPE_A_HAZARDS and all(isinstance(hazard, str) for hazard in lm._TYPE_A_HAZARDS)
+
+
 def test_weather_relevance_is_whole_word():
     for text in ("Worker slipped on wet floor", "Heavy RAIN all morning", "It was windy on the roof",
                  "flooding in the basement", "Lightning struck the crane"):

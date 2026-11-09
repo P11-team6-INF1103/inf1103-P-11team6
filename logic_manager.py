@@ -45,14 +45,12 @@ _WEATHER_WORDS = re.compile(
     re.IGNORECASE,
 )
 
+# Daniel
 # MOM "Type A" hazard types: the ones with a higher fatality risk.
 _TYPE_A_HAZARDS = ("fall_from_height", "vehicular", "struck_by_machinery")
-
 _INJURY_POINTS = {"none": 0, "unspecified": 0, "first_aid": 1, "hospital": 2}
 _INJURY_LABELS = {"first_aid": "Minor injury, first aid only", "hospital": "Serious injury, hospital treatment"}
-
 _ESCALATED_OUTCOMES = ("stop_work_review", "systemic_escalation")
-
 _POOR_LIGHT_LEVELS = ("dark", "low_light")
 
 
