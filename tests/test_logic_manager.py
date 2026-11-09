@@ -83,6 +83,22 @@ def test_condition_points_each_come_with_a_reason():
     assert change == 1 and all(reason.endswith(")") for reason in reasons)
 
 
+def test_recurrence_level_tiers():
+    calm = {"lighting_condition": "daylight"}
+    assert lm._recurrence_level(1, calm, [], False) == "low"
+    # Medium: poor lighting, or at least one earlier incident at this place.
+    assert lm._recurrence_level(1, {"lighting_condition": "low_light"}, [], False) == "medium"
+    assert lm._recurrence_level(1, {"lighting_condition": "dark"}, [], False) == "medium"
+    assert lm._recurrence_level(1, calm, [{}], False) == "medium"
+    # High: severity at the stop-work level, the systemic number of earlier incidents, or an escalated look-alike.
+    assert lm._recurrence_level(lm.HIGH_SEVERITY, calm, [], False) == "high"
+    assert lm._recurrence_level(1, calm, [{}] * lm.SYSTEMIC_INCIDENT_COUNT, False) == "high"
+    assert lm._recurrence_level(1, calm, [], True) == "high"
+    # High beats medium when both apply.
+    assert lm._recurrence_level(lm.HIGH_SEVERITY, {"lighting_condition": "dark"}, [{}], False) == "high"
+    assert lm._recurrence_level(lm.HIGH_SEVERITY - 1, {}, [], False) == "low"
+
+
 def test_rain_on_the_record_adds_a_point_at_height():
     # Reference scoring case: "rain during work at height adds a point on top of the height point".
     calm = {"hazard_category": "other", "injury_treatment": "none", "working_at_height": True,
