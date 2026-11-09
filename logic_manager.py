@@ -78,17 +78,16 @@ def get_time_of_day(timestamp: str | None) -> str:
     return "night"
 
 
-# Ren Xiang
-# Singapore's monsoon season for the incident date (context only); an unreadable timestamp gives 'inter_monsoon'.
+# Daniel
+# Singapore's monsoon season for the incident date; an unreadable timestamp gives 'inter_monsoon'.
 def get_monsoon_season(timestamp: str | None) -> str:
     try:
         when = datetime.fromisoformat(timestamp)
     except (TypeError, ValueError):
         return "inter_monsoon"
-    month = when.month
-    if month in (12, 1, 2) or (month == 3 and when.day <= 15):
+    if when.month in (12, 1, 2) or (when.month == 3 and when.day <= 15):
         return "northeast_monsoon"
-    if 6 <= month <= 9:
+    if 6 <= when.month <= 9:
         return "southwest_monsoon"
     return "inter_monsoon"
 
