@@ -64,6 +64,33 @@ def test_injury_score_starts_from_what_happened_to_the_person():
     assert lm._score_injury({"injury": True}) == hurt_not_described  # missing treatment counts as unspecified
     for nobody_hurt in ({"injury": False, "injury_treatment": "none"}, {}, {"injury_treatment": "banana"}):
         assert lm._score_injury(nobody_hurt) == (1, []), nobody_hurt
+
+
+def test_condition_points_each_come_with_a_reason():
+    assert lm._score_conditions({}, False) == (0, [])
+    assert lm._score_conditions({"ppe_status": "worn"}, False) == (-1, ["Safety gear (PPE) was worn (-1)"])
+    assert lm._score_conditions({"hazard_category": "vehicular"}, False) == (
+        1, ["One of MOM's highest-risk hazard types (+1)"])
+    # Machinery without safety gear counts twice: once for the pair, once for the missing PPE.
+    change, reasons = lm._score_conditions({"heavy_machinery_present": True, "ppe_status": "not_worn"}, False)
+    assert change == 2 and len(reasons) == 2
+    # Rain is read from the incident itself, and only counts with height or machinery.
+    change, reasons = lm._score_conditions({"working_at_height": True, "condition": "rain"}, False)
+    assert change == 2 and "Raining during work at height or with machinery (+1)" in reasons
+    assert lm._score_conditions({"condition": "rain"}, False) == (0, [])
+    assert lm._score_conditions({}, True) == (1, ["A similar past incident on our sites was escalated (+1)"])
+    change, reasons = lm._score_conditions({"lighting_condition": "dark"}, False)
+    assert change == 1 and all(reason.endswith(")") for reason in reasons)
+
+
+def test_rain_on_the_record_adds_a_point_at_height():
+    # Reference scoring case: "rain during work at height adds a point on top of the height point".
+    calm = {"hazard_category": "other", "injury_treatment": "none", "working_at_height": True,
+            "heavy_machinery_present": False, "ppe_status": "unspecified", "lighting_condition": "daylight",
+            "similar_incidents": None, "context_flags_error": None, "injury": False, "condition": "rain"}
+    result = lm.assess_severity(calm, None, [])
+    assert result["severity_estimate"] == 3 and result["likelihood_recurrence"] == "low"
+    assert lm.decide_outcome(result, []) == "log_only"
     assert lm.classify_lighting_condition("day", "rain") == "low_light"
     assert lm.classify_lighting_condition("night", "rain") == "dark"
 
