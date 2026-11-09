@@ -1,6 +1,11 @@
 #Ren Xiang
 from ai_clients import ResponseCache
-from ai_manager import HazardFlagStep, PhotoAnalysisStep, ReviewStep, SimilarIncidentStep
+from ai_manager import (
+    HazardFlagStep,
+    PhotoAnalysisStep,
+    ReviewStep,
+    SimilarIncidentStep,
+)
 
 # Hard-coded sample AI replies, so the tests never call a live API.
 HAZARD_REPLY = {
