@@ -1,38 +1,11 @@
 import re
 from datetime import datetime
 
-# Whole-word match only: "window" must not count as "wind", "constraint" as
-# "rain", or "shot" as "hot".
-_WEATHER_WORDS = re.compile(
-    r"\b(rain|rains|raining|rainy|rained|wet|storm|storms|stormy|wind|winds|windy|"
-    r"flood|floods|flooded|flooding|lightning|thunder|thunderstorm|thunderstorms|"
-    r"haze|hazy|hot|heat|humid|humidity)\b",
-    re.IGNORECASE,
-)
-
-# MOM "Type A" hazard types: the ones with a higher fatality risk.
-_TYPE_A_HAZARDS = ("fall_from_height", "vehicular", "struck_by_machinery")
-
-_INJURY_POINTS = {"none": 0, "unspecified": 0, "first_aid": 1, "hospital": 2}
-_INJURY_LABELS = {"first_aid": "Minor injury, first aid only", "hospital": "Serious injury, hospital treatment"}
-
-_ESCALATED_OUTCOMES = ("stop_work_review", "systemic_escalation")
-
-_POOR_LIGHT_LEVELS = ("dark", "low_light")
-
+# Daniel
 MAX_SEVERITY = 5
 INJURY_MIN_SEVERITY = 3  # anyone injured scores at least this, whatever else the conditions take away
 HIGH_SEVERITY = 4  # Rule 1: this severity or above means stop-work review
 SYSTEMIC_INCIDENT_COUNT = 3  # Rule 2: this many earlier incidents at one location
-
-_HEAVY_MACHINERY_WORDS = (
-    "crane", "excavator", "forklift", "generator", "conveyor", "bulldozer",
-    "backhoe", "digger", "loader", "grader", "compactor", "road roller",
-    "crusher", "tractor", "truck", "lorry", "dumper", "tipper", "bobcat",
-    "skid steer", "telehandler", "paver", "trencher", "concrete pump",
-    "cement mixer", "piling", "pile driver", "drill rig", "hoist",
-    "scissor lift", "boom lift", "mewp", "elevating work platform",
-)
 
 SEVERITY_LEVELS = {
     1: ("Minimal", (
@@ -61,6 +34,36 @@ OUTCOME_ACTIONS = {
     "log_only": "Record the incident; no escalation needed.",
     "pending_review": "The AI could not assess it; a person must review it manually.",
 }
+
+
+# Whole-word match only: "window" must not count as "wind", "constraint" as
+# "rain", or "shot" as "hot".
+_WEATHER_WORDS = re.compile(
+    r"\b(rain|rains|raining|rainy|rained|wet|storm|storms|stormy|wind|winds|windy|"
+    r"flood|floods|flooded|flooding|lightning|thunder|thunderstorm|thunderstorms|"
+    r"haze|hazy|hot|heat|humid|humidity)\b",
+    re.IGNORECASE,
+)
+
+# MOM "Type A" hazard types: the ones with a higher fatality risk.
+_TYPE_A_HAZARDS = ("fall_from_height", "vehicular", "struck_by_machinery")
+
+_INJURY_POINTS = {"none": 0, "unspecified": 0, "first_aid": 1, "hospital": 2}
+_INJURY_LABELS = {"first_aid": "Minor injury, first aid only", "hospital": "Serious injury, hospital treatment"}
+
+_ESCALATED_OUTCOMES = ("stop_work_review", "systemic_escalation")
+
+_POOR_LIGHT_LEVELS = ("dark", "low_light")
+
+
+_HEAVY_MACHINERY_WORDS = (
+    "crane", "excavator", "forklift", "generator", "conveyor", "bulldozer",
+    "backhoe", "digger", "loader", "grader", "compactor", "road roller",
+    "crusher", "tractor", "truck", "lorry", "dumper", "tipper", "bobcat",
+    "skid steer", "telehandler", "paver", "trencher", "concrete pump",
+    "cement mixer", "piling", "pile driver", "drill rig", "hoist",
+    "scissor lift", "boom lift", "mewp", "elevating work platform",
+)
 
 
 # Daniel
