@@ -1,48 +1,22 @@
 import re
 from datetime import datetime
 
-# Whole-word match only: "window" must not count as "wind", "constraint" as
-# "rain", or "shot" as "hot".
-_WEATHER_WORDS = re.compile(
-    r"\b(rain|rains|raining|rainy|rained|wet|storm|storms|stormy|wind|winds|windy|"
-    r"flood|floods|flooded|flooding|lightning|thunder|thunderstorm|thunderstorms|"
-    r"haze|hazy|hot|heat|humid|humidity)\b",
-    re.IGNORECASE,
-)
-
-# MOM "Type A" hazard types: the ones with a higher fatality risk.
-_TYPE_A_HAZARDS = ("fall_from_height", "vehicular", "struck_by_machinery")
-
-_INJURY_POINTS = {"none": 0, "unspecified": 0, "first_aid": 1, "hospital": 2}
-_INJURY_LABELS = {"first_aid": "Minor injury, first aid only", "hospital": "Serious injury, hospital treatment"}
-
-_ESCALATED_OUTCOMES = ("stop_work_review", "systemic_escalation")
-
-_POOR_LIGHT_LEVELS = ("dark", "low_light")
-
+# Daniel
 MAX_SEVERITY = 5
+INJURY_MIN_SEVERITY = 3  # anyone injured scores at least this, whatever else the conditions take away
 HIGH_SEVERITY = 4  # Rule 1: this severity or above means stop-work review
 SYSTEMIC_INCIDENT_COUNT = 3  # Rule 2: this many earlier incidents at one location
-
-_HEAVY_MACHINERY_WORDS = (
-    "crane", "excavator", "forklift", "generator", "conveyor", "bulldozer",
-    "backhoe", "digger", "loader", "grader", "compactor", "road roller",
-    "crusher", "tractor", "truck", "lorry", "dumper", "tipper", "bobcat",
-    "skid steer", "telehandler", "paver", "trencher", "concrete pump",
-    "cement mixer", "piling", "pile driver", "drill rig", "hoist",
-    "scissor lift", "boom lift", "mewp", "elevating work platform",
-)
 
 SEVERITY_LEVELS = {
     1: ("Minimal", (
         "Near miss or no injury, low-risk hazard, controls in place "
         "(e.g. PPE worn). Record it and carry on.")),
     2: ("Minor", (
-        "One aggravating factor, e.g. a minor injury or a ground-level "
+        "No injury, with one aggravating factor, e.g. a ground-level "
         "slip/trip. Record it; supervisor fixes the cause on the spot.")),
     3: ("Moderate", (
-        "Several aggravating factors, e.g. injury in poor lighting, or "
-        "a high-risk hazard type with no injury. Logged, but the site "
+        "Anyone injured (the minimum for an injury), or several aggravating "
+        "factors with no injury. Logged, but the site "
         "team should review the cause this week.")),
     4: ("High", (
         "Serious injury, or a MOM Type A hazard (fall from height, vehicle, "
@@ -56,10 +30,39 @@ SEVERITY_LEVELS = {
 
 OUTCOME_ACTIONS = {
     "stop_work_review": "Stop the affected work and hold a safety review before it restarts.",
+    "photo_review": "The photo does not seem to match the description; a person should check it.",
     "systemic_escalation": "Escalate to management: this location keeps having incidents.",
     "log_only": "Record the incident; no escalation needed.",
     "pending_review": "The AI could not assess it; a person must review it manually.",
 }
+
+
+# Whole-word match only: "window" must not count as "wind", "constraint" as
+# "rain", or "shot" as "hot".
+_WEATHER_WORDS = re.compile(
+    r"\b(rain|rains|raining|rainy|rained|wet|storm|storms|stormy|wind|winds|windy|"
+    r"flood|floods|flooded|flooding|lightning|thunder|thunderstorm|thunderstorms|"
+    r"haze|hazy|hot|heat|humid|humidity)\b",
+    re.IGNORECASE,
+)
+
+# Daniel
+# MOM "Type A" hazard types: the ones with a higher fatality risk.
+_TYPE_A_HAZARDS = ("fall_from_height", "vehicular", "struck_by_machinery")
+_INJURY_POINTS = {"none": 0, "unspecified": 0, "first_aid": 1, "hospital": 2}
+_INJURY_LABELS = {"first_aid": "Minor injury, first aid only", "hospital": "Serious injury, hospital treatment"}
+_ESCALATED_OUTCOMES = ("stop_work_review", "systemic_escalation")
+_POOR_LIGHT_LEVELS = ("dark", "low_light")
+
+
+_HEAVY_MACHINERY_WORDS = (
+    "crane", "excavator", "forklift", "generator", "conveyor", "bulldozer",
+    "backhoe", "digger", "loader", "grader", "compactor", "road roller",
+    "crusher", "tractor", "truck", "lorry", "dumper", "tipper", "bobcat",
+    "skid steer", "telehandler", "paver", "trencher", "concrete pump",
+    "cement mixer", "piling", "pile driver", "drill rig", "hoist",
+    "scissor lift", "boom lift", "mewp", "elevating work platform",
+)
 
 
 # Daniel
@@ -76,17 +79,16 @@ def get_time_of_day(timestamp: str | None) -> str:
     return "night"
 
 
-# Ren Xiang
-# Singapore's monsoon season for the incident date (context only); an unreadable timestamp gives 'inter_monsoon'.
+# Daniel
+# Singapore's monsoon season for the incident date; an unreadable timestamp gives 'inter_monsoon'.
 def get_monsoon_season(timestamp: str | None) -> str:
     try:
         when = datetime.fromisoformat(timestamp)
     except (TypeError, ValueError):
         return "inter_monsoon"
-    month = when.month
-    if month in (12, 1, 2) or (month == 3 and when.day <= 15):
+    if when.month in (12, 1, 2) or (when.month == 3 and when.day <= 15):
         return "northeast_monsoon"
-    if 6 <= month <= 9:
+    if 6 <= when.month <= 9:
         return "southwest_monsoon"
     return "inter_monsoon"
 
@@ -161,104 +163,89 @@ def apply_hazard_rules(enriched: dict) -> dict:
     return result
 
 
+# Daniel
 # Starting severity and its reasons from what happened to the person (5 if someone died).
 def _score_injury(record: dict) -> tuple[int, list[str]]:
-    injury_treatment = record.get("injury_treatment", "unspecified")
-    if injury_treatment == "died":
+    treatment = record.get("injury_treatment", "unspecified")
+    if treatment == "died":
         return MAX_SEVERITY, ["Someone died (set to 5)"]
-    severity = 1
-    reasons = []
-    injury_points = _INJURY_POINTS.get(injury_treatment, 0)
-    if injury_points:
-        severity += injury_points
-        reasons.append(f"{_INJURY_LABELS[injury_treatment]} (+{injury_points})")
-    if record.get("injury") and injury_treatment in ("none", "unspecified"):
+    severity, reasons = 1, []
+    points = _INJURY_POINTS.get(treatment, 0)
+    if points:
+        severity += points
+        reasons.append(f"{_INJURY_LABELS[treatment]} (+{points})")
+    if record.get("injury") and treatment in ("none", "unspecified"):
         severity += 1
         reasons.append("Someone was hurt, but how badly wasn't described (+1)")
     return severity, reasons
 
 
+# Daniel
 # Points added or removed by the hazard type and the site conditions, with a reason for each.
-def _score_conditions(record: dict, weather_data: dict, hazard_type: str, similar_escalated: bool) -> tuple[int, list[str]]:
+def _score_conditions(record: dict, similar_escalated: bool) -> tuple[int, list[str]]:
     at_height = record.get("working_at_height")
     machinery = record.get("heavy_machinery_present")
     ppe_not_worn = record.get("ppe_status") == "not_worn"
-    poor_light = record.get("lighting_condition") in _POOR_LIGHT_LEVELS
-
-    change = 0
-    reasons = []
-    if hazard_type in _TYPE_A_HAZARDS:
-        change += 1
-        reasons.append("One of MOM's highest-risk hazard types (+1)")
-    if at_height:
-        change += 1
-        reasons.append("Working at height (+1)")
-    if machinery and ppe_not_worn:
-        change += 1
-        reasons.append("Heavy machinery around, without safety gear (+1)")
-    if ppe_not_worn:
-        change += 1
-        reasons.append("Safety gear (PPE) not worn (+1)")
-    elif record.get("ppe_status") == "worn":
-        change -= 1
-        reasons.append("Safety gear (PPE) was worn (-1)")
-    if poor_light:
-        change += 1
-        reasons.append("Poor lighting or dark (+1)")
-    if weather_data.get("condition") == "rain" and (at_height or machinery):
-        change += 1
-        reasons.append("Raining during work at height or with machinery (+1)")
-    if similar_escalated:
-        change += 1
-        reasons.append("A similar past incident on our sites was escalated (+1)")
+    checks = [
+        (record.get("hazard_category") in _TYPE_A_HAZARDS, 1, "One of MOM's highest-risk hazard types"),
+        (at_height, 1, "Working at height"),
+        (machinery and ppe_not_worn, 1, "Heavy machinery around, without safety gear"),
+        (ppe_not_worn, 1, "Safety gear (PPE) not worn"),
+        (record.get("ppe_status") == "worn", -1, "Safety gear (PPE) was worn"),
+        (record.get("lighting_condition") in _POOR_LIGHT_LEVELS, 1, "Poor lighting or dark"),
+        (record.get("condition") == "rain" and (at_height or machinery), 1,
+         "Raining during work at height or with machinery"),
+        (similar_escalated, 1, "A similar past incident on our sites was escalated"),
+    ]
+    change, reasons = 0, []
+    for applies, points, text in checks:
+        if applies:
+            change += points
+            reasons.append(f"{text} ({points:+d})")
     return change, reasons
 
 
-# Total severity capped to 1-5, with the plain-English reason for every point.
-def _score_severity(record: dict, weather_data: dict, hazard_type: str, similar_escalated: bool) -> tuple[int, list[str]]:
-    severity, reasons = _score_injury(record)
-    change, condition_reasons = _score_conditions(record, weather_data, hazard_type, similar_escalated)
-    return max(1, min(severity + change, MAX_SEVERITY)), reasons + condition_reasons
-
-
+# Daniel
 # 'low', 'medium' or 'high' chance of this kind of incident happening again.
-def _recurrence_level(severity: int, poor_light: bool, history: list, similar_escalated: bool) -> str:
+def _recurrence_level(severity: int, record: dict, history: list, similar_escalated: bool) -> str:
     if severity >= HIGH_SEVERITY or len(history) >= SYSTEMIC_INCIDENT_COUNT or similar_escalated:
         return "high"
-    if poor_light or len(history) >= 1:
+    if record.get("lighting_condition") in _POOR_LIGHT_LEVELS or history:
         return "medium"
     return "low"
 
 
 # Daniel
-# Scores one enriched incident (hazard type, severity 1-5, recurrence, reasons); sets assessment_error instead of guessing if the AI failed.
+# Scores the incident (hazard type, severity 1-5, recurrence, reasons); sets assessment_error instead of guessing if the AI failed.
+# weather_data is no longer read (rain comes from the record's own condition); it stays only so the current
+# main.py call keeps working, and goes when this moves into LogicManager. Returns a new dict.
 def assess_severity(record: dict, weather_data: dict | None = None, history: list | None = None) -> dict:
-    weather_data = weather_data or {}
     history = history or []
-
     result = dict(record)
-
     if record.get("context_flags_error") or record.get("hazard_category") is None:
-        result["hazard_type"] = "unassessed"
-        result["severity_estimate"] = 0
-        result["likelihood_recurrence"] = "unknown"
-        result["severity_reasons"] = []
-        result["assessment_error"] = (
-            "Cannot judge severity without AI hazard extraction: "
-            f"{record.get('context_flags_error') or 'hazard_category missing'}"
-        )
+        result.update({
+            "hazard_type": "unassessed", "severity_estimate": 0,
+            "likelihood_recurrence": "unknown", "severity_reasons": [],
+            "assessment_error": ("Cannot judge severity without AI hazard extraction: "
+                                 f"{record.get('context_flags_error') or 'hazard_category missing'}"),
+        })
         return result
-
     similar = record.get("similar_incidents") or []
     similar_escalated = any(item.get("outcome") in _ESCALATED_OUTCOMES for item in similar)
-    severity, reasons = _score_severity(record, weather_data, record["hazard_category"], similar_escalated)
-    poor_light = record.get("lighting_condition") in _POOR_LIGHT_LEVELS
-
-    result["hazard_type"] = record["hazard_category"]
-    result["severity_estimate"] = severity
-    result["likelihood_recurrence"] = _recurrence_level(severity, poor_light, history, similar_escalated)
-    result["severity_reasons"] = reasons
-    result["assessment_error"] = None
+    severity, reasons = _score_injury(record)
+    change, more_reasons = _score_conditions(record, similar_escalated)
+    severity = max(1, min(severity + change, MAX_SEVERITY))
+    injured = record.get("injury") or record.get("injury_treatment") in ("first_aid", "hospital", "died")
+    if injured and severity < INJURY_MIN_SEVERITY:
+        severity = INJURY_MIN_SEVERITY
+        reasons.append(f"Someone was injured, so severity is at least {INJURY_MIN_SEVERITY}")
+    result.update({
+        "hazard_type": record.get("hazard_category"),
+        "severity_estimate": severity,
+        "likelihood_recurrence": _recurrence_level(severity, record, history, similar_escalated),
+        "severity_reasons": reasons + more_reasons,
+        "assessment_error": None,
+    })
     return result
 
 
