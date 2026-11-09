@@ -6,7 +6,7 @@ from typing import ClassVar
 from ai_clients import GeminiClient
 from models import Incident
 
-# from site_plan import ELEMENT_KINDS, SitePlan, SitePlanError
+from site_plan import ELEMENT_KINDS, SitePlan, SitePlanError
 
 logger = logging.getLogger(__name__)
 
