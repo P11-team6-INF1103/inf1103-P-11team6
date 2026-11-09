@@ -3,8 +3,8 @@ import json
 import logging
 import os
 import threading
+from typing import ClassVar
 
-import requests
 from models import IncidentPhoto
 
 # Ren Xiang
@@ -45,7 +45,7 @@ class ResponseCache:
 class JsonReply:
     # Turns AI reply text into checked JSON. Every reply goes through here before any field is used.
 
-    _TYPE_CHECKS = {
+    _TYPE_CHECKS: ClassVar[dict] = {
         "object": lambda v: isinstance(v, dict),
         "array": lambda v: isinstance(v, list),
         "string": lambda v: isinstance(v, str),
