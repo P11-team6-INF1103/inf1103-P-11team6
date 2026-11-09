@@ -326,6 +326,45 @@ class DataManager:
         except PhotoError:
             return None
 
+    # Loads the saved AI reply cache, or an empty dict if it is missing or corrupt.
+    def load_ai_cache(self) -> dict:
+        data, _problem = self._cache_file.read()
+        return data
+
+    # Saves the AI reply cache; returns False if it cannot be written.
+    def save_ai_cache(self, cache: dict) -> bool:
+        return self._cache_file.write(cache)
+
+    # Incidents at one location in the last N days, newest first; records with a bad timestamp are skipped.
+    def query_by_location(self, location: str, days: int, as_of: str | None = None,
+                          records: list[Incident] | None = None) -> list[Incident]:
+        try:
+            reference = datetime.fromisoformat(as_of) if as_of else datetime.now()
+        except (TypeError, ValueError):
+            reference = datetime.now()
+        cutoff = reference - timedelta(days=days)
+        matches = []
+        for incident in self.load_records() if records is None else records:
+            if incident.location != location:
+                continue
+            try:
+                when = datetime.fromisoformat(incident.timestamp)
+            except (TypeError, ValueError):
+                continue
+            if when >= cutoff:
+                matches.append(incident)
+        matches.sort(key=lambda item: item.timestamp, reverse=True)
+        return matches
+
+    # Saved locations with their incident counts, sorted by name.
+    def list_locations(self, records: list[Incident] | None = None) -> list[tuple[str, int]]:
+        counts = {}
+        for incident in self.load_records() if records is None else records:
+            location = incident.location
+            if isinstance(location, str) and location.strip():
+                counts[location] = counts.get(location, 0) + 1
+        return sorted(counts.items(), key=lambda item: (item[0].lower(), item[0]))
+
 
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 

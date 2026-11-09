@@ -468,3 +468,49 @@ def test_photo_storage_failures_give_none_not_an_error():
         assert dm.DataManager(os.path.join(folder, "blocker")).store_photo(photo) is None  # folder cannot be made
         down = dm.DataManager(folder, shared_database=DeadDatabase())
         assert down.store_photo(photo) is None and down.read_photo("db:" + photo.fingerprint()) is None
+
+
+def test_ai_cache_round_trip_in_both_modes():
+    with temp_data_dir() as folder:
+        local, shared = _managers(folder)
+        for manager in (local, shared):
+            assert manager.load_ai_cache() == {}
+            assert manager.save_ai_cache({"prompt-key": "reply"}) is True
+            assert manager.load_ai_cache() == {"prompt-key": "reply"}
+        assert os.path.exists(os.path.join(folder, "local", "ai_cache.json"))
+        assert not os.path.exists(os.path.join(folder, "shared", "ai_cache.json"))  # kept in the database instead
+        _write(os.path.join(folder, "local"), "ai_cache.json", "[1]")  # wrong shape
+        assert local.load_ai_cache() == {}
+
+
+def test_query_by_location_window_order_and_bad_timestamps():
+    records = [_incident("old", timestamp="2026-09-01T10:00:00"),
+               _incident("mid", timestamp="2026-09-20T10:00:00"),
+               _incident("other site", location="Site B", timestamp="2026-09-25T10:00:00"),
+               _incident("new", timestamp="2026-09-26T10:00:00"),
+               _incident("bad time", timestamp="garbage")]
+    with temp_data_dir() as folder:
+        manager = dm.DataManager(folder)
+        hits = manager.query_by_location("Site A", 30, as_of="2026-09-27T00:00:00", records=records)
+        assert [item.description for item in hits] == ["new", "mid", "old"]  # newest first, bad time skipped
+        assert all(isinstance(item, Incident) for item in hits)
+        assert [item.description for item in manager.query_by_location(
+            "Site A", 10, as_of="2026-09-27T00:00:00", records=records)] == ["new", "mid"]
+        assert manager.query_by_location("Nowhere", 30, records=records) == []
+        for incident in records:
+            manager.save_record(incident)
+        saved = manager.query_by_location("Site A", 30, as_of="2026-09-27T00:00:00")  # reads the saved records
+        assert [item.description for item in saved] == ["new", "mid", "old"]
+        # An unreadable as_of falls back to now, so these September records are outside a 1-day window.
+        assert manager.query_by_location("Site A", 1, as_of="not a date", records=records) == []
+
+
+def test_list_locations_counts_and_sorts_by_name():
+    records = [_incident("a", location="site b"), _incident("b", location="Site A"),
+               _incident("c", location="site b"), _incident("d", location="Crane yard")]
+    with temp_data_dir() as folder:
+        manager = dm.DataManager(folder)
+        assert manager.list_locations(records) == [("Crane yard", 1), ("Site A", 1), ("site b", 2)]
+        assert manager.list_locations() == []
+        manager.save_record(records[0])
+        assert manager.list_locations() == [("site b", 1)]
