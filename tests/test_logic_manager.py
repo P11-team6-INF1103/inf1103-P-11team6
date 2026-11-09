@@ -33,7 +33,7 @@ def test_weather_relevance_is_whole_word():
     assert not lm.is_weather_relevant({})
 
 
-def test_time_of_day_and_season_and_lighting():
+def test_time_of_day_season_and_lighting():
     assert lm.get_time_of_day("2026-09-27T12:00:00") == "day"
     assert lm.get_time_of_day("2026-09-27T18:30:00") == "dusk_dawn"
     assert lm.get_time_of_day("2026-09-27T23:00:00") == "night"
@@ -42,7 +42,17 @@ def test_time_of_day_and_season_and_lighting():
     assert lm.get_monsoon_season("2026-07-10T00:00:00") == "southwest_monsoon"
     assert lm.get_monsoon_season("2026-11-10T00:00:00") == "inter_monsoon"
     assert lm.get_monsoon_season("garbage") == "inter_monsoon"
+    assert lm.get_monsoon_season(None) == "inter_monsoon"
     assert lm.classify_lighting_condition("day", "clear") == "daylight"
+
+
+def test_monsoon_season_boundaries():
+    # Northeast: December to mid-March; southwest: June to September; anything else is inter-monsoon.
+    for date, season in (("2026-12-01", "northeast_monsoon"), ("2026-03-15", "northeast_monsoon"),
+                         ("2026-03-16", "inter_monsoon"), ("2026-05-31", "inter_monsoon"),
+                         ("2026-06-01", "southwest_monsoon"), ("2026-09-30", "southwest_monsoon"),
+                         ("2026-10-01", "inter_monsoon"), ("2026-11-30", "inter_monsoon")):
+        assert lm.get_monsoon_season(date + "T12:00:00") == season, date
     assert lm.classify_lighting_condition("day", "rain") == "low_light"
     assert lm.classify_lighting_condition("night", "rain") == "dark"
 
