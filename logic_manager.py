@@ -216,11 +216,12 @@ def _score_severity(record: dict, similar_escalated: bool) -> tuple[int, list[st
     return severity, reasons + condition_reasons
 
 
+# Daniel
 # 'low', 'medium' or 'high' chance of this kind of incident happening again.
-def _recurrence_level(severity: int, poor_light: bool, history: list, similar_escalated: bool) -> str:
+def _recurrence_level(severity: int, record: dict, history: list, similar_escalated: bool) -> str:
     if severity >= HIGH_SEVERITY or len(history) >= SYSTEMIC_INCIDENT_COUNT or similar_escalated:
         return "high"
-    if poor_light or len(history) >= 1:
+    if record.get("lighting_condition") in _POOR_LIGHT_LEVELS or history:
         return "medium"
     return "low"
 
@@ -247,11 +248,10 @@ def assess_severity(record: dict, weather_data: dict | None = None, history: lis
     similar = record.get("similar_incidents") or []
     similar_escalated = any(item.get("outcome") in _ESCALATED_OUTCOMES for item in similar)
     severity, reasons = _score_severity(record, similar_escalated)
-    poor_light = record.get("lighting_condition") in _POOR_LIGHT_LEVELS
 
     result["hazard_type"] = record["hazard_category"]
     result["severity_estimate"] = severity
-    result["likelihood_recurrence"] = _recurrence_level(severity, poor_light, history, similar_escalated)
+    result["likelihood_recurrence"] = _recurrence_level(severity, record, history, similar_escalated)
     result["severity_reasons"] = reasons
     result["assessment_error"] = None
     return result
