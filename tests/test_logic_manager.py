@@ -44,6 +44,8 @@ def test_time_of_day_season_and_lighting():
     assert lm.get_monsoon_season("garbage") == "inter_monsoon"
     assert lm.get_monsoon_season(None) == "inter_monsoon"
     assert lm.classify_lighting_condition("day", "clear") == "daylight"
+    assert lm.classify_lighting_condition("day", "rain") == "low_light"
+    assert lm.classify_lighting_condition("night", "rain") == "dark"
 
 
 def test_monsoon_season_boundaries():
@@ -99,18 +101,6 @@ def test_recurrence_level_tiers():
     assert lm._recurrence_level(lm.HIGH_SEVERITY - 1, {}, [], False) == "low"
 
 
-def test_rain_on_the_record_adds_a_point_at_height():
-    # Reference scoring case: "rain during work at height adds a point on top of the height point".
-    calm = {"hazard_category": "other", "injury_treatment": "none", "working_at_height": True,
-            "heavy_machinery_present": False, "ppe_status": "unspecified", "lighting_condition": "daylight",
-            "similar_incidents": None, "context_flags_error": None, "injury": False, "condition": "rain"}
-    result = lm.assess_severity(calm, None, [])
-    assert result["severity_estimate"] == 3 and result["likelihood_recurrence"] == "low"
-    assert lm.decide_outcome(result, []) == "log_only"
-    assert lm.classify_lighting_condition("day", "rain") == "low_light"
-    assert lm.classify_lighting_condition("night", "rain") == "dark"
-
-
 def test_derive_context_and_apply_lighting():
     ctx = lm.derive_context({"description": "wet floor", "timestamp": "2026-09-27T20:44:10"})
     assert ctx["weather_relevant"] is True and ctx["time_of_day"] == "night"
@@ -139,26 +129,99 @@ def _enriched(**changes):
     base.update(changes)
     return base
 
-def test_severity_and_outcome_rules():
-    worst = lm.assess_severity(_enriched(injury_treatment="died"), {}, [])
-    assert worst["severity_estimate"] == 5 and lm.decide_outcome(worst, []) == "stop_work_review"
-    mild = lm.assess_severity(_enriched(hazard_category="fall", injury_treatment="none", injury=False,
-                                         working_at_height=False, ppe_status="worn",
-                                         lighting_condition="daylight"), {}, [])
-    assert mild["severity_estimate"] == 1 and lm.decide_outcome(mild, []) == "log_only"
-    three = [{"outcome": "log_only"}] * 3
-    assert lm.decide_outcome(mild, three) == "systemic_escalation"
+def test_worst_case_scores_5_and_stops_work():
+    incident = lm.assess_severity(_enriched(injury_treatment="died"), None, [])
+    assert incident["severity_estimate"] == 5
+    assert lm.decide_outcome(incident, []) == "stop_work_review"
 
 
-def test_any_injury_scores_at_least_the_injury_minimum():
-    calm = dict(hazard_category="fall", working_at_height=False, ppe_status="worn", lighting_condition="daylight")
-    for injury, treatment in ((True, "unspecified"), (True, "none"), (False, "first_aid"), (False, "hospital")):
-        result = lm.assess_severity(_enriched(**calm, injury=injury, injury_treatment=treatment), {}, [])
-        assert result["severity_estimate"] == lm.INJURY_MIN_SEVERITY, (injury, treatment)
-        assert f"Someone was injured, so severity is at least {lm.INJURY_MIN_SEVERITY}" in result["severity_reasons"]
-    uninjured = lm.assess_severity(_enriched(**calm, injury=False, injury_treatment="none"), {}, [])
+def test_mild_case_logs_only_and_three_earlier_incidents_escalate():
+    incident = lm.assess_severity(_enriched(injury=False, hazard_category="fall", injury_treatment="none",
+                                            working_at_height=False, ppe_status="worn",
+                                            lighting_condition="daylight"), None, [])
+    assert incident["severity_estimate"] == 1
+    assert lm.decide_outcome(incident, []) == "log_only"
+    assert lm.decide_outcome(incident, [{}] * 3) == "systemic_escalation"
+
+
+def test_anyone_injured_scores_at_least_3():
+    safe_but_hurt = {"hazard_category": "fall", "injury_treatment": "first_aid", "working_at_height": False,
+                     "ppe_status": "worn", "lighting_condition": "daylight"}
+    for treatment in ("first_aid", "none", "unspecified"):
+        incident = lm.assess_severity(_enriched(injury=True, **{**safe_but_hurt, "injury_treatment": treatment}),
+                                      None, [])
+        assert incident["severity_estimate"] == 3
+        assert any("injured" in r for r in incident["severity_reasons"])
+    uninjured = lm.assess_severity(_enriched(injury=False, **{**safe_but_hurt, "injury_treatment": "none"}),
+                                   None, [])
     assert uninjured["severity_estimate"] == 1
-    assert not any("at least" in reason for reason in uninjured["severity_reasons"])
+
+
+# --- Hard-coded sample AI replies -> severity, recurrence and outcome (no live API) ---
+
+# A quiet, fully specified reply; each case below changes only the fields it is about.
+CALM_AI_REPLY = {"hazard_category": "other", "injury_treatment": "none", "working_at_height": False,
+                 "heavy_machinery_present": False, "ppe_status": "unspecified", "lighting_condition": "daylight",
+                 "similar_incidents": None, "context_flags_error": None}
+
+# (name, what the AI said, was anyone hurt, earlier incidents at this place, severity, recurrence, outcome)
+SCORING_CASES = [
+    ("near miss with PPE worn stays at the floor of 1",
+     {"ppe_status": "worn"}, False, 0, 1, "low", "log_only"),
+    ("first aid only still scores the injury floor of 3",
+     {"injury_treatment": "first_aid"}, True, 0, 3, "low", "log_only"),
+    ("hospital treatment is moderate",
+     {"injury_treatment": "hospital"}, True, 0, 3, "low", "log_only"),
+    ("hurt but not described is lifted to the injury floor of 3",
+     {"injury_treatment": "unspecified"}, True, 0, 3, "low", "log_only"),
+    ("a MOM Type A hazard with a hospital injury is high and stops work",
+     {"injury_treatment": "hospital", "hazard_category": "vehicular"}, True, 0, 4, "high", "stop_work_review"),
+    ("darkness makes a minor injury moderate and the repeat risk medium",
+     {"injury_treatment": "first_aid", "lighting_condition": "dark"}, True, 0, 3, "medium", "log_only"),
+    ("rain during work at height adds a point on top of the height point",
+     {"working_at_height": True, "condition": "rain"}, False, 0, 3, "low", "log_only"),
+    ("machinery with no safety gear counts twice",
+     {"heavy_machinery_present": True, "ppe_status": "not_worn"}, False, 0, 3, "low", "log_only"),
+    ("a fatality is always 5",
+     {"injury_treatment": "died"}, True, 0, 5, "high", "stop_work_review"),
+    ("every factor at once is capped at 5",
+     {"injury_treatment": "hospital", "hazard_category": "fall_from_height", "working_at_height": True,
+      "ppe_status": "not_worn", "lighting_condition": "dark"}, True, 0, 5, "high", "stop_work_review"),
+    ("a similar past incident that was escalated raises recurrence to high",
+     {"similar_incidents": [{"outcome": "stop_work_review"}]}, False, 0, 2, "high", "log_only"),
+    ("a similar past incident that was only logged changes nothing",
+     {"similar_incidents": [{"outcome": "log_only"}]}, False, 0, 1, "low", "log_only"),
+    ("Rule 1, second branch: injury plus high recurrence stops work even at severity 3",
+     {"injury_treatment": "first_aid"}, True, 3, 3, "high", "stop_work_review"),
+    ("Rule 2: three earlier incidents and nobody hurt escalates to management",
+     {}, False, 3, 1, "high", "systemic_escalation"),
+    ("an AI value outside the known list is ignored, but the injury floor still applies",
+     {"injury_treatment": "banana"}, True, 0, 3, "low", "log_only"),
+]
+
+
+def test_sample_ai_reply_gives_the_expected_severity_recurrence_and_outcome():
+    for name, ai_reply, injured, earlier, severity, recurrence, outcome in SCORING_CASES:
+        history = [{}] * earlier
+        incident = lm.assess_severity({**CALM_AI_REPLY, **ai_reply, "injury": injured}, None, history)
+        assert incident["severity_estimate"] == severity, name
+        assert incident["likelihood_recurrence"] == recurrence, name
+        assert incident["assessment_error"] is None and incident["severity_reasons"] is not None, name
+        assert lm.decide_outcome(incident, history) == outcome, name
+
+
+def test_every_severity_reason_is_listed_so_the_score_can_be_explained():
+    incident = lm.assess_severity({**CALM_AI_REPLY, "injury": True, "injury_treatment": "hospital",
+                                   "hazard_category": "vehicular", "ppe_status": "not_worn"}, None, [])
+    reasons = incident["severity_reasons"]
+    assert any("hospital" in r.lower() for r in reasons) and any("highest-risk" in r for r in reasons)
+    assert any("not worn" in r for r in reasons) and all(r.endswith(")") for r in reasons)
+
+
+def test_a_missing_hazard_category_is_never_scored_as_if_it_were_safe():
+    incident = lm.assess_severity({**CALM_AI_REPLY, "injury": True, "hazard_category": None}, None, [])
+    assert incident["severity_estimate"] == 0 and incident["likelihood_recurrence"] == "unknown"
+    assert "hazard_category missing" in incident["assessment_error"]
 
 
 def test_multi_condition_rule_uses_ai_fields():
@@ -169,9 +232,9 @@ def test_multi_condition_rule_uses_ai_fields():
 
 
 def test_failed_ai_extraction_routes_to_manual_review():
-    result = lm.assess_severity(_enriched(hazard_category=None, context_flags_error="down"), {}, [])
-    assert result["assessment_error"] and result["severity_estimate"] == 0
-    assert lm.decide_outcome(result, []) == "pending_review"
+    incident = lm.assess_severity(_enriched(hazard_category=None, context_flags_error="AI down"), None, [])
+    assert incident["assessment_error"] and incident["severity_estimate"] == 0
+    assert lm.decide_outcome(incident, []) == "pending_review"
 
 
 def test_apply_hazard_rules_decides_height_and_machinery_from_the_ais_lists():

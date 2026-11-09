@@ -204,18 +204,6 @@ def _score_conditions(record: dict, similar_escalated: bool) -> tuple[int, list[
     return change, reasons
 
 
-# Total severity capped to 1-5, with the plain-English reason for every point.
-def _score_severity(record: dict, similar_escalated: bool) -> tuple[int, list[str]]:
-    severity, reasons = _score_injury(record)
-    change, condition_reasons = _score_conditions(record, similar_escalated)
-    severity = max(1, min(severity + change, MAX_SEVERITY))
-    injured = record.get("injury") or record.get("injury_treatment") in ("first_aid", "hospital", "died")
-    if injured and severity < INJURY_MIN_SEVERITY:
-        severity = INJURY_MIN_SEVERITY
-        reasons.append(f"Someone was injured, so severity is at least {INJURY_MIN_SEVERITY}")
-    return severity, reasons + condition_reasons
-
-
 # Daniel
 # 'low', 'medium' or 'high' chance of this kind of incident happening again.
 def _recurrence_level(severity: int, record: dict, history: list, similar_escalated: bool) -> str:
@@ -227,33 +215,36 @@ def _recurrence_level(severity: int, record: dict, history: list, similar_escala
 
 
 # Daniel
-# Scores one enriched incident (hazard type, severity 1-5, recurrence, reasons); sets assessment_error instead of guessing if the AI failed.
+# Scores the incident (hazard type, severity 1-5, recurrence, reasons); sets assessment_error instead of guessing if the AI failed.
+# weather_data is no longer read (rain comes from the record's own condition); it stays only so the current
+# main.py call keeps working, and goes when this moves into LogicManager. Returns a new dict.
 def assess_severity(record: dict, weather_data: dict | None = None, history: list | None = None) -> dict:
-    weather_data = weather_data or {}
     history = history or []
-
     result = dict(record)
-
     if record.get("context_flags_error") or record.get("hazard_category") is None:
-        result["hazard_type"] = "unassessed"
-        result["severity_estimate"] = 0
-        result["likelihood_recurrence"] = "unknown"
-        result["severity_reasons"] = []
-        result["assessment_error"] = (
-            "Cannot judge severity without AI hazard extraction: "
-            f"{record.get('context_flags_error') or 'hazard_category missing'}"
-        )
+        result.update({
+            "hazard_type": "unassessed", "severity_estimate": 0,
+            "likelihood_recurrence": "unknown", "severity_reasons": [],
+            "assessment_error": ("Cannot judge severity without AI hazard extraction: "
+                                 f"{record.get('context_flags_error') or 'hazard_category missing'}"),
+        })
         return result
-
     similar = record.get("similar_incidents") or []
     similar_escalated = any(item.get("outcome") in _ESCALATED_OUTCOMES for item in similar)
-    severity, reasons = _score_severity(record, similar_escalated)
-
-    result["hazard_type"] = record["hazard_category"]
-    result["severity_estimate"] = severity
-    result["likelihood_recurrence"] = _recurrence_level(severity, record, history, similar_escalated)
-    result["severity_reasons"] = reasons
-    result["assessment_error"] = None
+    severity, reasons = _score_injury(record)
+    change, more_reasons = _score_conditions(record, similar_escalated)
+    severity = max(1, min(severity + change, MAX_SEVERITY))
+    injured = record.get("injury") or record.get("injury_treatment") in ("first_aid", "hospital", "died")
+    if injured and severity < INJURY_MIN_SEVERITY:
+        severity = INJURY_MIN_SEVERITY
+        reasons.append(f"Someone was injured, so severity is at least {INJURY_MIN_SEVERITY}")
+    result.update({
+        "hazard_type": record.get("hazard_category"),
+        "severity_estimate": severity,
+        "likelihood_recurrence": _recurrence_level(severity, record, history, similar_escalated),
+        "severity_reasons": reasons + more_reasons,
+        "assessment_error": None,
+    })
     return result
 
 
