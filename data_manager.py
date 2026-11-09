@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 
 from database import Database
+from models import Incident
 
 
 class DocumentStore(ABC):
@@ -192,6 +193,86 @@ class DataManager:
         if problem and os.path.exists(self._incidents_file.path):
             return None
         return [item for item in data if isinstance(item, dict)]
+
+    # Loads every saved incident; a missing or corrupt file gives an empty list, and broken entries are skipped.
+    def load_records(self) -> list[Incident]:
+        if self._shared:
+            return self._load_shared()
+        data, _problem = self._incidents_file.read()
+        incidents = []
+        for item in data:
+            try:
+                incidents.append(Incident.from_dict(item))
+            except ValueError:
+                continue
+        return incidents
+
+    # Appends one incident; returns False and leaves the file alone if it is corrupt or cannot be written.
+    def save_record(self, incident: Incident) -> bool:
+        if self._shared:
+            return self._shared_write(
+                "INSERT INTO incidents (timestamp, location, data) VALUES (?, ?, ?)",
+                (incident.timestamp, incident.location, self._dump(incident)))
+        records = self._read_record_dicts()
+        if records is None:
+            return False
+        records.append(incident.to_dict())
+        return self._incidents_file.write(records)
+
+    # Replaces the incident at a 0-based position (an edit or revert); returns False if it could not be written.
+    def replace_record(self, index: int, incident: Incident) -> bool:
+        if self._shared:
+            return self._shared_write(
+                "UPDATE incidents SET timestamp = ?, location = ?, data = ? WHERE id = ?",
+                (incident.timestamp, incident.location, self._dump(incident)), index=index)
+        records = self._read_record_dicts()
+        if records is None or not 0 <= index < len(records):
+            return False
+        records[index] = incident.to_dict()
+        return self._incidents_file.write(records)
+
+    # Removes the incident at a 0-based position; returns False if the file is corrupt, the index is wrong or it cannot be written.
+    def delete_record(self, index: int) -> bool:
+        if self._shared:
+            return self._shared_write("DELETE FROM incidents WHERE id = ?", (), index=index)
+        records = self._read_record_dicts()
+        if records is None or not 0 <= index < len(records):
+            return False
+        del records[index]
+        return self._incidents_file.write(records)
+
+    @staticmethod
+    def _dump(incident: Incident) -> str:
+        return json.dumps(incident.to_dict(), default=str, sort_keys=True)
+
+    # Every saved incident in the order it was saved; a broken row is skipped.
+    def _load_shared(self) -> list[Incident]:
+        try:
+            with self._shared.connect() as connection:
+                rows = connection.execute("SELECT data FROM incidents ORDER BY id").fetchall()
+        except Exception:
+            return []
+        incidents = []
+        for row in rows:
+            try:
+                incidents.append(Incident.from_dict(json.loads(row["data"])))
+            except (ValueError, TypeError):
+                continue
+        return incidents
+
+    # Runs one write. With index (0-based, in save order) it targets that incident's row, passed last as the id.
+    def _shared_write(self, sql: str, params: tuple, index: int | None = None) -> bool:
+        try:
+            with self._shared.connect() as connection:
+                if index is not None:
+                    ids = [row["id"] for row in connection.execute("SELECT id FROM incidents ORDER BY id").fetchall()]
+                    if not 0 <= index < len(ids):
+                        return False
+                    params = (*params, ids[index])
+                connection.execute(sql, params)
+            return True
+        except Exception:
+            return False
 
 
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
