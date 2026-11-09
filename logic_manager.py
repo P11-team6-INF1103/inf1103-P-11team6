@@ -162,18 +162,18 @@ def apply_hazard_rules(enriched: dict) -> dict:
     return result
 
 
+# Daniel
 # Starting severity and its reasons from what happened to the person (5 if someone died).
 def _score_injury(record: dict) -> tuple[int, list[str]]:
-    injury_treatment = record.get("injury_treatment", "unspecified")
-    if injury_treatment == "died":
+    treatment = record.get("injury_treatment", "unspecified")
+    if treatment == "died":
         return MAX_SEVERITY, ["Someone died (set to 5)"]
-    severity = 1
-    reasons = []
-    injury_points = _INJURY_POINTS.get(injury_treatment, 0)
-    if injury_points:
-        severity += injury_points
-        reasons.append(f"{_INJURY_LABELS[injury_treatment]} (+{injury_points})")
-    if record.get("injury") and injury_treatment in ("none", "unspecified"):
+    severity, reasons = 1, []
+    points = _INJURY_POINTS.get(treatment, 0)
+    if points:
+        severity += points
+        reasons.append(f"{_INJURY_LABELS[treatment]} (+{points})")
+    if record.get("injury") and treatment in ("none", "unspecified"):
         severity += 1
         reasons.append("Someone was hurt, but how badly wasn't described (+1)")
     return severity, reasons
