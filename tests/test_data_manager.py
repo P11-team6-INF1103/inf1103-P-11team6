@@ -8,7 +8,7 @@ import pytest
 
 import data_manager as dm
 from database import Database
-from models import Incident
+from models import Incident, IncidentPhoto
 from tests._suite import suite_from, temp_data_dir
 
 
@@ -419,3 +419,52 @@ def test_shared_database_outage_gives_empty_and_false_not_an_error():
         assert manager.load_records() == []
         assert manager.save_record(_incident("x")) is False
         assert manager.replace_record(0, _incident("x")) is False and manager.delete_record(0) is False
+
+
+_PNG = b"\x89PNG\r\n\x1a\n" + b"fake image data"
+
+
+def test_photo_is_kept_in_the_photos_folder_and_loads_again():
+    with temp_data_dir() as folder:
+        manager = dm.DataManager(folder)
+        photo = IncidentPhoto.from_bytes("site.png", _PNG)
+        path = manager.store_photo(photo)
+        assert path == os.path.join(folder, "photos", photo.fingerprint() + ".png")
+        with open(path, "rb") as f:
+            assert f.read() == _PNG
+        loaded = manager.load_photo(_incident("with photo", photo_saved_path=path))
+        assert loaded.content == _PNG and loaded.mime_type == "image/png"
+        assert manager.load_photo(_incident("no photo")) is None
+        assert manager.read_photo("db:" + photo.fingerprint()) is None  # local mode keeps no photos in a database
+        _write(os.path.join(folder, "photos"), "broken.png", "not an image")
+        assert manager.load_photo(_incident("x", photo_saved_path=os.path.join(folder, "photos", "broken.png"))) is None
+        os.remove(path)
+        assert manager.load_photo(_incident("x", photo_saved_path=path)) is None  # file gone: no photo, no error
+
+
+def test_photo_is_kept_in_the_shared_database_and_loads_again():
+    with temp_data_dir() as folder:
+        manager = dm.DataManager(folder, shared_database=Database(os.path.join(folder, "s.db")))
+        photo = IncidentPhoto.from_bytes("site.png", _PNG)
+        reference = manager.store_photo(photo)
+        assert reference == "db:" + photo.fingerprint()
+        assert manager.store_photo(photo) == reference  # the same photo again is stored once
+        assert manager.read_photo(reference) == (_PNG, "image/png")
+        loaded = manager.load_photo(_incident("x", photo_saved_path=reference, photo_file="site.png"))
+        assert loaded.content == _PNG and loaded.file_name == "site.png"
+        assert manager.read_photo("db:unknown") is None and manager.read_photo("some/file.png") is None
+        assert manager.load_photo(_incident("x", photo_saved_path="db:unknown")) is None
+        assert not os.path.exists(os.path.join(folder, "photos"))  # no photo files in database mode
+
+
+def test_photo_storage_failures_give_none_not_an_error():
+    class DeadDatabase:
+        def connect(self):
+            raise ConnectionError("server unreachable")
+
+    photo = IncidentPhoto.from_bytes("site.png", _PNG)
+    with temp_data_dir() as folder:
+        _write(folder, "blocker", "")
+        assert dm.DataManager(os.path.join(folder, "blocker")).store_photo(photo) is None  # folder cannot be made
+        down = dm.DataManager(folder, shared_database=DeadDatabase())
+        assert down.store_photo(photo) is None and down.read_photo("db:" + photo.fingerprint()) is None
