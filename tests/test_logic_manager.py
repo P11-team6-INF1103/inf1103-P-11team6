@@ -8,7 +8,8 @@ def test_severity_and_outcome_constants_fit_together():
         assert name and description
     assert 1 < lm.INJURY_MIN_SEVERITY < lm.HIGH_SEVERITY <= lm.MAX_SEVERITY
     assert lm.SYSTEMIC_INCIDENT_COUNT >= 1
-    assert set(lm.OUTCOME_ACTIONS) == {"stop_work_review", "systemic_escalation", "log_only", "pending_review"}
+    assert set(lm.OUTCOME_ACTIONS) == {"stop_work_review", "photo_review", "systemic_escalation", "log_only",
+                                       "pending_review"}
     assert all(action for action in lm.OUTCOME_ACTIONS.values())
 
 

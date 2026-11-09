@@ -30,6 +30,7 @@ SEVERITY_LEVELS = {
 
 OUTCOME_ACTIONS = {
     "stop_work_review": "Stop the affected work and hold a safety review before it restarts.",
+    "photo_review": "The photo does not seem to match the description; a person should check it.",
     "systemic_escalation": "Escalate to management: this location keeps having incidents.",
     "log_only": "Record the incident; no escalation needed.",
     "pending_review": "The AI could not assess it; a person must review it manually.",
