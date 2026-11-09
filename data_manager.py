@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 
 from database import Database
-from models import Incident
+from models import Incident, IncidentPhoto, PhotoError
 
 
 class DocumentStore(ABC):
@@ -273,6 +273,58 @@ class DataManager:
             return True
         except Exception:
             return False
+
+    # Copies an uploaded photo into data/photos so the evidence is kept; returns the saved path, or None on failure.
+    def store_photo(self, photo: IncidentPhoto) -> str | None:
+        if self._shared:
+            try:
+                with self._shared.connect() as connection:
+                    connection.execute(
+                        "INSERT INTO photos (fingerprint, mime_type, content) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
+                        (photo.fingerprint(), photo.mime_type, photo.content))
+            except Exception:
+                return None
+            return self.DB_PHOTO_PREFIX + photo.fingerprint()
+        extension = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}[photo.mime_type]
+        path = os.path.join(self._folder, "photos", photo.fingerprint() + extension)
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as f:
+                f.write(photo.content)
+        except OSError:
+            return None
+        return path
+
+    # (bytes, MIME type) of a photo stored in the database from its "db:<fingerprint>" reference, or None.
+    def read_photo(self, reference: str) -> tuple[bytes, str] | None:
+        if not self._shared or not str(reference).startswith(self.DB_PHOTO_PREFIX):
+            return None
+        try:
+            with self._shared.connect() as connection:
+                row = connection.execute("SELECT mime_type, content FROM photos WHERE fingerprint = ?",
+                                         (reference[len(self.DB_PHOTO_PREFIX):],)).fetchone()
+        except Exception:
+            return None
+        return (bytes(row["content"]), row["mime_type"]) if row else None
+
+    # Loads the photo saved for an incident again, or None if it has no photo or the file is gone or unusable.
+    def load_photo(self, incident: Incident) -> IncidentPhoto | None:
+        path = incident.get("photo_saved_path")
+        if not path:
+            return None
+        if path.startswith(self.DB_PHOTO_PREFIX):
+            stored = self.read_photo(path)
+            if not stored:
+                return None
+            extension = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}.get(stored[1], ".png")
+            try:
+                return IncidentPhoto.from_bytes(str(incident.get("photo_file") or "photo" + extension), stored[0])
+            except PhotoError:
+                return None
+        try:
+            return IncidentPhoto.from_file(path)
+        except PhotoError:
+            return None
 
 
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
