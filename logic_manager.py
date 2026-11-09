@@ -21,6 +21,7 @@ _ESCALATED_OUTCOMES = ("stop_work_review", "systemic_escalation")
 _POOR_LIGHT_LEVELS = ("dark", "low_light")
 
 MAX_SEVERITY = 5
+INJURY_MIN_SEVERITY = 3  # anyone injured scores at least this, whatever else the conditions take away
 HIGH_SEVERITY = 4  # Rule 1: this severity or above means stop-work review
 SYSTEMIC_INCIDENT_COUNT = 3  # Rule 2: this many earlier incidents at one location
 
@@ -38,11 +39,11 @@ SEVERITY_LEVELS = {
         "Near miss or no injury, low-risk hazard, controls in place "
         "(e.g. PPE worn). Record it and carry on.")),
     2: ("Minor", (
-        "One aggravating factor, e.g. a minor injury or a ground-level "
+        "No injury, with one aggravating factor, e.g. a ground-level "
         "slip/trip. Record it; supervisor fixes the cause on the spot.")),
     3: ("Moderate", (
-        "Several aggravating factors, e.g. injury in poor lighting, or "
-        "a high-risk hazard type with no injury. Logged, but the site "
+        "Anyone injured (the minimum for an injury), or several aggravating "
+        "factors with no injury. Logged, but the site "
         "team should review the cause this week.")),
     4: ("High", (
         "Serious injury, or a MOM Type A hazard (fall from height, vehicle, "
@@ -218,7 +219,12 @@ def _score_conditions(record: dict, weather_data: dict, hazard_type: str, simila
 def _score_severity(record: dict, weather_data: dict, hazard_type: str, similar_escalated: bool) -> tuple[int, list[str]]:
     severity, reasons = _score_injury(record)
     change, condition_reasons = _score_conditions(record, weather_data, hazard_type, similar_escalated)
-    return max(1, min(severity + change, MAX_SEVERITY)), reasons + condition_reasons
+    severity = max(1, min(severity + change, MAX_SEVERITY))
+    injured = record.get("injury") or record.get("injury_treatment") in ("first_aid", "hospital", "died")
+    if injured and severity < INJURY_MIN_SEVERITY:
+        severity = INJURY_MIN_SEVERITY
+        reasons.append(f"Someone was injured, so severity is at least {INJURY_MIN_SEVERITY}")
+    return severity, reasons + condition_reasons
 
 
 # 'low', 'medium' or 'high' chance of this kind of incident happening again.

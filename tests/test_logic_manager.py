@@ -65,6 +65,17 @@ def test_severity_and_outcome_rules():
     assert lm.decide_outcome(mild, three) == "systemic_escalation"
 
 
+def test_any_injury_scores_at_least_the_injury_minimum():
+    calm = dict(hazard_category="fall", working_at_height=False, ppe_status="worn", lighting_condition="daylight")
+    for injury, treatment in ((True, "unspecified"), (True, "none"), (False, "first_aid"), (False, "hospital")):
+        result = lm.assess_severity(_enriched(**calm, injury=injury, injury_treatment=treatment), {}, [])
+        assert result["severity_estimate"] == lm.INJURY_MIN_SEVERITY, (injury, treatment)
+        assert f"Someone was injured, so severity is at least {lm.INJURY_MIN_SEVERITY}" in result["severity_reasons"]
+    uninjured = lm.assess_severity(_enriched(**calm, injury=False, injury_treatment="none"), {}, [])
+    assert uninjured["severity_estimate"] == 1
+    assert not any("at least" in reason for reason in uninjured["severity_reasons"])
+
+
 def test_multi_condition_rule_uses_ai_fields():
     record = {"severity_estimate": 2, "injury": True, "likelihood_recurrence": "high"}
     assert lm.is_high_severity(record)
