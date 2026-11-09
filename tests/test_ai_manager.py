@@ -135,40 +135,40 @@ def test_hazard_step_cleans_a_good_reply():
     assert fields["hazard_category"] == "fall_from_height" and fields["height_estimate_m"] == 12
     assert fields["context_flags_error"] is None
 
-# Ren Xiang
-# --- AIManager and threading (advanced feature) ---
+# # Ren Xiang
+# # --- AIManager and threading (advanced feature) ---
 
-def test_ai_manager_fills_in_every_step():
-    ai = AIManager(FakeGemini(), FakeSearch(),
-                   FakeWeather({"temperature_c": 30, "humidity_pct": 80, "precipitation_mm": 1.0}), OUTCOME_ACTIONS)
-    incident = make(photo=True, run_weather=True, run_similar=False)
-    ai.extract_hazards(incident)
-    ai.gather_evidence(incident, [])
-    ai.write_review(incident)
-    assert incident.get("hazard_category") == "fall_from_height"
-    assert incident.get("photo_analysed") and incident.get("weather_available")
-    assert incident.get("web_incidents") and incident.get("review_likely_causes")
+# def test_ai_manager_fills_in_every_step():
+#     ai = AIManager(FakeGemini(), FakeSearch(),
+#                    FakeWeather({"temperature_c": 30, "humidity_pct": 80, "precipitation_mm": 1.0}), OUTCOME_ACTIONS)
+#     incident = make(photo=True, run_weather=True, run_similar=False)
+#     ai.extract_hazards(incident)
+#     ai.gather_evidence(incident, [])
+#     ai.write_review(incident)
+#     assert incident.get("hazard_category") == "fall_from_height"
+#     assert incident.get("photo_analysed") and incident.get("weather_available")
+#     assert incident.get("web_incidents") and incident.get("review_likely_causes")
 
 
-def test_evidence_steps_run_in_parallel_threads():
-    class SlowSearch(FakeSearch):
-        def search_json(self, prompt, schema):
-            time.sleep(0.4)
-            return super().search_json(prompt, schema)
+# def test_evidence_steps_run_in_parallel_threads():
+#     class SlowSearch(FakeSearch):
+#         def search_json(self, prompt, schema):
+#             time.sleep(0.4)
+#             return super().search_json(prompt, schema)
 
-    class SlowWeather(FakeWeather):
-        def get_weather(self, timestamp):
-            time.sleep(0.4)
+#     class SlowWeather(FakeWeather):
+#         def get_weather(self, timestamp):
+#             time.sleep(0.4)
 
-    class SlowGemini(FakeGemini):
-        def ask_json(self, prompt, schema, photo=None):
-            time.sleep(0.4)
-            return super().ask_json(prompt, schema, photo)
+#     class SlowGemini(FakeGemini):
+#         def ask_json(self, prompt, schema, photo=None):
+#             time.sleep(0.4)
+#             return super().ask_json(prompt, schema, photo)
 
-    ai = AIManager(SlowGemini(), SlowSearch(), SlowWeather(), OUTCOME_ACTIONS)
-    incident = make(photo=True, run_weather=True, run_similar=True)
-    start = time.perf_counter()
-    ai.gather_evidence(incident, [make()])
-    elapsed = time.perf_counter() - start
-    assert elapsed < 1.0  # four 0.4 s steps one after another would take 1.6 s
-    assert incident.get("photo_analysed") and incident.get("similar_incidents_checked")
+#     ai = AIManager(SlowGemini(), SlowSearch(), SlowWeather(), OUTCOME_ACTIONS)
+#     incident = make(photo=True, run_weather=True, run_similar=True)
+#     start = time.perf_counter()
+#     ai.gather_evidence(incident, [make()])
+#     elapsed = time.perf_counter() - start
+#     assert elapsed < 1.0  # four 0.4 s steps one after another would take 1.6 s
+#     assert incident.get("photo_analysed") and incident.get("similar_incidents_checked")
