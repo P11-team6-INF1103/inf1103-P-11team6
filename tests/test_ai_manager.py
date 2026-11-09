@@ -1,5 +1,5 @@
 import os
-import time
+# import time
 
 import pytest
 
@@ -9,7 +9,7 @@ from ai_clients import (
     ResponseCache,
 )
 from ai_manager import (
-    AIManager,
+    # AIManager,
     EnrichmentStep,
     HazardFlagStep,
     PhotoAnalysisStep,
