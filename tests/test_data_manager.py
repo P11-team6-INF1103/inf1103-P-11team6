@@ -8,6 +8,7 @@ import pytest
 
 import data_manager as dm
 from database import Database
+from models import Incident
 from tests._suite import suite_from, temp_data_dir
 
 
@@ -338,3 +339,83 @@ def test_data_manager_reads_record_dicts_and_refuses_an_unreadable_file():
         assert manager._read_record_dicts() == [{"a": 1}, {"b": 2}]  # non-objects dropped
         with mock.patch("builtins.open", side_effect=PermissionError("locked")):
             assert manager._read_record_dicts() is None  # exists but unreadable: callers must not overwrite it
+
+
+def _incident(description, location="Site A", timestamp="2026-10-20T10:00:00", **fields):
+    incident = Incident(description, location, "supervisor", False, timestamp)
+    incident.update(fields)
+    return incident
+
+
+def _managers(folder):
+    # The same DataManager calls, once with local files and once with a shared database.
+    return [dm.DataManager(os.path.join(folder, "local")),
+            dm.DataManager(os.path.join(folder, "shared"), shared_database=Database(os.path.join(folder, "s.db")))]
+
+
+def test_save_load_replace_and_delete_incidents_in_both_modes():
+    with temp_data_dir() as folder:
+        for manager in _managers(folder):
+            assert manager.load_records() == []
+            assert manager.save_record(_incident("first", outcome="log_only")) is True
+            assert manager.save_record(_incident("second", location="Site B")) is True
+            loaded = manager.load_records()
+            assert all(isinstance(item, Incident) for item in loaded)
+            assert [item.description for item in loaded] == ["first", "second"]  # save order kept
+            assert loaded[0].get("outcome") == "log_only" and loaded[1].location == "Site B"
+            assert manager.replace_record(0, _incident("first, edited")) is True
+            assert [item.description for item in manager.load_records()] == ["first, edited", "second"]
+            assert manager.delete_record(0) is True
+            assert [item.description for item in manager.load_records()] == ["second"]
+            for bad_index in (-1, 1, 5):
+                assert manager.replace_record(bad_index, _incident("x")) is False
+                assert manager.delete_record(bad_index) is False
+            assert [item.description for item in manager.load_records()] == ["second"]  # nothing changed
+        assert not os.path.exists(os.path.join(folder, "shared", "incidents.json"))  # database mode uses no file
+
+
+def test_broken_saved_incidents_are_skipped_not_fatal():
+    with temp_data_dir() as folder:
+        local, shared = _managers(folder)
+        good = _incident("good").to_dict()
+        os.makedirs(os.path.join(folder, "local"))
+        _write(os.path.join(folder, "local"), "incidents.json", json.dumps([good, {"description": "no location"}, 3]))
+        assert [item.description for item in local.load_records()] == ["good"]
+        with shared.database.connect() as connection:
+            for data in (json.dumps(good), "{not json", json.dumps({"description": "no location"})):
+                connection.execute("INSERT INTO incidents (timestamp, location, data) VALUES (?, ?, ?)", ("t", "l", data))
+        assert [item.description for item in shared.load_records()] == ["good"]
+
+
+def test_save_never_overwrites_an_unreadable_incidents_file():
+    with temp_data_dir() as folder:
+        manager = dm.DataManager(folder)
+        manager.save_record(_incident("kept"))
+        real_open = open
+
+        def locked(path, mode="r", *args, **kwargs):
+            if "r" in mode and str(path).endswith("incidents.json"):
+                raise PermissionError("locked by another program")
+            return real_open(path, mode, *args, **kwargs)
+
+        with mock.patch("builtins.open", locked):
+            assert manager.save_record(_incident("new")) is False
+            assert manager.replace_record(0, _incident("new")) is False
+            assert manager.delete_record(0) is False
+        assert [item.description for item in manager.load_records()] == ["kept"]
+        _write(folder, "incidents.json", "{not json")  # a corrupt file is set aside, then saving starts afresh
+        assert manager.save_record(_incident("after corrupt")) is True
+        assert [item.description for item in manager.load_records()] == ["after corrupt"]
+        assert any(".corrupt-" in name for name in os.listdir(folder))
+
+
+def test_shared_database_outage_gives_empty_and_false_not_an_error():
+    class DeadDatabase:
+        def connect(self):
+            raise ConnectionError("server unreachable")
+
+    with temp_data_dir() as folder:
+        manager = dm.DataManager(folder, shared_database=DeadDatabase())
+        assert manager.load_records() == []
+        assert manager.save_record(_incident("x")) is False
+        assert manager.replace_record(0, _incident("x")) is False and manager.delete_record(0) is False
