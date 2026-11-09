@@ -290,3 +290,51 @@ def test_json_file_and_db_json_are_interchangeable():
             assert store.write({"b": 2, "a": 1}) is True
             assert store.read() == ({"a": 1, "b": 2}, None)
             assert store.delete() is True and store.read() == ({}, None)
+
+
+def test_data_manager_folder_and_storage_mode():
+    with temp_data_dir() as folder:
+        assert dm.DataManager.default_folder() == folder  # INCIDENT_DATA_DIR wins
+        local = dm.DataManager()
+        assert local.uses_database is False
+        assert local.database_path == os.path.join(folder, "app.db")
+        assert local.database.path == local.database_path  # SQLite opened on first use
+        assert local.database is local.database  # and only once
+        shared_db = Database(os.path.join(folder, "shared.db"))
+        shared = dm.DataManager(os.path.join(folder, "other"), shared_database=shared_db)
+        assert shared.uses_database is True and shared.database is shared_db
+    with mock.patch.dict(os.environ, {"INCIDENT_DATA_DIR": ""}):
+        assert dm.DataManager.default_folder() == os.path.join(os.path.dirname(dm.__file__), "data")
+
+
+def test_data_manager_log_path():
+    with temp_data_dir() as folder:
+        target = os.path.join(folder, "new")
+        assert dm.DataManager(target).get_log_path() == os.path.join(target, "app.log")
+        assert os.path.isdir(target)  # the folder is created
+        blocker = os.path.join(folder, "blocker")
+        _write(folder, "blocker", "")
+        assert dm.DataManager(os.path.join(blocker, "sub")).get_log_path() is None  # folder cannot be made
+        assert dm.DataManager(folder, shared_database=Database(os.path.join(folder, "s.db"))).get_log_path() is None
+
+
+def test_data_manager_checks_the_incidents_file():
+    with temp_data_dir() as folder:
+        manager = dm.DataManager(folder)
+        assert manager.check_records_file() is None  # missing is fine
+        _write(folder, "incidents.json", "{not json")
+        assert "was corrupt" in manager.check_records_file()
+        assert manager.check_records_file() is None  # it was set aside, so now it is missing
+        shared = dm.DataManager(folder, shared_database=Database(os.path.join(folder, "s.db")))
+        _write(folder, "incidents.json", "{not json")
+        assert shared.check_records_file() is None  # no local file is used in database mode
+
+
+def test_data_manager_reads_record_dicts_and_refuses_an_unreadable_file():
+    with temp_data_dir() as folder:
+        manager = dm.DataManager(folder)
+        assert manager._read_record_dicts() == []
+        _write(folder, "incidents.json", json.dumps([{"a": 1}, 2, "x", None, {"b": 2}]))
+        assert manager._read_record_dicts() == [{"a": 1}, {"b": 2}]  # non-objects dropped
+        with mock.patch("builtins.open", side_effect=PermissionError("locked")):
+            assert manager._read_record_dicts() is None  # exists but unreadable: callers must not overwrite it

@@ -130,6 +130,70 @@ class DbJson(DocumentStore):
             return False
 
 
+class DataManager:
+    # A saved photo's reference starts with this when the photo is in the database instead of a file.
+    DB_PHOTO_PREFIX = "db:"
+
+    # The data folder: INCIDENT_DATA_DIR if set, otherwise ./data next to this file.
+    @staticmethod
+    def default_folder() -> str:
+        return os.environ.get("INCIDENT_DATA_DIR") or os.path.join(os.path.dirname(__file__), "data")
+
+    # Creates and owns the JSON files it manages (composition). Given a shared database (Postgres), the incidents,
+    # AI cache and site plan live in it instead of in files, so they survive a server restart.
+    def __init__(self, folder: str | None = None, shared_database: Database | None = None) -> None:
+        self._folder = folder or self.default_folder()
+        self._shared = shared_database
+        self._database = shared_database
+        self._incidents_file = JsonFile(os.path.join(self._folder, "incidents.json"), list)
+        self._cache_file: DocumentStore = JsonFile(os.path.join(self._folder, "ai_cache.json"), dict)
+        self._plan_file: DocumentStore = JsonFile(os.path.join(self._folder, "site_plan.json"), dict)
+        if shared_database is not None:
+            self._cache_file = DbJson(shared_database, "ai_cache", dict)
+            self._plan_file = DbJson(shared_database, "site_plan", dict)
+
+    # The database for the priority workflow: the shared one, or a SQLite file in the data folder.
+    @property
+    def database(self) -> Database:
+        if self._database is None:
+            self._database = Database(self.database_path)
+        return self._database
+
+    # The SQLite file with each incident's priority and resolved status.
+    @property
+    def database_path(self) -> str:
+        return os.path.join(self._folder, "app.db")
+
+    # True when everything is kept in the shared database rather than in local files.
+    @property
+    def uses_database(self) -> bool:
+        return self._shared is not None
+
+    # Path of app.log, or None if the data folder cannot be created (or there is no local data at all).
+    def get_log_path(self) -> str | None:
+        if self._shared:
+            return None
+        try:
+            os.makedirs(self._folder, exist_ok=True)
+        except OSError:
+            return None
+        return os.path.join(self._folder, "app.log")
+
+    # Says what is wrong with the incidents file, or None if it is fine or missing.
+    def check_records_file(self) -> str | None:
+        if self._shared:
+            return None
+        _data, problem = self._incidents_file.read()
+        return problem
+
+    # The saved incidents as plain dicts, or None if the file exists but is unreadable.
+    def _read_record_dicts(self) -> list | None:
+        data, problem = self._incidents_file.read()
+        if problem and os.path.exists(self._incidents_file.path):
+            return None
+        return [item for item in data if isinstance(item, dict)]
+
+
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
 
