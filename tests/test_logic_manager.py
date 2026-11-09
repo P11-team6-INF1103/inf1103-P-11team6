@@ -2,6 +2,16 @@ import logic_manager as lm
 from tests._suite import suite_from
 
 
+def test_severity_and_outcome_constants_fit_together():
+    assert sorted(lm.SEVERITY_LEVELS) == list(range(1, lm.MAX_SEVERITY + 1))
+    for name, description in lm.SEVERITY_LEVELS.values():
+        assert name and description
+    assert 1 < lm.INJURY_MIN_SEVERITY < lm.HIGH_SEVERITY <= lm.MAX_SEVERITY
+    assert lm.SYSTEMIC_INCIDENT_COUNT >= 1
+    assert set(lm.OUTCOME_ACTIONS) == {"stop_work_review", "systemic_escalation", "log_only", "pending_review"}
+    assert all(action for action in lm.OUTCOME_ACTIONS.values())
+
+
 def test_weather_relevance_is_whole_word():
     for text in ("Worker slipped on wet floor", "Heavy RAIN all morning", "It was windy on the roof",
                  "flooding in the basement", "Lightning struck the crane"):
