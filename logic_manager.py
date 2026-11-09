@@ -179,46 +179,35 @@ def _score_injury(record: dict) -> tuple[int, list[str]]:
     return severity, reasons
 
 
+# Daniel
 # Points added or removed by the hazard type and the site conditions, with a reason for each.
-def _score_conditions(record: dict, weather_data: dict, hazard_type: str, similar_escalated: bool) -> tuple[int, list[str]]:
+def _score_conditions(record: dict, similar_escalated: bool) -> tuple[int, list[str]]:
     at_height = record.get("working_at_height")
     machinery = record.get("heavy_machinery_present")
     ppe_not_worn = record.get("ppe_status") == "not_worn"
-    poor_light = record.get("lighting_condition") in _POOR_LIGHT_LEVELS
-
-    change = 0
-    reasons = []
-    if hazard_type in _TYPE_A_HAZARDS:
-        change += 1
-        reasons.append("One of MOM's highest-risk hazard types (+1)")
-    if at_height:
-        change += 1
-        reasons.append("Working at height (+1)")
-    if machinery and ppe_not_worn:
-        change += 1
-        reasons.append("Heavy machinery around, without safety gear (+1)")
-    if ppe_not_worn:
-        change += 1
-        reasons.append("Safety gear (PPE) not worn (+1)")
-    elif record.get("ppe_status") == "worn":
-        change -= 1
-        reasons.append("Safety gear (PPE) was worn (-1)")
-    if poor_light:
-        change += 1
-        reasons.append("Poor lighting or dark (+1)")
-    if weather_data.get("condition") == "rain" and (at_height or machinery):
-        change += 1
-        reasons.append("Raining during work at height or with machinery (+1)")
-    if similar_escalated:
-        change += 1
-        reasons.append("A similar past incident on our sites was escalated (+1)")
+    checks = [
+        (record.get("hazard_category") in _TYPE_A_HAZARDS, 1, "One of MOM's highest-risk hazard types"),
+        (at_height, 1, "Working at height"),
+        (machinery and ppe_not_worn, 1, "Heavy machinery around, without safety gear"),
+        (ppe_not_worn, 1, "Safety gear (PPE) not worn"),
+        (record.get("ppe_status") == "worn", -1, "Safety gear (PPE) was worn"),
+        (record.get("lighting_condition") in _POOR_LIGHT_LEVELS, 1, "Poor lighting or dark"),
+        (record.get("condition") == "rain" and (at_height or machinery), 1,
+         "Raining during work at height or with machinery"),
+        (similar_escalated, 1, "A similar past incident on our sites was escalated"),
+    ]
+    change, reasons = 0, []
+    for applies, points, text in checks:
+        if applies:
+            change += points
+            reasons.append(f"{text} ({points:+d})")
     return change, reasons
 
 
 # Total severity capped to 1-5, with the plain-English reason for every point.
-def _score_severity(record: dict, weather_data: dict, hazard_type: str, similar_escalated: bool) -> tuple[int, list[str]]:
+def _score_severity(record: dict, similar_escalated: bool) -> tuple[int, list[str]]:
     severity, reasons = _score_injury(record)
-    change, condition_reasons = _score_conditions(record, weather_data, hazard_type, similar_escalated)
+    change, condition_reasons = _score_conditions(record, similar_escalated)
     severity = max(1, min(severity + change, MAX_SEVERITY))
     injured = record.get("injury") or record.get("injury_treatment") in ("first_aid", "hospital", "died")
     if injured and severity < INJURY_MIN_SEVERITY:
@@ -257,7 +246,7 @@ def assess_severity(record: dict, weather_data: dict | None = None, history: lis
 
     similar = record.get("similar_incidents") or []
     similar_escalated = any(item.get("outcome") in _ESCALATED_OUTCOMES for item in similar)
-    severity, reasons = _score_severity(record, weather_data, record["hazard_category"], similar_escalated)
+    severity, reasons = _score_severity(record, similar_escalated)
     poor_light = record.get("lighting_condition") in _POOR_LIGHT_LEVELS
 
     result["hazard_type"] = record["hazard_category"]
