@@ -7,6 +7,7 @@ from unittest import mock
 import pytest
 
 import data_manager as dm
+from database import Database
 from tests._suite import suite_from, temp_data_dir
 
 
@@ -237,3 +238,55 @@ def test_json_file_delete():
         with mock.patch("os.remove", side_effect=PermissionError("locked")):
             assert store.delete() is False
         assert store.read() == ([1], None)
+
+
+def test_db_json_round_trip_in_the_documents_table():
+    with temp_data_dir() as folder:
+        database = Database(os.path.join(folder, "app.db"))
+        store = dm.DbJson(database, "ai_cache", dict)
+        assert isinstance(store, dm.DocumentStore)
+        assert store.read() == ({}, None)  # no row yet: empty, no complaint
+        assert store.write({"k": "v"}) is True and store.read() == ({"k": "v"}, None)
+        assert store.write({"k": "new"}) is True and store.read() == ({"k": "new"}, None)  # replaces, one row
+        assert dm.DbJson(database, "site_plan", dict).read() == ({}, None)  # each name is its own document
+        assert store.delete() is True and store.read() == ({}, None)
+        assert store.delete() is True  # nothing to delete is fine
+
+
+def test_db_json_reports_corrupt_and_wrong_shape_rows():
+    with temp_data_dir() as folder:
+        database = Database(os.path.join(folder, "app.db"))
+        with database.connect() as connection:
+            connection.execute("INSERT INTO documents (name, data) VALUES (?, ?)", ("broken", "{not json"))
+            connection.execute("INSERT INTO documents (name, data) VALUES (?, ?)", ("a_list", "[1, 2]"))
+        data, problem = dm.DbJson(database, "broken", dict).read()
+        assert data == {} and problem == "broken was corrupt in the database"
+        data, problem = dm.DbJson(database, "a_list", dict).read()
+        assert data == {} and problem == "a_list had the wrong format"
+
+
+def test_db_json_never_raises_when_the_database_is_down():
+    class DeadDatabase:
+        def connect(self):
+            raise ConnectionError("server unreachable")
+
+    store = dm.DbJson(DeadDatabase(), "ai_cache", dict)
+    data, problem = store.read()
+    assert data == {} and problem.startswith("could not read ai_cache")
+    assert store.write({"k": "v"}) is False and store.delete() is False
+    circular = {}
+    circular["self"] = circular
+    with temp_data_dir() as folder:
+        assert dm.DbJson(Database(os.path.join(folder, "app.db")), "x", dict).write(circular) is False
+
+
+def test_json_file_and_db_json_are_interchangeable():
+    # The same steps give the same results whichever DocumentStore is used (Liskov substitution).
+    with temp_data_dir() as folder:
+        stores = [dm.JsonFile(os.path.join(folder, "cache.json"), dict),
+                  dm.DbJson(Database(os.path.join(folder, "app.db")), "cache", dict)]
+        for store in stores:
+            assert store.read() == ({}, None)
+            assert store.write({"b": 2, "a": 1}) is True
+            assert store.read() == ({"a": 1, "b": 2}, None)
+            assert store.delete() is True and store.read() == ({}, None)
