@@ -53,6 +53,17 @@ def test_monsoon_season_boundaries():
                          ("2026-06-01", "southwest_monsoon"), ("2026-09-30", "southwest_monsoon"),
                          ("2026-10-01", "inter_monsoon"), ("2026-11-30", "inter_monsoon")):
         assert lm.get_monsoon_season(date + "T12:00:00") == season, date
+
+
+def test_injury_score_starts_from_what_happened_to_the_person():
+    assert lm._score_injury({"injury_treatment": "died"}) == (5, ["Someone died (set to 5)"])
+    assert lm._score_injury({"injury_treatment": "first_aid"}) == (2, ["Minor injury, first aid only (+1)"])
+    assert lm._score_injury({"injury_treatment": "hospital"}) == (3, ["Serious injury, hospital treatment (+2)"])
+    hurt_not_described = (2, ["Someone was hurt, but how badly wasn't described (+1)"])
+    assert lm._score_injury({"injury": True, "injury_treatment": "unspecified"}) == hurt_not_described
+    assert lm._score_injury({"injury": True}) == hurt_not_described  # missing treatment counts as unspecified
+    for nobody_hurt in ({"injury": False, "injury_treatment": "none"}, {}, {"injury_treatment": "banana"}):
+        assert lm._score_injury(nobody_hurt) == (1, []), nobody_hurt
     assert lm.classify_lighting_condition("day", "rain") == "low_light"
     assert lm.classify_lighting_condition("night", "rain") == "dark"
 
