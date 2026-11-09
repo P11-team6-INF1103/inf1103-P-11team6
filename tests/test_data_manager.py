@@ -3,6 +3,8 @@ import os
 import tempfile
 from unittest import mock
 
+import pytest
+
 import data_manager as dm
 from tests._suite import suite_from, temp_data_dir
 
@@ -139,3 +141,34 @@ def test_delete_record_on_corrupt_file_returns_false():
     with temp_data_dir() as folder:
         _write(folder, "incidents.json", "{not json")
         assert dm.delete_record(0) is False
+
+
+def test_document_store_is_an_interface_with_three_methods():
+    with pytest.raises(TypeError):
+        dm.DocumentStore()
+
+    class ReadOnly(dm.DocumentStore):  # leaves out write and delete
+        def read(self):
+            return [], None
+
+    with pytest.raises(TypeError):
+        ReadOnly()
+
+    class InMemory(dm.DocumentStore):
+        def __init__(self):
+            self.value = []
+
+        def read(self):
+            return self.value, None
+
+        def write(self, data):
+            self.value = data
+            return True
+
+        def delete(self):
+            self.value = []
+            return True
+
+    store = InMemory()
+    assert store.write([{"a": 1}]) is True and store.read() == ([{"a": 1}], None)
+    assert store.delete() is True and store.read() == ([], None)
