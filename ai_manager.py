@@ -1,10 +1,11 @@
 import json
 import logging
 from abc import ABC, abstractmethod
-from concurrent.futures import ThreadPoolExecutor
+from typing import ClassVar
 
-from ai_clients import GeminiClient, GroqSearchClient, WeatherClient
-from models import Incident, IncidentPhoto
+from ai_clients import GeminiClient
+from models import Incident
+
 # from site_plan import ELEMENT_KINDS, SitePlan, SitePlanError
 
 logger = logging.getLogger(__name__)
@@ -60,7 +61,7 @@ class EnrichmentStep(ABC):
 # Ren Xiang
 class HazardFlagStep(EnrichmentStep):
     name = "Hazard extraction"
-    SCHEMA = {
+    SCHEMA: ClassVar[dict] = {
         "type": "object",
         "properties": {
             "hazard_category": {"type": "string", "enum": list(HAZARD_CATEGORIES)},
@@ -147,7 +148,7 @@ class HazardFlagStep(EnrichmentStep):
 # Ren Xiang
 class ReviewStep(EnrichmentStep):
     name = "After-action review"
-    SCHEMA = {
+    SCHEMA: ClassVar[dict] = {
         "type": "object",
         "properties": {
             "likely_causes": {"type": "array", "items": {"type": "string"}},

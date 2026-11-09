@@ -3,7 +3,11 @@ import time
 
 import pytest
 
-from ai_clients import GeminiClient, GroqSearchClient, JsonReply, ResponseCache, WeatherClient
+from ai_clients import (
+    GeminiClient,
+    JsonReply,
+    ResponseCache,
+)
 from ai_manager import (
     AIManager,
     EnrichmentStep,
@@ -14,11 +18,9 @@ from ai_manager import (
     WeatherStep,
     WebSearchStep,
 )
-
 from logic_manager import OUTCOME_ACTIONS
 from models import Incident, IncidentPhoto
 from tests.fakes import HAZARD_REPLY, FakeGemini, FakeSearch, FakeWeather
-
 
 # Ren Xiang
 SAMPLE_PHOTO = os.path.join(os.path.dirname(__file__), "sample_photo.png")
