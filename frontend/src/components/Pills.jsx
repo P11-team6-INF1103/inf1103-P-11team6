@@ -19,3 +19,13 @@ export function OutcomePill({ outcome, names }) {
     </span>
   );
 }
+
+export function PriorityPill({ incident }) {
+  const color = PRIORITY_COLORS[incident.priority] || "#7d8a87";
+  return (
+    <span className="pill" style={{ color, borderColor: color + "55", background: color + "14" }}
+          title={incident.priority_source === "manual" ? "Set by hand" : "Suggested from the severity"}>
+      P{incident.priority} {incident.priority_name}
+    </span>
+  );
+}
