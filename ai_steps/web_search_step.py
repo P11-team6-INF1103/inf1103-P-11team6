@@ -58,3 +58,6 @@ class WebSearchStep(EnrichmentStep):
         ]
         return {"web_industry_context": parsed["industry_context"].strip() or None,
                 "web_incidents": incidents, "web_search_error": None}
+
+    def error_fields(self, message: str) -> dict:
+        return {"web_industry_context": None, "web_incidents": None, "web_search_error": message}
