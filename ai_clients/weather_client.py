@@ -27,3 +27,27 @@ class WeatherClient:
         if not isinstance(temperature, (int, float)) or not -10 <= temperature <= 50:
             return False
         return isinstance(humidity, (int, float)) and 0 <= humidity <= 100
+
+    # Fetches the current Singapore weather from Open-Meteo; returns None if the call fails.
+    def _call_api(self) -> dict | None:
+        try:
+            response = requests.get(
+                "https://api.open-meteo.com/v1/forecast",
+                params={
+                    "latitude": self._LATITUDE,
+                    "longitude": self._LONGITUDE,
+                    "current": "temperature_2m,relative_humidity_2m,precipitation",
+                    "timezone": "Asia/Singapore",
+                },
+                timeout=8,
+            )
+            response.raise_for_status()
+            current = response.json().get("current", {})
+        except Exception as error:
+            logger.warning("Weather API failed: %s", error)
+            return None
+        return {
+            "temperature_c": current.get("temperature_2m"),
+            "humidity_pct": current.get("relative_humidity_2m"),
+            "precipitation_mm": current.get("precipitation"),
+        }
