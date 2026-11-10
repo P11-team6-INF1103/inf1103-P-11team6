@@ -141,3 +141,16 @@ def test_edit_with_no_change_does_not_call_the_ai(tmp_path):
     calls = len(gemini.calls)
     response = patch(client, location=FORM["location"])
     assert response.get_json()["status"] == "unchanged" and len(gemini.calls) == calls
+
+
+def test_edit_validation_unknown_incident_and_ai_failure(tmp_path):
+    gemini = FakeGemini()
+    client = make_client(tmp_path, gemini)
+    upload(client)
+    assert patch(client, location="!!!").status_code == 422
+    assert patch(client, number=9, location="Site Z").status_code == 404
+    assert patch(client, photo_bytes=b"not an image", location="Site Z").status_code == 422
+    gemini.error = RuntimeError("down")
+    response = patch(client, location="Site Z")
+    assert response.status_code == 502 and response.get_json()["kept_version"] == 1
+    assert client.get("/api/incidents/1").get_json()["location"] == FORM["location"]
