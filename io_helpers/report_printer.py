@@ -45,3 +45,11 @@ class ReportPrinter:
     def __init__(self, severity_levels: dict, outcome_actions: dict) -> None:
         self._severity_levels = severity_levels
         self._outcome_actions = outcome_actions
+
+    # Formats an ISO timestamp as '05 Oct 2026, 09:00', or returns it unchanged if unreadable.
+    @staticmethod
+    def format_time(timestamp: object) -> str:
+        try:
+            return datetime.fromisoformat(timestamp).strftime("%d %b %Y, %H:%M")
+        except (TypeError, ValueError):
+            return str(timestamp)
