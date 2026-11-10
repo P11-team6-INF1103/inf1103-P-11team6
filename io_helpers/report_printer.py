@@ -65,3 +65,8 @@ class ReportPrinter:
         text = re.sub(r"【[^】]*】", "", str(text))
         text = text.translate({0x2011: "-", 0x2010: "-", 0x2019: "'", 0x2018: "'"})
         return re.sub(r"\s+([.,;])(?=\s|$)", r"\1", " ".join(text.split()))
+
+    # Prints a section heading line.
+    @staticmethod
+    def _section(title: str, width: int) -> None:
+        print(f"\n── {title} " + "─" * max(width - len(title) - 4, 3))
