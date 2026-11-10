@@ -102,3 +102,11 @@ def test_rate_limit(tmp_path):
     limiter = RateLimiter(limit=2)
     assert [limiter.too_many("a"), limiter.too_many("a"), limiter.too_many("a"), limiter.too_many("b")] == \
         [False, False, True, False]
+
+
+def test_upload_from_bytes_is_checked_like_a_file():
+    from models.incident_photo import IncidentPhoto
+    from models.photo_error import PhotoError
+    assert IncidentPhoto.from_bytes("a.png", sample_bytes()).mime_type == "image/png"
+    with pytest.raises(PhotoError, match="5 MB"):
+        IncidentPhoto.from_bytes("a.png", b"\x89PNG\r\n\x1a\n" + b"0" * IncidentPhoto.MAX_BYTES)
