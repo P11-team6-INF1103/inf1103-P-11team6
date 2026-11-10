@@ -223,3 +223,16 @@ class ReportPrinter:
              else self._severity_text(Incident.from_dict(data))),
             ("Action", self.OUTCOME_NAMES.get(get("outcome"), get("outcome"))),
         ]
+
+    # Prints the old and new value of everything that differs between two versions, then the unchanged AI insight.
+    def print_comparison(self, old: Incident | dict, new: Incident) -> None:
+        width = self._report_width()
+        self._section("WHAT CHANGED (OLD -> NEW)", width)
+        same = []
+        for (label, before), (_, after) in zip(self._version_values(old), self._version_values(new)):
+            if before == after:
+                same.append(label)
+            else:
+                self._field(label, f"{before} -> {after}", width)
+        if same:
+            self._field("Unchanged", ", ".join(same), width)
