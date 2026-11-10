@@ -3,6 +3,8 @@ import os
 import sqlite3
 from contextlib import contextmanager
 
+from db.database_unavailable import DatabaseUnavailable
+
 # Each incident's workflow (priority, resolved) and, when the database is
 # shared (Postgres), the incidents themselves. A workflow row points at an incident by its timestamp.
 # The two dialects differ only in how an auto-numbered id is written.
@@ -48,12 +50,6 @@ CREATE TABLE IF NOT EXISTS photos (
     content     BYTEA NOT NULL
 );
 """ + _COMMON
-
-
-class DatabaseUnavailable(RuntimeError):
-    # The database could not be opened (server down, wrong URL, bad password, unwritable file). The message
-    # never contains the connection string, so it is safe to show to the user.
-    pass
 
 
 class Database:
