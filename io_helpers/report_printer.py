@@ -180,3 +180,9 @@ class ReportPrinter:
         if incident.get("review_prevention_actions"):
             self._section("HOW TO PREVENT IT", width)
             self._field("", incident.get("review_prevention_actions"), width, label_width=0)
+
+    def _print_problems(self, incident: Incident, width: int) -> None:
+        problems = self.friendly_problems(incident)
+        if problems:
+            self._section("NOTE: SOME AI STEPS DID NOT WORK", width)
+            self._field("", problems, width, label_width=0)
