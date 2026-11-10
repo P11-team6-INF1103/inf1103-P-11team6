@@ -17,3 +17,9 @@ class WeatherStep(EnrichmentStep):
     def skipped_fields(self) -> dict:
         return {"weather_available": False, "temperature_c": None, "humidity_pct": None,
                 "precipitation_mm": None, "enrichment_error": None}
+
+    def run(self, incident: Incident, history: list[Incident]) -> dict:
+        weather = self._weather.get_weather(incident.timestamp)
+        if weather is None:
+            return self.error_fields("Weather data unavailable or invalid")
+        return {"weather_available": True, "enrichment_error": None, **weather}
