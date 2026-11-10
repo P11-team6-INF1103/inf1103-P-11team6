@@ -85,3 +85,11 @@ def test_ai_rejection_is_returned_to_the_browser(tmp_path):
 def test_json_body_without_photo_works(client):
     response = client.post("/api/incidents", json={**FORM, "injury": False})
     assert response.status_code == 201 and response.get_json()["has_photo"] is False
+
+
+def test_location_list_and_query(client):
+    upload(client)
+    assert client.get("/api/locations").get_json() == [{"location": "Site B", "count": 1}]
+    found = client.get("/api/locations/query?location=Site B&days=30").get_json()
+    assert len(found) == 1 and found[0]["id"] == 1
+    assert client.get("/api/locations/query?location=&days=x").status_code == 422
