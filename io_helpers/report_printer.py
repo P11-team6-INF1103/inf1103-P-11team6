@@ -201,3 +201,11 @@ class ReportPrinter:
         self._print_problems(incident, width)
         print("═" * width)
         print()
+
+    # 'level/5 Name' for an incident, or 'not assessed'.
+    def _severity_text(self, incident: Incident) -> str:
+        if incident.get("assessment_error"):
+            return "not assessed"
+        severity = incident.get("severity_estimate") or 0
+        level = self._severity_levels.get(severity)
+        return f"{severity}/5" + (f" {level[0]}" if level else "")
