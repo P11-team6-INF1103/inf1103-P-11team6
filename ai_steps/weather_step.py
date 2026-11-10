@@ -13,3 +13,7 @@ class WeatherStep(EnrichmentStep):
     # Only when the description mentions weather.
     def should_run(self, incident: Incident) -> bool:
         return bool(incident.get("run_weather"))
+
+    def skipped_fields(self) -> dict:
+        return {"weather_available": False, "temperature_c": None, "humidity_pct": None,
+                "precipitation_mm": None, "enrichment_error": None}
