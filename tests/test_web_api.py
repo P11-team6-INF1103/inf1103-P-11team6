@@ -29,3 +29,8 @@ def make_client(tmp_path, gemini=None, post_limit=10):
     app = IncidentTriageApp(IOManager(SEVERITY_LEVELS, OUTCOME_ACTIONS), ai,
                             LogicManager(LogicManager.default_rules()), DataManager(str(tmp_path)), ResponseCache())
     return WebApi(app, ["http://localhost:5173"], post_limit).flask.test_client()
+
+
+@pytest.fixture
+def client(tmp_path):
+    return make_client(tmp_path)
