@@ -311,3 +311,10 @@ class ReportPrinter:
         self._print_table(["#", "When", "Location", "Hazard", "Sev", "Action", "What happened"],
                           self._summary_rows(records),
                           [3, 17, location_width, 18, 3, 13, max(spare - location_width, 20)])
+
+    # Prints what each severity level means.
+    def print_severity_guide(self) -> None:
+        print("\nWHAT THE SEVERITY LEVELS MEAN")
+        for level in sorted(self._severity_levels):
+            name, meaning = self._severity_levels[level]
+            print(f"  {level} {name:<9} {meaning}")
