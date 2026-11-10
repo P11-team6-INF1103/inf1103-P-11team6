@@ -147,3 +147,17 @@ class ReportPrinter:
                     f"{incident.get('temperature_c')}°C, {incident.get('humidity_pct')}% humidity", width)
         if incident.get("monsoon_season") in self._SEASON_TEXT:
             self._field("Season", self._SEASON_TEXT[incident.get("monsoon_season")], width)
+
+    def _print_web(self, incident: Incident, width: int) -> None:
+        if incident.get("web_industry_context"):
+            self._section("IS THIS A KNOWN ISSUE IN THE INDUSTRY?", width)
+            self._field("", incident.get("web_industry_context"), width, label_width=0)
+        web = incident.get("web_incidents") or []
+        if web:
+            self._section("SIMILAR INCIDENTS REPORTED ELSEWHERE", width)
+        for i, item in enumerate(web, start=1):
+            print(textwrap.fill(self._clean(item.get("summary")), width, initial_indent=f"  {i}. ",
+                                subsequent_indent="     ", break_long_words=False))
+            self._field("Where / when", f"{item.get('location')}, {item.get('date')}", width, indent=5)
+            self._field("What was done", item.get("action_taken"), width, indent=5)
+            self._field("Source", item.get("source_url"), width, indent=5)
