@@ -106,3 +106,22 @@ class ReportPrinter:
             note = f"Version {incident.version}" + (f" (copied from version {incident.get('reverted_from')})"
                                                     if incident.get("reverted_from") else " (edited)")
             self._field("Version", note, width, indent=1, label_width=15)
+
+    def _print_severity(self, incident: Incident, width: int) -> None:
+        outcome = incident.get("outcome")
+        severity = incident.get("severity_estimate") or 0
+        self._section("SEVERITY AND ACTION", width)
+        if incident.get("assessment_error"):
+            self._field("Severity", "NOT ASSESSED - the AI could not analyse this incident.", width)
+        else:
+            level = self._severity_levels.get(severity)
+            name = f"  {level[0].upper()}" if level else ""
+            self._field("Severity", f"{'█' * severity}{'░' * (5 - severity)}  {severity}/5{name}", width)
+            if level:
+                self._field("", level[1], width)
+            if incident.get("severity_reasons"):
+                self._field("Why", incident.get("severity_reasons"), width)
+            self._field("Could recur", incident.get("likelihood_recurrence"), width)
+        self._field("Action", self.OUTCOME_NAMES.get(outcome, outcome), width)
+        if outcome in self._outcome_actions:
+            self._field("", self._outcome_actions[outcome], width)
