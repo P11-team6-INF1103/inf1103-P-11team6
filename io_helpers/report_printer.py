@@ -172,3 +172,11 @@ class ReportPrinter:
                                 initial_indent=f"  {i}. ", subsequent_indent="     ", break_long_words=False))
             self._field("Action taken", self.OUTCOME_NAMES.get(item.get("outcome"), item.get("outcome")),
                         width, indent=5)
+
+    def _print_review(self, incident: Incident, width: int) -> None:
+        if incident.get("review_likely_causes"):
+            self._section("WHY IT LIKELY HAPPENED", width)
+            self._field("", incident.get("review_likely_causes"), width, label_width=0)
+        if incident.get("review_prevention_actions"):
+            self._section("HOW TO PREVENT IT", width)
+            self._field("", incident.get("review_prevention_actions"), width, label_width=0)
