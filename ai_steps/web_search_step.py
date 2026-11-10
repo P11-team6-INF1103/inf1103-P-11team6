@@ -22,3 +22,6 @@ class WebSearchStep(EnrichmentStep):
         },
         "required": ["industry_context", "incidents"],
     }
+
+    def __init__(self, search: GroqSearchClient) -> None:
+        self._search = search
