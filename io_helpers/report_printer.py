@@ -40,3 +40,8 @@ class ReportPrinter:
     _KEY_HINT = "An API key looks missing: check GEMINI_API_KEY and GROQ_API_KEY in the .env file."
     _WIDTH = 64
     _LABEL_WIDTH = 14
+
+    # Keeps the severity and outcome descriptions the reports print.
+    def __init__(self, severity_levels: dict, outcome_actions: dict) -> None:
+        self._severity_levels = severity_levels
+        self._outcome_actions = outcome_actions
