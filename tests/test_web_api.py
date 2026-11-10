@@ -65,3 +65,11 @@ def test_create_with_photo_then_list_get_photo_and_delete(client):
     assert client.delete("/api/incidents/1").status_code == 200
     assert client.get("/api/incidents").get_json() == []
     assert client.get("/api/incidents/1").status_code == 404
+
+
+def test_bad_form_and_fake_photo_are_rejected_with_reasons(client):
+    response = upload(client, form={**FORM, "description": "???", "injury": "maybe"},
+                      photo_bytes=b"not an image", name="fake.jpg")
+    errors = response.get_json()["errors"]
+    assert response.status_code == 422 and len(errors) == 3
+    assert any("not a real image" in e for e in errors)
