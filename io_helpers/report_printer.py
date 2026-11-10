@@ -161,3 +161,14 @@ class ReportPrinter:
             self._field("Where / when", f"{item.get('location')}, {item.get('date')}", width, indent=5)
             self._field("What was done", item.get("action_taken"), width, indent=5)
             self._field("Source", item.get("source_url"), width, indent=5)
+
+    def _print_similar(self, incident: Incident, width: int) -> None:
+        similar = incident.get("similar_incidents") or []
+        if similar:
+            self._section("SIMILAR INCIDENTS ON OUR OWN SITES", width)
+        for i, item in enumerate(similar, start=1):
+            date = self.format_time(item.get("timestamp"))[:11]
+            print(textwrap.fill(f"\"{item.get('description')}\" - {item.get('location')}, {date}", width,
+                                initial_indent=f"  {i}. ", subsequent_indent="     ", break_long_words=False))
+            self._field("Action taken", self.OUTCOME_NAMES.get(item.get("outcome"), item.get("outcome")),
+                        width, indent=5)
