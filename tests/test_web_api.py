@@ -73,3 +73,10 @@ def test_bad_form_and_fake_photo_are_rejected_with_reasons(client):
     errors = response.get_json()["errors"]
     assert response.status_code == 422 and len(errors) == 3
     assert any("not a real image" in e for e in errors)
+
+
+def test_ai_rejection_is_returned_to_the_browser(tmp_path):
+    gemini = FakeGemini(replies={id(HazardFlagStep.SCHEMA): {**HAZARD_REPLY, "is_valid_incident": False,
+                                                             "invalid_reason": "This is test text."}})
+    response = upload(make_client(tmp_path, gemini))
+    assert response.status_code == 422 and response.get_json()["rejected"] == "This is test text."
