@@ -89,3 +89,20 @@ class ReportPrinter:
         if "API_KEY" in raw:
             problems.append(self._KEY_HINT)
         return problems
+
+    def _print_header(self, incident: Incident, width: int, number: int | None) -> None:
+        title = f"INCIDENT #{number}" if number else "INCIDENT REPORT"
+        print("═" * width)
+        print(f" {title}   {incident.location}   {self.format_time(incident.timestamp)}")
+        print("═" * width)
+        hazard = incident.get("hazard_type")
+        self._field("What happened", incident.description, width, indent=1, label_width=15)
+        self._field("Reported by", incident.get("reporter_role"), width, indent=1, label_width=15)
+        self._field("Anyone injured", "Yes" if incident.injury else "No", width, indent=1, label_width=15)
+        self._field("Type of hazard", self.HAZARD_NAMES.get(hazard, hazard), width, indent=1, label_width=15)
+        if incident.get("photo_file"):
+            self._field("Photo", incident.get("photo_file"), width, indent=1, label_width=15)
+        if incident.version > 1:
+            note = f"Version {incident.version}" + (f" (copied from version {incident.get('reverted_from')})"
+                                                    if incident.get("reverted_from") else " (edited)")
+            self._field("Version", note, width, indent=1, label_width=15)
