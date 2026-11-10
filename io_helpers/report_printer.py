@@ -125,3 +125,16 @@ class ReportPrinter:
         self._field("Action", self.OUTCOME_NAMES.get(outcome, outcome), width)
         if outcome in self._outcome_actions:
             self._field("", self._outcome_actions[outcome], width)
+
+    # New in Part 2: what the AI saw in the uploaded photo and how it changed the assessment.
+    def _print_photo(self, incident: Incident, width: int) -> None:
+        if not incident.get("photo_analysed"):
+            return
+        self._section("WHAT THE PHOTO SHOWS", width)
+        self._field("Summary", incident.get("photo_summary"), width)
+        if incident.get("photo_hazards_seen"):
+            self._field("Hazards seen", incident.get("photo_hazards_seen"), width)
+        if incident.get("photo_matches_description") is False:
+            self._field("Warning", "The photo does not seem to match the description.", width)
+        if incident.get("photo_evidence_used"):
+            self._field("Used in score", incident.get("photo_evidence_used"), width)
