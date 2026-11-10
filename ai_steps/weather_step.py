@@ -9,3 +9,7 @@ class WeatherStep(EnrichmentStep):
 
     def __init__(self, weather: WeatherClient) -> None:
         self._weather = weather
+
+    # Only when the description mentions weather.
+    def should_run(self, incident: Incident) -> bool:
+        return bool(incident.get("run_weather"))
