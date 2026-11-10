@@ -253,3 +253,18 @@ class ReportPrinter:
                 width, initial_indent="  ", subsequent_indent="      "))
             print(textwrap.fill(f"\"{data.get('description')}\" - {data.get('location')}", width,
                                 initial_indent="      ", subsequent_indent="      "))
+
+    # Prints a boxed table; long cells wrap inside their column.
+    @staticmethod
+    def _print_table(headers: list, rows: list, widths: list) -> None:
+        def border(left: str, mid: str, right: str) -> str:
+            return left + mid.join("─" * (w + 2) for w in widths) + right
+        print(border("┌", "┬", "┐"))
+        all_rows = [headers] + rows
+        for index, row in enumerate(all_rows):
+            cells = [textwrap.wrap(str(cell), w) or [""] for cell, w in zip(row, widths)]
+            for i in range(max(len(c) for c in cells)):
+                print("│ " + " │ ".join((c[i] if i < len(c) else "").ljust(w) for c, w in zip(cells, widths)) + " │")
+            if index < len(all_rows) - 1:
+                print(border("├", "┼", "┤"))
+        print(border("└", "┴", "┘"))
