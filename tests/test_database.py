@@ -5,7 +5,9 @@ from typing import ClassVar
 import pytest
 from psycopg_pool import PoolTimeout
 
-from database import Database, DatabaseUnavailable, _PostgresConnection
+from database import Database
+from db.database_unavailable import DatabaseUnavailable
+from db.postgres_connection import PostgresConnection
 
 
 def test_sqlite_database_creates_every_table_and_can_be_opened_twice(tmp_path):
@@ -59,7 +61,7 @@ class FakePool:
 
 def test_the_postgres_adapter_turns_question_marks_into_placeholders():
     inner = RecordingConnection()
-    assert _PostgresConnection(inner).execute("SELECT * FROM documents WHERE name = ? AND data = ?", ("a", "b")) == "cursor"
+    assert PostgresConnection(inner).execute("SELECT * FROM documents WHERE name = ? AND data = ?", ("a", "b")) == "cursor"
     assert inner.calls == [("SELECT * FROM documents WHERE name = %s AND data = %s", ("a", "b"))]
 
 
