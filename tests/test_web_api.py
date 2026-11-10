@@ -110,3 +110,10 @@ def test_upload_from_bytes_is_checked_like_a_file():
     assert IncidentPhoto.from_bytes("a.png", sample_bytes()).mime_type == "image/png"
     with pytest.raises(PhotoError, match="5 MB"):
         IncidentPhoto.from_bytes("a.png", b"\x89PNG\r\n\x1a\n" + b"0" * IncidentPhoto.MAX_BYTES)
+
+
+def patch(client, number=1, photo_bytes=None, name="scene.png", **fields):
+    data = dict(fields)
+    if photo_bytes is not None:
+        data["photo"] = (io.BytesIO(photo_bytes), name)
+    return client.patch(f"/api/incidents/{number}", data=data, content_type="multipart/form-data")
