@@ -154,3 +154,17 @@ def test_edit_validation_unknown_incident_and_ai_failure(tmp_path):
     response = patch(client, location="Site Z")
     assert response.status_code == 502 and response.get_json()["kept_version"] == 1
     assert client.get("/api/incidents/1").get_json()["location"] == FORM["location"]
+
+
+def test_edit_photo_history_photo_and_revert(client):
+    upload(client, photo_bytes=sample_bytes())
+    assert patch(client, remove_photo="true").get_json()["has_photo"] is False
+    assert client.get("/api/incidents/1/photo").status_code == 404
+    assert client.get("/api/incidents/1/photo?version=1").data == sample_bytes()
+    reverted = client.post("/api/incidents/1/revert", json={"version": 1})
+    body = reverted.get_json()
+    assert reverted.status_code == 200 and body["version"] == 3 and body["has_photo"] is True
+    assert body["reverted_from"] == 1 and len(body["history"]) == 2
+    assert client.post("/api/incidents/1/revert", json={"version": 9}).status_code == 400
+    assert client.post("/api/incidents/1/revert", json={"version": "x"}).status_code == 422
+    assert client.post("/api/incidents/7/revert", json={"version": 1}).status_code == 404
