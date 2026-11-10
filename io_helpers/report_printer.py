@@ -58,3 +58,10 @@ class ReportPrinter:
     @staticmethod
     def _report_width() -> int:
         return min(max(shutil.get_terminal_size((100, 24)).columns, 60), 90)
+
+    # Removes citation markers and swaps fancy hyphens and quotes for plain ones.
+    @staticmethod
+    def _clean(text: object) -> str:
+        text = re.sub(r"【[^】]*】", "", str(text))
+        text = text.translate({0x2011: "-", 0x2010: "-", 0x2019: "'", 0x2018: "'"})
+        return re.sub(r"\s+([.,;])(?=\s|$)", r"\1", " ".join(text.split()))
