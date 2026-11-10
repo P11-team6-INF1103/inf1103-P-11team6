@@ -81,3 +81,11 @@ class ReportPrinter:
             print(textwrap.fill(("- " if bullets else "") + self._clean(item), width,
                                 initial_indent=lead, subsequent_indent=hang + ("  " if bullets else ""),
                                 break_long_words=False, break_on_hyphens=False))
+
+    # Plain-English messages for each *_error field on the incident.
+    def friendly_problems(self, incident: Incident) -> list[str]:
+        problems = [text for field, text in self._PROBLEM_MESSAGES if incident.get(field)]
+        raw = " ".join(str(incident.get(field) or "") for field, _ in self._PROBLEM_MESSAGES)
+        if "API_KEY" in raw:
+            problems.append(self._KEY_HINT)
+        return problems
