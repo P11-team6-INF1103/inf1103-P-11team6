@@ -43,3 +43,23 @@ class GroqSearchClient:
             raise ValueError("Groq reply had no JSON object")
         JsonReply.validate(parsed, schema)
         return parsed
+
+    # Tries each model in turn (with caching); raises if no key is set or every model fails.
+    def search_json(self, prompt: str, schema: dict) -> dict:
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise RuntimeError("GROQ_API_KEY is not set in .env")
+        key = ResponseCache.make_key("groq", prompt)
+        cached = self._cache.get(key)
+        if isinstance(cached, dict):
+            return cached
+        last_error = None
+        for model in self.MODELS:
+            try:
+                result = self._call(model, prompt, schema, api_key)
+                self._cache.put(key, result)
+                return result
+            except Exception as error:
+                logger.warning("Groq web search with %s failed: %s", model, error)
+                last_error = error
+        raise RuntimeError(f"Groq web search failed; last error: {last_error}")
