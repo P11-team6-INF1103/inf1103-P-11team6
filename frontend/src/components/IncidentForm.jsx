@@ -7,3 +7,9 @@ import { api } from "../api.js";
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const PHOTO_TYPES = ["image/png", "image/jpeg", "image/webp"];
 const EMPTY_DRAFT = { description: "", location: "", reporter_role: "site_supervisor", injury: null, photo: null, removePhoto: false };
+
+function draftFrom(incident) {
+  if (!incident) return EMPTY_DRAFT;
+  return { ...EMPTY_DRAFT, description: incident.description, location: incident.location,
+           reporter_role: incident.reporter_role, injury: incident.injury };
+}
