@@ -12,3 +12,6 @@ class WeatherClient:
     # Every incident is on a Singapore construction site, so the weather is looked up for Singapore.
     _LATITUDE = 1.3521
     _LONGITUDE = 103.8198
+
+    def __init__(self, cache: ResponseCache) -> None:
+        self._cache = cache
