@@ -46,3 +46,9 @@ def upload(client, form=FORM, photo_bytes=None, name="scene.png"):
 def sample_bytes():
     with open(SAMPLE_PHOTO, "rb") as f:
         return f.read()
+
+
+def test_health_and_meta(client):
+    assert client.get("/api/health").get_json()["status"] == "ok"
+    meta = client.get("/api/meta").get_json()
+    assert meta["severity_levels"]["5"]["name"] == "Critical" and "photo_review" in meta["outcome_names"]
