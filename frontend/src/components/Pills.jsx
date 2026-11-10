@@ -10,3 +10,12 @@ export function SeverityPill({ incident }) {
     </span>
   );
 }
+
+export function OutcomePill({ outcome, names }) {
+  const color = OUTCOME_COLORS[outcome] || "#7d8a87";
+  return (
+    <span className="pill" style={{ color, borderColor: color + "55", background: color + "14" }}>
+      {names[outcome] || outcome}
+    </span>
+  );
+}
