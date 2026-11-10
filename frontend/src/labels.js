@@ -48,3 +48,7 @@ export function formatDate(timestamp) {
 export function dayKey(timestamp) {
   return String(timestamp).slice(0, 10);
 }
+
+export function needsReview(incident) {
+  return incident.outcome === "pending_review" || incident.outcome === "photo_review";
+}
