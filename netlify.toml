@@ -1,0 +1,8 @@
+# Lennart
+# Copy this whole file into project 2. Full task list: "project 2 docs/Task_Allocation_Part2.pdf".
+# Netlify builds the React dashboard in frontend/.
+# Set VITE_API_URL in Netlify's environment variables to the Render API address.
+[build]
+  base = "frontend"
+  command = "npm run build"
+  publish = "dist"
