@@ -41,3 +41,8 @@ def upload(client, form=FORM, photo_bytes=None, name="scene.png"):
     if photo_bytes is not None:
         data["photo"] = (io.BytesIO(photo_bytes), name)
     return client.post("/api/incidents", data=data, content_type="multipart/form-data")
+
+
+def sample_bytes():
+    with open(SAMPLE_PHOTO, "rb") as f:
+        return f.read()
