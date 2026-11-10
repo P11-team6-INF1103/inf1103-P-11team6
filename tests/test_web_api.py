@@ -117,3 +117,18 @@ def patch(client, number=1, photo_bytes=None, name="scene.png", **fields):
     if photo_bytes is not None:
         data["photo"] = (io.BytesIO(photo_bytes), name)
     return client.patch(f"/api/incidents/{number}", data=data, content_type="multipart/form-data")
+
+
+def test_edit_returns_the_new_version_with_the_old_one_in_history(tmp_path):
+    gemini = FakeGemini(replies={id(HazardFlagStep.SCHEMA): {**HAZARD_REPLY, "hazard_category": "other",
+                                                             "injury_treatment": "none", "elevated_places": [],
+                                                             "ppe_status": "worn"}})
+    client = make_client(tmp_path, gemini)
+    assert upload(client, {**FORM, "injury": "false"}).get_json()["outcome"] == "log_only"
+    gemini.replies[id(HazardFlagStep.SCHEMA)] = HAZARD_REPLY
+    response = patch(client, injury="true", description="Scaffold plank fell from level 4 onto a worker")
+    edited = response.get_json()
+    assert response.status_code == 200 and edited["status"] == "updated" and edited["version"] == 2
+    assert edited["outcome"] == "stop_work_review" and edited["history"][-1]["outcome"] == "log_only"
+    assert edited["history"][-1]["version"] == 1 and "photo_saved_path" not in edited["history"][-1]
+    assert client.get("/api/incidents").get_json()[0]["version"] == 2
