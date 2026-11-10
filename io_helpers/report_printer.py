@@ -70,3 +70,14 @@ class ReportPrinter:
     @staticmethod
     def _section(title: str, width: int) -> None:
         print(f"\n── {title} " + "─" * max(width - len(title) - 4, 3))
+
+    # Prints 'label  value' with wrapped lines hanging under the value; a list prints one bullet per item.
+    def _field(self, label: str, value: object, width: int, indent: int = 2, label_width: int = _LABEL_WIDTH) -> None:
+        items = value if isinstance(value, list) else [value]
+        bullets = isinstance(value, list)
+        hang = " " * (indent + label_width)
+        for position, item in enumerate(items):
+            lead = " " * indent + label.ljust(label_width) if position == 0 else hang
+            print(textwrap.fill(("- " if bullets else "") + self._clean(item), width,
+                                initial_indent=lead, subsequent_indent=hang + ("  " if bullets else ""),
+                                break_long_words=False, break_on_hyphens=False))
