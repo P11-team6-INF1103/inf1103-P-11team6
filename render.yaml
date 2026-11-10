@@ -1,0 +1,29 @@
+# Lennart
+# Copy this whole file into project 2. Full task list: "project 2 docs/Task_Allocation_Part2.pdf".
+# Render Blueprint for the web API the React dashboard (Netlify) talks to.
+# Render builds the Dockerfile, then runs gunicorn instead of the terminal app.
+# gunicorn listens on $PORT automatically (Render sets it).
+services:
+  - type: web
+    name: incident-triage-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerCommand: gunicorn --workers 1 --threads 4 --timeout 180 "web_api:create_app()"
+    healthCheckPath: /api/health
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: FRONTEND_ORIGINS
+        sync: false
+      # The Neon connection string. With it, incidents survive restarts on the free plan.
+      - key: DATABASE_URL
+        sync: false
+    # Free plan: the disk is wiped when the server restarts or sleeps (after 15 idle minutes),
+    # so saved incidents disappear. To keep them, use a paid plan with a persistent disk:
+    # disk:
+    #   name: incident-data
+    #   mountPath: /app/data
+    #   sizeGB: 1
