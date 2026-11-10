@@ -93,3 +93,12 @@ def test_location_list_and_query(client):
     found = client.get("/api/locations/query?location=Site B&days=30").get_json()
     assert len(found) == 1 and found[0]["id"] == 1
     assert client.get("/api/locations/query?location=&days=x").status_code == 422
+
+
+def test_rate_limit(tmp_path):
+    client = make_client(tmp_path, post_limit=1)
+    assert upload(client).status_code == 201
+    assert upload(client).status_code == 429
+    limiter = RateLimiter(limit=2)
+    assert [limiter.too_many("a"), limiter.too_many("a"), limiter.too_many("a"), limiter.too_many("b")] == \
+        [False, False, True, False]
