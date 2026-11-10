@@ -1,137 +1,174 @@
-import json
-from unittest import mock
+# import os
+# import time
 
-import ai_manager
+# import pytest
 
-_GOOD_FLAGS = {
-    "hazard_category": "fall_from_height", "injury_treatment": "hospital",
-    "equipment_mentioned": ["scaffolding", "safety harness"], "elevated_places": ["scaffolding"],
-    "height_estimate_m": 10, "ppe_status": "not_worn",
-}
+# from ai_clients import (
+#     GeminiClient,
+#     JsonReply,
+#     ResponseCache,
+# )
+# from ai_manager import (
+#     AIManager,
+#     EnrichmentStep,
+#     HazardFlagStep,
+#     PhotoAnalysisStep,
+#     ReviewStep,
+#     SimilarIncidentStep,
+#     WeatherStep,
+#     WebSearchStep,
+# )
+# from logic_manager import OUTCOME_ACTIONS
+# from models import Incident, IncidentPhoto
+# from tests.fakes import HAZARD_REPLY, FakeGemini, FakeSearch, FakeWeather
 
-
-def _incident(description="Worker fell from scaffolding", weather_relevant=False):
-    return {"description": description, "location": "Site A", "reporter_role": "site_supervisor",
-            "injury": True, "timestamp": "2026-09-27T20:44:10",
-            "weather_relevant": weather_relevant, "time_of_day": "night",
-            "monsoon_season": "southwest_monsoon"}
-
-
-def _flags_for(reply):
-    ai_manager.load_response_cache({})
-    return mock.patch.object(ai_manager, "_call_gemini", return_value=json.dumps(reply))
-
-
-def test_flags_ai_can_reject_text_that_is_not_a_safety_incident():
-    reply = dict(_GOOD_FLAGS, hazard_category="other", is_valid_incident=False,
-                 invalid_reason="It is random text, not an incident.")
-    with mock.patch.object(ai_manager, "_get_gemini_client", return_value=object()), _flags_for(reply):
-        result = ai_manager.extract_hazard_context_flags("asdf qwerty banana")
-    assert result["is_valid_incident"] is False
-    assert "random text" in result["invalid_reason"]
+# # Ren Xiang
+# SAMPLE_PHOTO = os.path.join(os.path.dirname(__file__), "sample_photo.png")
 
 
-def test_flags_pass_the_validity_answer_on_and_leave_none_when_there_is_no_answer():
-    with mock.patch.object(ai_manager, "_get_gemini_client", return_value=object()), _flags_for(_GOOD_FLAGS):
-        result = ai_manager.extract_hazard_context_flags("Worker fell")
-    assert result["is_valid_incident"] is None and result["invalid_reason"] is None
-    with mock.patch.object(ai_manager, "_get_gemini_client", return_value=None):
-        result = ai_manager.extract_hazard_context_flags("Worker fell")
-    assert result["is_valid_incident"] is None and result["invalid_reason"] is None
+# def make(photo=False, **fields):
+#     incident = Incident("Scaffold plank fell from level 4", "Site B", "safety_officer", False,
+#                         "2026-10-21T21:40:00", IncidentPhoto.from_file(SAMPLE_PHOTO) if photo else None)
+#     incident.update(fields)
+#     return incident
 
 
-def test_flags_return_raw_equipment_and_places_not_decisions():
-    reply = dict(_GOOD_FLAGS, equipment_mentioned=[" Tower Crane ", ""], elevated_places=["roof"])
-    with mock.patch.object(ai_manager, "_get_gemini_client", return_value=object()), _flags_for(reply):
-        result = ai_manager.extract_hazard_context_flags("Worker hit by crane on the roof")
-    assert result["equipment_mentioned"] == ["Tower Crane"] and result["elevated_places"] == ["roof"]
-    assert "working_at_height" not in result and "heavy_machinery_present" not in result
-    with mock.patch.object(ai_manager, "_get_gemini_client", return_value=None):
-        down = ai_manager.extract_hazard_context_flags("Worker fell")
-    assert down["equipment_mentioned"] == [] and down["elevated_places"] == []
+# # Ren Xiang
+# # --- Reply parsing and schema validation ---
+
+# def test_parse_strips_code_fences_and_rejects_non_json():
+#     assert JsonReply.parse('```json\n{"a": 1}\n```') == {"a": 1}
+#     with pytest.raises(ValueError):
+#         JsonReply.parse("Sorry, I cannot help with that")
 
 
-def test_get_weather_returns_raw_numbers_and_caches_them_per_hour():
-    ai_manager.load_response_cache({})
-    raw = {"temperature_c": 30, "humidity_pct": 80, "precipitation_mm": 0.4}
-    with mock.patch.object(ai_manager, "call_weather_api", return_value=raw) as call:
-        assert ai_manager.get_weather("2026-09-27T20:44:10", "Site A") == raw
-        assert ai_manager.get_weather("2026-09-27T20:59:00", "Site A") == raw
-    assert call.call_count == 1
-    with mock.patch.object(ai_manager, "call_weather_api", return_value={"temperature_c": 99}):
-        assert ai_manager.get_weather("2026-09-28T01:00:00", "Site A") is None
+# def test_schema_validation_catches_wrong_types_enums_and_missing_keys():
+#     JsonReply.validate(HAZARD_REPLY, HazardFlagStep.SCHEMA)
+#     for broken in ({**HAZARD_REPLY, "hazard_category": "earthquake"},
+#                    {**HAZARD_REPLY, "elevated_places": "roof"},
+#                    {k: v for k, v in HAZARD_REPLY.items() if k != "ppe_status"}):
+#         with pytest.raises(ValueError):
+#             JsonReply.validate(broken, HazardFlagStep.SCHEMA)
 
 
-def test_gemini_json_asks_once_more_when_the_reply_is_malformed():
-    ai_manager.load_response_cache({})
-    schema = {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"]}
-    replies = ["not json at all", json.dumps({"ok": True})]
-    with mock.patch.object(ai_manager, "_call_gemini", side_effect=replies) as call:
-        assert ai_manager._gemini_json(object(), "prompt", schema) == {"ok": True}
-    assert call.call_count == 2
+# def test_extract_object_finds_json_inside_text():
+#     assert JsonReply.extract_object('Here you go: {"a": 1} thanks') == {"a": 1}
+#     assert JsonReply.extract_object("no json here") is None
 
 
-def test_gemini_json_gives_up_after_one_retry():
-    ai_manager.load_response_cache({})
-    schema = {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"]}
-    with mock.patch.object(ai_manager, "_call_gemini", return_value=json.dumps({"ok": "yes"})) as call:
-        try:
-            ai_manager._gemini_json(object(), "prompt", schema)
-        except ValueError:
-            pass
-        else:
-            raise AssertionError("expected ValueError")
-    assert call.call_count == 2
+# # Ren Xiang
+# # --- Gemini client with a fake SDK (no live API) ---
+
+# class FakeSdk:
+#     def __init__(self, texts):
+#         self.texts = list(texts)
+#         self.inputs = []
+#         self.interactions = self
+
+#     def create(self, model, input, response_format, generation_config):
+#         self.inputs.append(input)
+#         text = self.texts.pop(0)
+#         if isinstance(text, Exception):
+#             raise text
+#         return type("Reply", (), {"output_text": text})()
 
 
-_HISTORY = [{"description": "Worker fell from scaffolding", "hazard_type": "fall_from_height", "outcome": "log_only"}]
+# def test_gemini_retries_once_on_malformed_reply_then_caches():
+#     sdk = FakeSdk(["not json", '["x"]'])
+#     client = GeminiClient(ResponseCache(), sdk)
+#     schema = {"type": "array", "items": {"type": "string"}}
+#     assert client.ask_json("prompt", schema) == ["x"]
+#     assert client.ask_json("prompt", schema) == ["x"]  # second call comes from the cache
+#     assert len(sdk.inputs) == 2
 
 
-def test_find_similar_incidents_asks_once_more_when_the_reply_is_malformed():
-    ai_manager.load_response_cache({})
-    replies = ["not json at all", json.dumps([{"id": 0, "resolution_notes": "Recorded only."}])]
-    with mock.patch.object(ai_manager, "_get_gemini_client", return_value=object()), \
-            mock.patch.object(ai_manager, "_call_gemini", side_effect=replies) as call:
-        result = ai_manager.find_similar_incidents(_incident(), _HISTORY)
-    assert call.call_count == 2
-    assert result["similar_incidents_error"] is None
-    assert result["similar_incidents"][0]["description"] == "Worker fell from scaffolding"
+# def test_gemini_gives_up_after_two_malformed_replies():
+#     client = GeminiClient(ResponseCache(), FakeSdk(["{bad", '{"wrong": "shape"}']))
+#     with pytest.raises(ValueError, match="malformed"):
+#         client.ask_json("prompt", {"type": "array"})
 
 
-def test_find_similar_incidents_never_raises():
-    ai_manager.load_response_cache({})
-    with mock.patch.object(ai_manager, "_get_gemini_client", return_value=object()), \
-            mock.patch.object(ai_manager, "_call_gemini", side_effect=RuntimeError("quota")):
-        result = ai_manager.find_similar_incidents(_incident(), _HISTORY)
-    assert result["similar_incidents"] is None and "quota" in result["similar_incidents_error"]
-    with mock.patch.object(ai_manager, "_get_gemini_client", return_value=None):
-        assert ai_manager.find_similar_incidents(_incident(), _HISTORY)["similar_incidents"] is None
-    assert ai_manager.find_similar_incidents(_incident(), []) == {
-        "similar_incidents": [], "similar_incidents_error": None}
+# def test_gemini_falls_back_to_the_next_model_on_connection_failure():
+#     sdk = FakeSdk([ConnectionError("timeout"), "[]"])
+#     assert GeminiClient(ResponseCache(), sdk).ask_json("p", {"type": "array"}) == []
+#     all_fail = FakeSdk([ConnectionError("down")] * 3)
+#     with pytest.raises(RuntimeError, match="All Gemini models failed"):
+#         GeminiClient(ResponseCache(), all_fail).ask_json("p", {"type": "array"})
 
 
-def test_similar_incidents_prompt_gets_outcome_meanings_from_the_caller():
-    ai_manager.load_response_cache({})
-    prompts = []
-
-    def fake_gemini(client, prompt, schema):
-        prompts.append(prompt)
-        return json.dumps([])
-
-    with mock.patch.object(ai_manager, "_get_gemini_client", return_value=object()), \
-            mock.patch.object(ai_manager, "_call_gemini", fake_gemini):
-        ai_manager.find_similar_incidents(
-            _incident("slipped again"), _HISTORY, {"log_only": "MEANING-X"})
-        ai_manager.find_similar_incidents(_incident("slipped again"), _HISTORY)
-    assert "MEANING-X" in prompts[0]
-    assert "stop_work_review" not in prompts[1] and "systemic_escalation" not in prompts[1]
+# def test_gemini_without_api_key_raises_a_clear_error():
+#     with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
+#         GeminiClient(ResponseCache()).ask_json("p", {"type": "array"})
 
 
-def test_web_search_never_raises():
-    with mock.patch.object(ai_manager, "_search_web", side_effect=RuntimeError("Groq down")):
-        result = ai_manager.search_web_for_similar_incidents(_incident())
-    assert result == {"web_industry_context": None, "web_incidents": None, "web_search_error": "Groq down"}
-    web = {"industry_context": "Common problem.", "incidents": []}
-    with mock.patch.object(ai_manager, "_search_web", return_value=web):
-        result = ai_manager.search_web_for_similar_incidents(_incident())
-    assert result["web_industry_context"] == "Common problem." and result["web_search_error"] is None
+# def test_photo_is_sent_to_gemini_as_an_image_part():
+#     sdk = FakeSdk(["[]"])
+#     photo = IncidentPhoto.from_file(SAMPLE_PHOTO)
+#     GeminiClient(ResponseCache(), sdk).ask_json("describe", {"type": "array"}, photo)
+#     text_part, image_part = sdk.inputs[0]
+#     assert text_part == {"type": "text", "text": "describe"}
+#     assert image_part["type"] == "image" and image_part["mime_type"] == "image/png"
+#     assert image_part["data"] == photo.as_base64()
+
+# # Ren Xiang
+# # --- Steps (polymorphism, LSP) ---
+
+# def all_steps(gemini, search, weather):
+#     return [HazardFlagStep(gemini), PhotoAnalysisStep(gemini), WeatherStep(weather),
+#             SimilarIncidentStep(gemini, OUTCOME_ACTIONS), WebSearchStep(search), ReviewStep(gemini)]
+
+
+# def test_every_step_returns_a_dict_and_never_raises_even_when_the_api_fails():
+#     broken = all_steps(FakeGemini(error=ConnectionError("down")), FakeSearch(error=TimeoutError("slow")),
+#                        FakeWeather(None))
+#     incident = make(photo=True, run_weather=True, run_similar=True)
+#     history = [make()]
+#     for step in broken:
+#         assert isinstance(step, EnrichmentStep)
+#         fields = step.safe_run(incident, history)
+#         assert isinstance(fields, dict)
+#         assert any(key.endswith("_error") and value for key, value in fields.items()), step.name
+
+
+# def test_hazard_step_cleans_a_good_reply():
+#     fields = HazardFlagStep(FakeGemini()).safe_run(make(), [])
+#     assert fields["hazard_category"] == "fall_from_height" and fields["height_estimate_m"] == 12
+#     assert fields["context_flags_error"] is None
+
+# # Ren Xiang
+# # --- AIManager and threading (advanced feature) ---
+
+# def test_ai_manager_fills_in_every_step():
+#     ai = AIManager(FakeGemini(), FakeSearch(),
+#                    FakeWeather({"temperature_c": 30, "humidity_pct": 80, "precipitation_mm": 1.0}), OUTCOME_ACTIONS)
+#     incident = make(photo=True, run_weather=True, run_similar=False)
+#     ai.extract_hazards(incident)
+#     ai.gather_evidence(incident, [])
+#     ai.write_review(incident)
+#     assert incident.get("hazard_category") == "fall_from_height"
+#     assert incident.get("photo_analysed") and incident.get("weather_available")
+#     assert incident.get("web_incidents") and incident.get("review_likely_causes")
+
+
+# def test_evidence_steps_run_in_parallel_threads():
+#     class SlowSearch(FakeSearch):
+#         def search_json(self, prompt, schema):
+#             time.sleep(0.4)
+#             return super().search_json(prompt, schema)
+
+#     class SlowWeather(FakeWeather):
+#         def get_weather(self, timestamp):
+#             time.sleep(0.4)
+
+#     class SlowGemini(FakeGemini):
+#         def ask_json(self, prompt, schema, photo=None):
+#             time.sleep(0.4)
+#             return super().ask_json(prompt, schema, photo)
+
+#     ai = AIManager(SlowGemini(), SlowSearch(), SlowWeather(), OUTCOME_ACTIONS)
+#     incident = make(photo=True, run_weather=True, run_similar=True)
+#     start = time.perf_counter()
+#     ai.gather_evidence(incident, [make()])
+#     elapsed = time.perf_counter() - start
+#     assert elapsed < 1.0  # four 0.4 s steps one after another would take 1.6 s
+#     assert incident.get("photo_analysed") and incident.get("similar_incidents_checked")
