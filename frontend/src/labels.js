@@ -43,3 +43,8 @@ export function formatDate(timestamp) {
   if (Number.isNaN(date.getTime())) return String(timestamp);
   return date.toLocaleString("en-SG", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
+
+// "2026-10-23T09:15:00" -> "2026-10-23"
+export function dayKey(timestamp) {
+  return String(timestamp).slice(0, 10);
+}
