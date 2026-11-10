@@ -34,3 +34,10 @@ def make_client(tmp_path, gemini=None, post_limit=10):
 @pytest.fixture
 def client(tmp_path):
     return make_client(tmp_path)
+
+
+def upload(client, form=FORM, photo_bytes=None, name="scene.png"):
+    data = dict(form)
+    if photo_bytes is not None:
+        data["photo"] = (io.BytesIO(photo_bytes), name)
+    return client.post("/api/incidents", data=data, content_type="multipart/form-data")
