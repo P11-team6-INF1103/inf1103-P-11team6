@@ -80,3 +80,8 @@ def test_ai_rejection_is_returned_to_the_browser(tmp_path):
                                                              "invalid_reason": "This is test text."}})
     response = upload(make_client(tmp_path, gemini))
     assert response.status_code == 422 and response.get_json()["rejected"] == "This is test text."
+
+
+def test_json_body_without_photo_works(client):
+    response = client.post("/api/incidents", json={**FORM, "injury": False})
+    assert response.status_code == 201 and response.get_json()["has_photo"] is False
