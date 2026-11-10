@@ -53,3 +53,8 @@ class ReportPrinter:
             return datetime.fromisoformat(timestamp).strftime("%d %b %Y, %H:%M")
         except (TypeError, ValueError):
             return str(timestamp)
+
+    # Report width: the terminal width kept between 60 and 90 columns.
+    @staticmethod
+    def _report_width() -> int:
+        return min(max(shutil.get_terminal_size((100, 24)).columns, 60), 90)
