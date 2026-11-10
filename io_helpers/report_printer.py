@@ -186,3 +186,18 @@ class ReportPrinter:
         if problems:
             self._section("NOTE: SOME AI STEPS DID NOT WORK", width)
             self._field("", problems, width, label_width=0)
+
+    # Prints the full report for one incident, one section after another, leaving out empty sections.
+    def print_incident(self, incident: Incident, number: int | None = None) -> None:
+        width = self._report_width()
+        print()
+        self._print_header(incident, width, number)
+        self._print_severity(incident, width)
+        self._print_photo(incident, width)
+        self._print_weather(incident, width)
+        self._print_web(incident, width)
+        self._print_similar(incident, width)
+        self._print_review(incident, width)
+        self._print_problems(incident, width)
+        print("═" * width)
+        print()
