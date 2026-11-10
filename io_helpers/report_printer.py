@@ -209,3 +209,17 @@ class ReportPrinter:
         severity = incident.get("severity_estimate") or 0
         level = self._severity_levels.get(severity)
         return f"{severity}/5" + (f" {level[0]}" if level else "")
+
+    # (label, value) pairs for what a version says: the four typed fields, the photo and the AI insight.
+    def _version_values(self, data: Incident | dict) -> list[tuple[str, str]]:
+        get = data.get
+        hazard = get("hazard_type")
+        return [
+            ("What happened", str(get("description"))), ("Location", str(get("location"))),
+            ("Reported by", str(get("reporter_role"))), ("Anyone injured", "Yes" if get("injury") else "No"),
+            ("Photo", get("photo_file") or "none"),
+            ("Hazard type", self.HAZARD_NAMES.get(hazard, hazard)),
+            ("Severity", self._severity_text(data) if isinstance(data, Incident)
+             else self._severity_text(Incident.from_dict(data))),
+            ("Action", self.OUTCOME_NAMES.get(get("outcome"), get("outcome"))),
+        ]
