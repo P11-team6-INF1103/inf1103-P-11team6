@@ -286,3 +286,28 @@ class ReportPrinter:
                 ("[photo] " if incident.get("photo_file") else "") + incident.description,
             ])
         return rows
+
+    # Prints counts by outcome and hazard, then a table of every incident.
+    def print_summary(self, records: list[Incident]) -> None:
+        print("\n" + "#" * self._WIDTH)
+        print("INCIDENT SUMMARY / AFTER-ACTION REVIEW")
+        print("#" * self._WIDTH)
+        if not records:
+            print("No incidents logged yet.")
+            return
+        outcomes, hazards = {}, {}
+        for incident in records:
+            outcome = self.OUTCOME_NAMES.get(incident.get("outcome"), incident.get("outcome"))
+            hazard = self.HAZARD_NAMES.get(incident.get("hazard_type"), incident.get("hazard_type"))
+            outcomes[outcome] = outcomes.get(outcome, 0) + 1
+            hazards[hazard] = hazards.get(hazard, 0) + 1
+        print(f"Total incidents: {len(records)}")
+        print(f"With a photo: {sum(1 for r in records if r.get('photo_file'))}")
+        print("By action: " + ", ".join(f"{k} ({v})" for k, v in sorted(outcomes.items(), key=str)))
+        print("By hazard: " + ", ".join(f"{k} ({v})" for k, v in sorted(hazards.items(), key=str)))
+        spare = max(shutil.get_terminal_size((100, 24)).columns, 100) - (3 + 17 + 18 + 3 + 13) - 22
+        location_width = max(spare * 2 // 5, 12)
+        print("\nOVERVIEW (manual reviews first, then most severe)")
+        self._print_table(["#", "When", "Location", "Hazard", "Sev", "Action", "What happened"],
+                          self._summary_rows(records),
+                          [3, 17, location_width, 18, 3, 13, max(spare - location_width, 20)])
