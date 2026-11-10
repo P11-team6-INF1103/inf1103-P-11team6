@@ -23,3 +23,6 @@ class WeatherStep(EnrichmentStep):
         if weather is None:
             return self.error_fields("Weather data unavailable or invalid")
         return {"weather_available": True, "enrichment_error": None, **weather}
+
+    def error_fields(self, message: str) -> dict:
+        return {**self.skipped_fields(), "enrichment_error": message}
