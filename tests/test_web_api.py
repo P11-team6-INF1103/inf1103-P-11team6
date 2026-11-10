@@ -52,3 +52,16 @@ def test_health_and_meta(client):
     assert client.get("/api/health").get_json()["status"] == "ok"
     meta = client.get("/api/meta").get_json()
     assert meta["severity_levels"]["5"]["name"] == "Critical" and "photo_review" in meta["outcome_names"]
+
+
+def test_create_with_photo_then_list_get_photo_and_delete(client):
+    response = upload(client, photo_bytes=sample_bytes())
+    assert response.status_code == 201
+    created = response.get_json()
+    assert created["id"] == 1 and created["has_photo"] and created["outcome"] == "stop_work_review"
+    assert "photo_saved_path" not in created  # server paths never reach the browser
+    assert len(client.get("/api/incidents").get_json()) == 1
+    assert client.get("/api/incidents/1/photo").data == sample_bytes()
+    assert client.delete("/api/incidents/1").status_code == 200
+    assert client.get("/api/incidents").get_json() == []
+    assert client.get("/api/incidents/1").status_code == 404
