@@ -138,3 +138,12 @@ class ReportPrinter:
             self._field("Warning", "The photo does not seem to match the description.", width)
         if incident.get("photo_evidence_used"):
             self._field("Used in score", incident.get("photo_evidence_used"), width)
+
+    def _print_weather(self, incident: Incident, width: int) -> None:
+        if not incident.get("weather_available"):
+            return
+        self._section("WEATHER AT THE TIME", width)
+        self._field("Conditions", f"{str(incident.get('condition')).capitalize()}, "
+                    f"{incident.get('temperature_c')}°C, {incident.get('humidity_pct')}% humidity", width)
+        if incident.get("monsoon_season") in self._SEASON_TEXT:
+            self._field("Season", self._SEASON_TEXT[incident.get("monsoon_season")], width)
