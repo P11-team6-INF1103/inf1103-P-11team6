@@ -37,3 +37,9 @@ export const DEFAULT_META = {
   outcome_actions: {},
   severity_levels: {},
 };
+
+export function formatDate(timestamp) {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return String(timestamp);
+  return date.toLocaleString("en-SG", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
