@@ -29,3 +29,12 @@ export function PriorityPill({ incident }) {
     </span>
   );
 }
+
+export function StatusPill({ incident }) {
+  const color = incident.resolved ? "#2fd59b" : "#facc15";
+  return (
+    <span className="pill" style={{ color, borderColor: color + "55", background: color + "14" }}>
+      {incident.resolved ? "Resolved" : "Open"}
+    </span>
+  );
+}
