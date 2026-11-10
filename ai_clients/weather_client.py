@@ -51,3 +51,14 @@ class WeatherClient:
             "humidity_pct": current.get("relative_humidity_2m"),
             "precipitation_mm": current.get("precipitation"),
         }
+
+    # Validated weather for the incident hour (from the cache when present), or None.
+    def get_weather(self, timestamp: str | None) -> dict | None:
+        key = ResponseCache.make_key("weather", str(timestamp or "")[:13])
+        weather = self._cache.get(key)
+        if not self.is_valid(weather):
+            weather = self._call_api()
+        if not self.is_valid(weather):
+            return None
+        self._cache.put(key, weather)
+        return weather
