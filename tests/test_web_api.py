@@ -132,3 +132,12 @@ def test_edit_returns_the_new_version_with_the_old_one_in_history(tmp_path):
     assert edited["outcome"] == "stop_work_review" and edited["history"][-1]["outcome"] == "log_only"
     assert edited["history"][-1]["version"] == 1 and "photo_saved_path" not in edited["history"][-1]
     assert client.get("/api/incidents").get_json()[0]["version"] == 2
+
+
+def test_edit_with_no_change_does_not_call_the_ai(tmp_path):
+    gemini = FakeGemini()
+    client = make_client(tmp_path, gemini)
+    upload(client)
+    calls = len(gemini.calls)
+    response = patch(client, location=FORM["location"])
+    assert response.get_json()["status"] == "unchanged" and len(gemini.calls) == calls
