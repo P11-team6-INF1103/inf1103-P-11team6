@@ -268,3 +268,21 @@ class ReportPrinter:
             if index < len(all_rows) - 1:
                 print(border("├", "┼", "┤"))
         print(border("└", "┴", "┘"))
+
+    # One table row per incident, with manual reviews first and then the most severe.
+    def _summary_rows(self, records: list[Incident]) -> list[list]:
+        ordered = sorted(enumerate(records, start=1),
+                         key=lambda pair: (pair[1].get("outcome") in ("pending_review", "photo_review"),
+                                           pair[1].get("severity_estimate") or 0),
+                         reverse=True)
+        rows = []
+        for number, incident in ordered:
+            hazard, outcome = incident.get("hazard_type"), incident.get("outcome")
+            rows.append([
+                number, self.format_time(incident.timestamp).replace(",", ""), incident.location,
+                self.HAZARD_NAMES.get(hazard, hazard),
+                "-" if incident.get("assessment_error") else incident.get("severity_estimate"),
+                self._OUTCOME_SHORT.get(outcome, outcome),
+                ("[photo] " if incident.get("photo_file") else "") + incident.description,
+            ])
+        return rows
