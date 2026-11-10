@@ -46,3 +46,15 @@ class WebSearchStep(EnrichmentStep):
             '"place, country", "date": "YYYY or YYYY-MM or unknown", "action_taken": '
             '"what was done afterwards, or unknown", "source_url": "https://..."}]}'
         )
+
+    # Runs the Groq web search and keeps at most 3 incidents that have a summary and a web link.
+    def run(self, incident: Incident, history: list[Incident]) -> dict:
+        parsed = self._search.search_json(self.build_prompt(incident), self.SCHEMA)
+        keys = self.SCHEMA["properties"]["incidents"]["items"]["required"]
+        incidents = [
+            {key: item[key].strip() for key in keys}
+            for item in parsed["incidents"][:3]
+            if item["source_url"].startswith(("http://", "https://")) and item["summary"].strip()
+        ]
+        return {"web_industry_context": parsed["industry_context"].strip() or None,
+                "web_incidents": incidents, "web_search_error": None}
