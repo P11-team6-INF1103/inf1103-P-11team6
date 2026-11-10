@@ -1,12 +1,10 @@
 # Lennart
-from contextlib import contextmanager
-
 import pytest
-from psycopg_pool import PoolTimeout
 
 from database import Database
 from db.database_unavailable import DatabaseUnavailable
 from db.postgres_connection import PostgresConnection
+from tests.doubles.dead_pool import DeadPool
 from tests.doubles.fake_pool import FakePool
 from tests.doubles.recording_connection import RecordingConnection
 
@@ -53,14 +51,6 @@ def test_postgres_startup_builds_the_schema(monkeypatch):
     assert pool.options["timeout"] == Database.CONNECT_WAIT_SECONDS  # a dead server must not hang start-up
     database.close()
     assert pool.closed
-
-
-class DeadPool(FakePool):
-    # A Postgres server that never answers: the pool gives up waiting for a connection.
-    @contextmanager
-    def connection(self):
-        raise PoolTimeout("couldn't get a connection after 10.00 sec")
-        yield  # pragma: no cover
 
 
 def test_an_unreachable_postgres_server_gives_a_clean_error_and_closes_the_pool(monkeypatch):
