@@ -15,3 +15,6 @@ class GroqSearchClient:
     URL = "https://api.groq.com/openai/v1/chat/completions"
     # Groq models with the built-in browser_search tool, tried in order.
     MODELS = ("openai/gpt-oss-120b", "openai/gpt-oss-20b")
+
+    def __init__(self, cache: ResponseCache) -> None:
+        self._cache = cache
