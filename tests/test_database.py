@@ -1,6 +1,5 @@
 # Lennart
 from contextlib import contextmanager
-from typing import ClassVar
 
 import pytest
 from psycopg_pool import PoolTimeout
@@ -8,6 +7,8 @@ from psycopg_pool import PoolTimeout
 from database import Database
 from db.database_unavailable import DatabaseUnavailable
 from db.postgres_connection import PostgresConnection
+from tests.doubles.fake_pool import FakePool
+from tests.doubles.recording_connection import RecordingConnection
 
 
 def test_sqlite_database_creates_every_table_and_can_be_opened_twice(tmp_path):
@@ -31,32 +32,6 @@ def test_a_failed_block_is_rolled_back_and_a_finished_one_is_committed(tmp_path)
     with database.connect() as connection:
         names = [r["name"] for r in connection.execute("SELECT name FROM documents").fetchall()]
     assert names == ["kept"]
-
-
-class RecordingConnection:
-    def __init__(self):
-        self.calls = []
-
-    def execute(self, sql, params=()):
-        self.calls.append((sql, params))
-        return "cursor"
-
-
-class FakePool:
-    instances: ClassVar[list] = []
-    check_connection = staticmethod(lambda connection: None)
-
-    def __init__(self, target, **options):
-        self.target, self.options, self.closed = target, options, False
-        self.recorder = RecordingConnection()
-        FakePool.instances.append(self)
-
-    @contextmanager
-    def connection(self):
-        yield self.recorder
-
-    def close(self):
-        self.closed = True
 
 
 def test_the_postgres_adapter_turns_question_marks_into_placeholders():
