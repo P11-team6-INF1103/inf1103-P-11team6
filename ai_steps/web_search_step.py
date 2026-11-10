@@ -25,3 +25,24 @@ class WebSearchStep(EnrichmentStep):
 
     def __init__(self, search: GroqSearchClient) -> None:
         self._search = search
+
+    # Builds the prompt asking for industry context and real similar incidents.
+    @staticmethod
+    def build_prompt(incident: Incident) -> str:
+        return (
+            "A workplace safety incident was just reported on a construction site "
+            f"in Singapore:\n\"{incident.description}\"\n"
+            f"Hazard type: {incident.get('hazard_category') or 'unknown'}\n\n"
+            "Search the web, then write for site managers with no technical "
+            "background: plain English, short sentences, no jargon.\n"
+            "1. industry_context: 2-3 sentences. Is this a known, common problem in "
+            "the construction industry (use Singapore figures from MOM or the WSH "
+            "Council if you find them), and what is the usual way companies fix it?\n"
+            "2. incidents: up to 3 REAL, publicly reported incidents with the same "
+            "kind of hazard. Prefer Singapore; use other countries only if you find "
+            "none. Only include incidents you found a source for - never invent one.\n\n"
+            "Reply with ONLY this JSON object, no other text:\n"
+            '{"industry_context": "...", "incidents": [{"summary": "...", "location": '
+            '"place, country", "date": "YYYY or YYYY-MM or unknown", "action_taken": '
+            '"what was done afterwards, or unknown", "source_url": "https://..."}]}'
+        )
