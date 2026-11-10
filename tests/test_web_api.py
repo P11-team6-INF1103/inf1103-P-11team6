@@ -22,3 +22,10 @@ from web_support.rate_limiter import RateLimiter
 SAMPLE_PHOTO = os.path.join(os.path.dirname(__file__), "sample_photo.png")
 FORM = {"description": "Scaffold plank fell from level 4 near a worker", "location": "Site B",
         "reporter_role": "safety_officer", "injury": "true"}
+
+
+def make_client(tmp_path, gemini=None, post_limit=10):
+    ai = AIManager(gemini or FakeGemini(), FakeSearch(), FakeWeather(None), OUTCOME_ACTIONS)
+    app = IncidentTriageApp(IOManager(SEVERITY_LEVELS, OUTCOME_ACTIONS), ai,
+                            LogicManager(LogicManager.default_rules()), DataManager(str(tmp_path)), ResponseCache())
+    return WebApi(app, ["http://localhost:5173"], post_limit).flask.test_client()
