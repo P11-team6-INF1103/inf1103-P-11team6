@@ -236,3 +236,20 @@ class ReportPrinter:
                 self._field(label, f"{before} -> {after}", width)
         if same:
             self._field("Unchanged", ", ".join(same), width)
+
+    # Prints every version of an incident, newest last, in one line each.
+    def print_history(self, incident: Incident) -> None:
+        width = self._report_width()
+        self._section(f"VERSIONS ({incident.version})", width)
+        versions = incident.history + [incident.snapshot()]
+        for data in versions:
+            version = Incident.from_dict(data)
+            tag = "  <- current" if data["version"] == incident.version else ""
+            how = f" (copied from v{data['reverted_from']})" if data.get("reverted_from") else ""
+            outcome = data.get("outcome")
+            print(textwrap.fill(
+                f"v{data['version']}{how}: severity {self._severity_text(version)}, "
+                f"{self._OUTCOME_SHORT.get(outcome, outcome)}{tag}",
+                width, initial_indent="  ", subsequent_indent="      "))
+            print(textwrap.fill(f"\"{data.get('description')}\" - {data.get('location')}", width,
+                                initial_indent="      ", subsequent_indent="      "))
