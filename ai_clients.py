@@ -5,7 +5,7 @@ import os
 import threading
 from typing import ClassVar
 
-from models import IncidentPhoto
+from models.incident_photo import IncidentPhoto
 
 # Ren Xiang
 logger = logging.getLogger(__name__)
