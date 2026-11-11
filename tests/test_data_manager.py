@@ -8,7 +8,8 @@ import pytest
 
 import data_manager as dm
 from database import Database
-from models import Incident, IncidentPhoto
+from models.incident import Incident
+from models.incident_photo import IncidentPhoto
 from tests._suite import suite_from, temp_data_dir
 
 
