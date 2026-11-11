@@ -1,12 +1,17 @@
 import re
 from datetime import datetime
 
-from logic_rules.constants import HIGH_SEVERITY, INJURY_MIN_SEVERITY, MAX_SEVERITY, SYSTEMIC_INCIDENT_COUNT
-
 # Daniel
-# main.py still reads these two from logic_manager; this line goes once main.py imports them from logic_rules.constants.
-from logic_rules.constants import OUTCOME_ACTIONS, SEVERITY_LEVELS  # noqa: F401
-
+# OUTCOME_ACTIONS and SEVERITY_LEVELS are only here because main.py still reads them from logic_manager;
+# drop them (and the noqa) once main.py imports them from logic_rules.constants.
+from logic_rules.constants import (  # noqa: F401
+    HIGH_SEVERITY,
+    INJURY_MIN_SEVERITY,
+    MAX_SEVERITY,
+    OUTCOME_ACTIONS,
+    SEVERITY_LEVELS,
+    SYSTEMIC_INCIDENT_COUNT,
+)
 
 # Whole-word match only: "window" must not count as "wind", "constraint" as
 # "rain", or "shot" as "hot".
