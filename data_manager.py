@@ -5,7 +5,9 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 
 from database import Database
-from models import Incident, IncidentPhoto, PhotoError
+from models.incident import Incident
+from models.incident_photo import IncidentPhoto
+from models.photo_error import PhotoError
 
 
 class DocumentStore(ABC):
