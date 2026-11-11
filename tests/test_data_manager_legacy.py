@@ -10,6 +10,7 @@ from unittest import mock
 import data_manager as dm
 from tests._suite import suite_from, temp_data_dir
 
+
 def _write(folder, name, text):
     with open(os.path.join(folder, name), "w", encoding="utf-8") as f:
         f.write(text)
