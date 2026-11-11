@@ -1,15 +1,22 @@
+# Darrel
 # Keep secrets and local clutter out of the image (COPY . . would copy them)
 .env
 .git
 .github
 .venv/
 venv/
-__pycache__/
-*.py[cod]
+**/__pycache__/
+**/*.py[cod]
 .pytest_cache/
+.ruff_cache/
 .vscode/
 .idea/
-._*
-.DS_Store
-*.log
-data/*.corrupt-*
+**/._*
+**/.DS_Store
+**/*.log
+# Runtime data: priorities (app.db), saved incidents, the AI cache and uploaded photos. A local run writes these
+# next to the code, so without this line they would be baked into the image. The app creates data/ when it needs it.
+data/
+photos/*
+!photos/.gitkeep
+frontend/
