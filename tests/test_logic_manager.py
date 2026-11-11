@@ -1,16 +1,25 @@
 import logic_manager as lm
+from logic_rules import constants
 from tests._suite import suite_from
 
 
 def test_severity_and_outcome_constants_fit_together():
-    assert sorted(lm.SEVERITY_LEVELS) == list(range(1, lm.MAX_SEVERITY + 1))
-    for name, description in lm.SEVERITY_LEVELS.values():
+    assert sorted(constants.SEVERITY_LEVELS) == list(range(1, constants.MAX_SEVERITY + 1))
+    for name, description in constants.SEVERITY_LEVELS.values():
         assert name and description
-    assert 1 < lm.INJURY_MIN_SEVERITY < lm.HIGH_SEVERITY <= lm.MAX_SEVERITY
-    assert lm.SYSTEMIC_INCIDENT_COUNT >= 1
-    assert set(lm.OUTCOME_ACTIONS) == {"stop_work_review", "photo_review", "systemic_escalation", "log_only",
-                                       "pending_review"}
-    assert all(action for action in lm.OUTCOME_ACTIONS.values())
+    assert 1 < constants.INJURY_MIN_SEVERITY < constants.HIGH_SEVERITY <= constants.MAX_SEVERITY
+    assert constants.SYSTEMIC_INCIDENT_COUNT >= 1
+    assert set(constants.OUTCOME_ACTIONS) == {"stop_work_review", "photo_review", "systemic_escalation", "log_only",
+                                              "pending_review"}
+    assert all(action for action in constants.OUTCOME_ACTIONS.values())
+
+
+# The constants live in logic_rules/constants.py; logic_manager and main.py use those same objects.
+def test_logic_manager_uses_the_logic_rules_constants():
+    assert lm.SEVERITY_LEVELS is constants.SEVERITY_LEVELS and lm.OUTCOME_ACTIONS is constants.OUTCOME_ACTIONS
+    assert (lm.MAX_SEVERITY, lm.INJURY_MIN_SEVERITY, lm.HIGH_SEVERITY, lm.SYSTEMIC_INCIDENT_COUNT) == (
+        constants.MAX_SEVERITY, constants.INJURY_MIN_SEVERITY, constants.HIGH_SEVERITY,
+        constants.SYSTEMIC_INCIDENT_COUNT)
 
 
 def test_scoring_tables_fit_together():
@@ -19,7 +28,7 @@ def test_scoring_tables_fit_together():
         assert points >= 0
         assert (treatment in lm._INJURY_LABELS) == (points > 0), treatment
     assert "died" not in lm._INJURY_POINTS
-    assert set(lm._ESCALATED_OUTCOMES) <= set(lm.OUTCOME_ACTIONS)
+    assert set(lm._ESCALATED_OUTCOMES) <= set(constants.OUTCOME_ACTIONS)
     assert set(lm._POOR_LIGHT_LEVELS) == {"low_light", "dark"}
     assert lm._TYPE_A_HAZARDS and all(isinstance(hazard, str) for hazard in lm._TYPE_A_HAZARDS)
 
