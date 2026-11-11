@@ -9,7 +9,7 @@ import requests
 from google import genai
 
 from ai_clients import GeminiClient
-from models import Incident
+from models.incident import Incident
 
 # from site_plan import ELEMENT_KINDS, SitePlan, SitePlanError (New Import for later)
 logger = logging.getLogger(__name__)
