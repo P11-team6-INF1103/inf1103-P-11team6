@@ -51,3 +51,19 @@ class IncidentSearch:
                 score += self.FIELD_WEIGHTS[name] * (1.5 if term in tokens else 1.0)
                 hit.append(name)
         return score, hit
+
+    def _passes(self, incident: dict, filters: dict) -> bool:
+        severity = 0 if incident.get("assessment_error") else int(incident.get("severity_estimate") or 0)
+        day = str(incident.get("timestamp") or "")[:10]
+        checks = [
+            filters.get("severity_min") is None or severity >= filters["severity_min"],
+            not filters.get("hazard") or incident.get("hazard_type") == filters["hazard"],
+            not filters.get("outcome") or incident.get("outcome") == filters["outcome"],
+            not filters.get("location") or str(incident.get("location", "")).lower() == filters["location"].lower(),
+            filters.get("priority") is None or incident.get("priority") == filters["priority"],
+            not filters.get("status") or incident.get("resolved") == (filters["status"] == "resolved"),
+            not filters.get("date_from") or day >= filters["date_from"],
+            not filters.get("date_to") or day <= filters["date_to"],
+            not filters.get("has_photo") or bool(incident.get("photo_file")),
+        ]
+        return all(checks)
