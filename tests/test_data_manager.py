@@ -7,6 +7,7 @@ from unittest import mock
 import pytest
 
 import data_manager as dm
+from data_stores.document_store import DocumentStore
 from database import Database
 from models.incident import Incident
 from models.incident_photo import IncidentPhoto
@@ -149,16 +150,16 @@ def test_delete_record_on_corrupt_file_returns_false():
 
 def test_document_store_is_an_interface_with_three_methods():
     with pytest.raises(TypeError):
-        dm.DocumentStore()
+        DocumentStore()
 
-    class ReadOnly(dm.DocumentStore):  # leaves out write and delete
+    class ReadOnly(DocumentStore):  # leaves out write and delete
         def read(self):
             return [], None
 
     with pytest.raises(TypeError):
         ReadOnly()
 
-    class InMemory(dm.DocumentStore):
+    class InMemory(DocumentStore):
         def __init__(self):
             self.value = []
 
@@ -182,7 +183,7 @@ def test_json_file_round_trip_and_missing_file():
     with temp_data_dir() as folder:
         tmp_path = Path(folder)
         store = dm.JsonFile(str(tmp_path / "sub" / "items.json"), list)
-        assert isinstance(store, dm.DocumentStore) and store.path.endswith("items.json")
+        assert isinstance(store, DocumentStore) and store.path.endswith("items.json")
         assert store.read() == ([], None)  # missing: empty, no complaint
         assert store.write([{"b": 2, "a": 1}]) is True  # creates the folder
         assert store.read() == ([{"a": 1, "b": 2}], None)
@@ -246,7 +247,7 @@ def test_db_json_round_trip_in_the_documents_table():
     with temp_data_dir() as folder:
         database = Database(os.path.join(folder, "app.db"))
         store = dm.DbJson(database, "ai_cache", dict)
-        assert isinstance(store, dm.DocumentStore)
+        assert isinstance(store, DocumentStore)
         assert store.read() == ({}, None)  # no row yet: empty, no complaint
         assert store.write({"k": "v"}) is True and store.read() == ({"k": "v"}, None)
         assert store.write({"k": "new"}) is True and store.read() == ({"k": "new"}, None)  # replaces, one row
