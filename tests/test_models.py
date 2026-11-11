@@ -3,7 +3,9 @@ import os
 
 import pytest
 
-from models import Incident, IncidentPhoto, PhotoError
+from models.incident import Incident
+from models.incident_photo import IncidentPhoto
+from models.photo_error import PhotoError
 
 SAMPLE_PHOTO = os.path.join(os.path.dirname(__file__), "sample_photo.png")
 
