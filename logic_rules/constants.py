@@ -1,5 +1,7 @@
 # Daniel
 
+MAX_SEVERITY = 5
+
 INJURY_MIN_SEVERITY = 3  # anyone injured scores at least this, whatever else the conditions take away
 
 HIGH_SEVERITY = 4  # Rule 1: this severity or above means stop-work review
