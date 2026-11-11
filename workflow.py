@@ -54,3 +54,18 @@ class WorkflowStore:
     def delete(self, key: str) -> None:
         with self._database.connect() as connection:
             connection.execute("DELETE FROM incident_workflow WHERE incident_key = ?", (key,))
+
+    # The workflow fields the browser sees for one incident, given its saved row (or None).
+    @staticmethod
+    def view(incident: dict, row: dict | None) -> dict:
+        row = row or {}
+        override = row.get("priority")
+        priority = override or WorkflowStore.suggested_priority(incident)
+        return {
+            "priority": priority,
+            "priority_name": PRIORITY_LEVELS[priority],
+            "priority_source": "manual" if override else "auto",
+            "resolved": bool(row.get("resolved")),
+            "resolved_at": row.get("resolved_at"),
+            "resolution_note": row.get("resolution_note"),
+        }
