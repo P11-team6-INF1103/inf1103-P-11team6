@@ -8,6 +8,7 @@ import pytest
 
 import data_manager as dm
 from data_stores.document_store import DocumentStore
+from data_stores.json_file import JsonFile
 from database import Database
 from models.incident import Incident
 from models.incident_photo import IncidentPhoto
@@ -182,12 +183,12 @@ def test_document_store_is_an_interface_with_three_methods():
 def test_json_file_round_trip_and_missing_file():
     with temp_data_dir() as folder:
         tmp_path = Path(folder)
-        store = dm.JsonFile(str(tmp_path / "sub" / "items.json"), list)
+        store = JsonFile(str(tmp_path / "sub" / "items.json"), list)
         assert isinstance(store, DocumentStore) and store.path.endswith("items.json")
         assert store.read() == ([], None)  # missing: empty, no complaint
         assert store.write([{"b": 2, "a": 1}]) is True  # creates the folder
         assert store.read() == ([{"a": 1, "b": 2}], None)
-        assert dm.JsonFile(str(tmp_path / "cache.json"), dict).read() == ({}, None)
+        assert JsonFile(str(tmp_path / "cache.json"), dict).read() == ({}, None)
 
 
 def test_json_file_sets_aside_corrupt_and_wrong_shape_files():
@@ -196,7 +197,7 @@ def test_json_file_sets_aside_corrupt_and_wrong_shape_files():
         for text, message in (("{not json", "was corrupt"), ('{"a": 1}', "had the wrong format")):
             path = tmp_path / "items.json"
             path.write_text(text, encoding="utf-8")
-            data, problem = dm.JsonFile(str(path), list).read()
+            data, problem = JsonFile(str(path), list).read()
             assert data == [] and message in problem and "kept as items.json.corrupt-" in problem
             backups = [p for p in tmp_path.iterdir() if ".corrupt-" in p.name]
             assert len(backups) == 1 and backups[0].read_text(encoding="utf-8") == text  # original kept, not lost
@@ -210,7 +211,7 @@ def test_json_file_unreadable_file_is_reported_and_left_alone():
         path = tmp_path / "items.json"
         path.write_text("[1]", encoding="utf-8")
         with mock.patch("builtins.open", side_effect=PermissionError("locked")):
-            data, problem = dm.JsonFile(str(path), list).read()
+            data, problem = JsonFile(str(path), list).read()
         assert data == [] and problem.startswith("could not read items.json")
         assert path.read_text(encoding="utf-8") == "[1]"  # not set aside: it may be fine once unlocked
 
@@ -220,20 +221,20 @@ def test_json_file_write_failure_returns_false_and_leaves_no_temp_file():
         tmp_path = Path(folder)
         circular = {}
         circular["self"] = circular
-        store = dm.JsonFile(str(tmp_path / "items.json"), dict)
+        store = JsonFile(str(tmp_path / "items.json"), dict)
         assert store.write({"ok": True}) is True
         assert store.write(circular) is False and store.write({(1, 2): "x"}) is False
         assert store.read() == ({"ok": True}, None)
         assert sorted(p.name for p in tmp_path.iterdir()) == ["items.json"]
         blocker = tmp_path / "blocker"
         blocker.write_text("", encoding="utf-8")
-        assert dm.JsonFile(str(blocker / "sub" / "items.json"), list).write([]) is False  # folder cannot be made
+        assert JsonFile(str(blocker / "sub" / "items.json"), list).write([]) is False  # folder cannot be made
 
 
 def test_json_file_delete():
     with temp_data_dir() as folder:
         tmp_path = Path(folder)
-        store = dm.JsonFile(str(tmp_path / "items.json"), list)
+        store = JsonFile(str(tmp_path / "items.json"), list)
         assert store.delete() is True  # nothing to delete is fine
         store.write([1])
         assert store.delete() is True and store.read() == ([], None)
@@ -286,7 +287,7 @@ def test_db_json_never_raises_when_the_database_is_down():
 def test_json_file_and_db_json_are_interchangeable():
     # The same steps give the same results whichever DocumentStore is used (Liskov substitution).
     with temp_data_dir() as folder:
-        stores = [dm.JsonFile(os.path.join(folder, "cache.json"), dict),
+        stores = [JsonFile(os.path.join(folder, "cache.json"), dict),
                   dm.DbJson(Database(os.path.join(folder, "app.db")), "cache", dict)]
         for store in stores:
             assert store.read() == ({}, None)
