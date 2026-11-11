@@ -67,3 +67,40 @@ class IncidentSearch:
             not filters.get("has_photo") or bool(incident.get("photo_file")),
         ]
         return all(checks)
+
+    # Matching incidents, best match first (newest first when there is no query). Each result is the
+    # incident plus 'score' and 'matched' (the fields the words were found in).
+    def search(self, incidents: list[dict], query: str = "", filters: dict | None = None) -> list[dict]:
+        phrases, words = self._parse(query or "")
+        results = []
+        for incident in incidents:
+            if not self._passes(incident, filters or {}):
+                continue
+            fields = self._fields(incident)
+            tokens = {name: self._WORD.findall(text.lower()) for name, text in fields.items()}
+            score, matched, found_all = 0.0, set(), True
+            for term in words:
+                if term.isdigit() and int(term) == incident.get("id"):
+                    score, found_all = score + 10, True
+                    matched.add("id")
+                    continue
+                word_score, hit = self._word_score(term, tokens)
+                if not hit:
+                    found_all = False
+                    break
+                score += word_score
+                matched.update(hit)
+            for phrase in phrases if found_all else []:
+                hit = [name for name, tokens_ in tokens.items() if phrase in " ".join(tokens_)]
+                if not hit:
+                    found_all = False
+                    break
+                score += 2 * sum(self.FIELD_WEIGHTS[name] for name in hit)
+                matched.update(hit)
+            if found_all:
+                results.append({**incident, "score": round(score, 2), "matched": sorted(matched)})
+        if not words and not phrases:
+            results.sort(key=lambda r: str(r.get("timestamp") or ""), reverse=True)
+        else:
+            results.sort(key=lambda r: (r["score"], str(r.get("timestamp") or "")), reverse=True)
+        return results
