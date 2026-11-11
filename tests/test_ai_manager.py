@@ -19,7 +19,8 @@
 #     WebSearchStep,
 # )
 # from logic_manager import OUTCOME_ACTIONS
-# from models import Incident, IncidentPhoto
+# from models.incident import Incident
+# from models.incident_photo import IncidentPhoto
 # from tests.fakes import HAZARD_REPLY, FakeGemini, FakeSearch, FakeWeather
 
 # # Ren Xiang

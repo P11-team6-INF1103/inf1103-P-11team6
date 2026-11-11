@@ -3,6 +3,9 @@ import os
 import sqlite3
 from contextlib import contextmanager
 
+from db.database_unavailable import DatabaseUnavailable
+from db.postgres_connection import PostgresConnection
+
 # Each incident's workflow (priority, resolved) and, when the database is
 # shared (Postgres), the incidents themselves. A workflow row points at an incident by its timestamp.
 # The two dialects differ only in how an auto-numbered id is written.
@@ -48,12 +51,6 @@ CREATE TABLE IF NOT EXISTS photos (
     content     BYTEA NOT NULL
 );
 """ + _COMMON
-
-
-class DatabaseUnavailable(RuntimeError):
-    # The database could not be opened (server down, wrong URL, bad password, unwritable file). The message
-    # never contains the connection string, so it is safe to show to the user.
-    pass
 
 
 class Database:
@@ -102,7 +99,7 @@ class Database:
     def connect(self):
         if self._pool is not None:
             with self._pool.connection() as connection:
-                yield _PostgresConnection(connection)
+                yield PostgresConnection(connection)
             return
         connection = sqlite3.connect(self._target, timeout=10)
         connection.row_factory = sqlite3.Row
@@ -119,12 +116,3 @@ class Database:
     def close(self) -> None:
         if self._pool is not None:
             self._pool.close()
-
-
-class _PostgresConnection:
-    # Lets the Postgres driver take the same ? placeholders SQLite uses.
-    def __init__(self, connection) -> None:
-        self._connection = connection
-
-    def execute(self, sql: str, params: tuple = ()):
-        return self._connection.execute(sql.replace("?", "%s"), params)
