@@ -1,19 +1,19 @@
 # Lennart
 import pytest
+import requests
 
-from tests._suite import offline
 
-
-# Blocks the network and empties the API keys for every test.
+# Every test runs offline with no API keys and a temporary data folder, so real data is never touched.
 @pytest.fixture(autouse=True)
-def _no_network():
-    with offline():
-        yield
-
-
-# Points every test at a temporary data folder so the real incidents.json is never touched. The database variable is
-# blanked, not deleted: load_dotenv() refills a missing variable from the real .env but never overrides an existing one.
-@pytest.fixture(autouse=True)
-def _never_touch_real_data(tmp_path, monkeypatch):
+def _offline(tmp_path, monkeypatch):
+    # Blank, not deleted: load_dotenv() refills a missing variable from the real .env but never overrides an existing one.
+    monkeypatch.setenv("GEMINI_API_KEY", "")
+    monkeypatch.setenv("GROQ_API_KEY", "")
     monkeypatch.setenv("DATABASE_URL", "")  # tests must never touch a real database
     monkeypatch.setenv("INCIDENT_DATA_DIR", str(tmp_path / "data"))
+
+    def no_network(*args, **kwargs):
+        raise requests.ConnectionError("network blocked in tests")
+
+    monkeypatch.setattr(requests, "get", no_network)
+    monkeypatch.setattr(requests, "post", no_network)
