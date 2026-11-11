@@ -32,3 +32,22 @@ class IncidentSearch:
             "photo": " ".join(str(v) for v in (incident.get("photo_description"), incident.get("photo_findings")) if v),
             "sources": sources,
         }
+
+    # (phrases, words) the user typed, all lower case.
+    def _parse(self, query: str) -> tuple[list[str], list[str]]:
+        phrases, words = [], []
+        for phrase, word in self._QUERY_PARTS.findall(query.lower()):
+            if phrase:
+                phrases.append(" ".join(self._WORD.findall(phrase)))
+            else:
+                words.extend(self._WORD.findall(word))
+        return [p for p in phrases if p], words
+
+    def _word_score(self, term: str, fields: dict[str, list[str]]) -> tuple[float, list[str]]:
+        stem = term[:-1] if len(term) > 3 and term.endswith("s") else term
+        score, hit = 0.0, []
+        for name, tokens in fields.items():
+            if any(token.startswith(stem) for token in tokens):
+                score += self.FIELD_WEIGHTS[name] * (1.5 if term in tokens else 1.0)
+                hit.append(name)
+        return score, hit
