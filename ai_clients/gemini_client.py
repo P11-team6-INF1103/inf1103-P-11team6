@@ -2,10 +2,9 @@ import json
 import logging
 import os
 
-from constants import AI_SEED
-from json_reply import JsonReply
-from response_cache import ResponseCache
-
+from ai_clients.constants import AI_SEED
+from ai_clients.json_reply import JsonReply
+from ai_clients.response_cache import ResponseCache
 from models.incident_photo import IncidentPhoto
 
 logger = logging.getLogger(__name__)
