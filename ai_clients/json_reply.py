@@ -2,6 +2,7 @@
 
 import json
 
+
 class JsonReply:
     # Turns AI reply text into checked JSON. Every reply goes through here before any field is used.
 
