@@ -12,6 +12,13 @@ from logic_rules.constants import (  # noqa: F401
     SEVERITY_LEVELS,
     SYSTEMIC_INCIDENT_COUNT,
 )
+from logic_rules.log_only_rule import LogOnlyRule
+from logic_rules.outcome_rule import OutcomeRule
+from logic_rules.pending_review_rule import PendingReviewRule
+from logic_rules.photo_mismatch_rule import PhotoMismatchRule
+from logic_rules.stop_work_rule import StopWorkRule
+from logic_rules.systemic_risk_rule import SystemicRiskRule
+from models.incident import Incident
 
 # Whole-word match only: "window" must not count as "wind", "constraint" as
 # "rain", or "shot" as "hot".
@@ -39,6 +46,19 @@ _HEAVY_MACHINERY_WORDS = (
     "cement mixer", "piling", "pile driver", "drill rig", "hoist",
     "scissor lift", "boom lift", "mewp", "elevating work platform",
 )
+
+
+# Sufi
+# The Part 1 rules plus the Part 2 photo rule, in the order they are checked.
+@staticmethod
+def default_rules() -> list[OutcomeRule]:
+    return [PendingReviewRule(), StopWorkRule(), PhotoMismatchRule(), SystemicRiskRule(), LogOnlyRule()]
+
+
+# Sufi
+# Keeps the rule objects it is given (aggregation: the rules exist on their own and can be reused).
+def __init__(self, rules: list[OutcomeRule]) -> None:
+    self._rules = list(rules)
 
 
 # Daniel
@@ -109,6 +129,35 @@ def derive_context(incident: dict) -> dict:
     result["time_of_day"] = get_time_of_day(incident.get("timestamp"))
     result["monsoon_season"] = get_monsoon_season(incident.get("timestamp"))
     return result
+
+
+# Sufi
+# Rejects an incident only when the AI said it is not a real safety incident; accepts it if the AI is down.
+@staticmethod
+def screen_incident(incident: Incident) -> tuple[bool, str | None]:
+    if incident.get("is_valid_incident") is not False:
+        return True, None
+    reason = str(incident.get("invalid_reason") or "").strip()
+    return False, reason or "it does not describe a workplace safety incident"
+
+
+# Sufi
+# New in Part 2: fills gaps in the description with what the AI saw in the photo, and lists each change.
+def apply_photo_evidence(self, incident: Incident) -> None:
+    if not incident.get("photo_analysed"):
+        return
+    notes = []
+    photo_ppe = incident.get("photo_ppe_status")
+    if incident.get("ppe_status") == "unspecified" and photo_ppe in ("worn", "not_worn"):
+        incident.update({"ppe_status": photo_ppe})
+        notes.append(f"Safety gear status taken from the photo ({photo_ppe.replace('_', ' ')})")
+    if incident.get("photo_shows_height") and not incident.get("working_at_height"):
+        incident.update({"working_at_height": True})
+        notes.append("The photo shows work at height")
+    if incident.get("photo_shows_machinery") and not incident.get("heavy_machinery_present"):
+        incident.update({"heavy_machinery_present": True})
+        notes.append("The photo shows heavy machinery")
+    incident.update({"photo_evidence_used": notes})
 
 
 # Adds lighting_condition from the time of day and the weather; returns a new dict.
@@ -242,14 +291,13 @@ def is_systemic_risk(record: dict, history: list) -> bool:
 
 # Sufi
 # Picks the outcome in order: pending_review, stop_work_review, systemic_escalation, log_only.
-def decide_outcome(record: dict, history: list) -> str:
-    if record.get("assessment_error"):
-        return "pending_review"
-    if is_high_severity(record):
-        return "stop_work_review"
-    if is_systemic_risk(record, history):
-        return "systemic_escalation"
-    return "log_only"
+def decide_outcome(self, incident: Incident, history: list) -> str:
+    for rule in self._rules:
+        if rule.applies(incident, history):
+            incident.update({"outcome": rule.outcome})
+            return rule.outcome
+    incident.update({"outcome": "pending_review"})
+    return "pending_review"
 
 
 # Rejects an incident only when the AI said it is not a real safety incident; accepts it if the AI is down.
