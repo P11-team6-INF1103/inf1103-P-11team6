@@ -5,6 +5,7 @@ import os
 from constants import AI_SEED
 from json_reply import JsonReply
 from response_cache import ResponseCache
+
 from models.incident_photo import IncidentPhoto
 
 logger = logging.getLogger(__name__)
