@@ -8,6 +8,7 @@ import pytest
 
 from exporters.constants import COLUMNS
 from exporters.csv_incident_exporter import CsvIncidentExporter
+from exporters.exporter_factory import ExporterFactory
 from exporters.incident_exporter import IncidentExporter
 from exporters.json_incident_exporter import JsonIncidentExporter
 from models.incident import Incident
@@ -143,3 +144,14 @@ def test_every_exporter_can_stand_in_for_the_base_class():
         assert exporter.file_name(date(2026, 11, 13)) == f"incidents_2026-11-13.{exporter.extension}"
         assert exporter.rows(incidents)[1]["location"] == "Site C"
     assert JsonIncidentExporter().extension == "json" and JsonIncidentExporter().content_type == "application/json"
+
+
+def test_factory_picks_by_name_or_file_ending_and_rejects_the_rest():
+    assert ExporterFactory.names() == ("csv", "json")
+    assert isinstance(ExporterFactory.create(" CSV "), CsvIncidentExporter)
+    assert isinstance(ExporterFactory.for_path("out/report.json"), JsonIncidentExporter)
+    for bad in ("xml", "", "csv2"):
+        with pytest.raises(ValueError, match="Unknown export format"):
+            ExporterFactory.create(bad)
+    with pytest.raises(ValueError):
+        ExporterFactory.for_path("incidents")
