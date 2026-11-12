@@ -1,6 +1,7 @@
 # Lennart
 import csv
 import io
+import json
 from datetime import date
 
 import pytest
@@ -8,6 +9,7 @@ import pytest
 from exporters.constants import COLUMNS
 from exporters.csv_incident_exporter import CsvIncidentExporter
 from exporters.incident_exporter import IncidentExporter
+from exporters.json_incident_exporter import JsonIncidentExporter
 from models.incident import Incident
 
 
@@ -116,3 +118,28 @@ def test_csv_uses_proper_line_endings_and_names_the_format():
     assert "\r\n" in exporter.export([scored()]) and isinstance(exporter, IncidentExporter)
     assert exporter.extension == "csv" and exporter.content_type == "text/csv"
     assert exporter.file_name(date(2026, 11, 13)) == "incidents_2026-11-13.csv"
+
+
+def test_json_keeps_lists_as_lists_and_unscored_fields_as_null():
+    bare = Incident("Worker slipped", "Site A", "officer", False, "2026-10-21T10:00:00")
+    rows = json.loads(JsonIncidentExporter().export([scored(), bare]))
+    assert rows[0]["severity"] == 4 and rows[0]["severity_reasons"] == ["Someone was injured", "Working at height"]
+    assert rows[1]["severity"] is None and rows[1]["severity_reasons"] == [] and list(rows[0]) == list(COLUMNS)
+
+
+def test_json_keeps_non_english_text_readable_and_an_empty_export_valid():
+    rows = json.loads(JsonIncidentExporter().export([scored("Pekerja jatuh dari perancah \u2013 \u5de5\u4eba")]))
+    assert rows[0]["description"] == "Pekerja jatuh dari perancah \u2013 \u5de5\u4eba"
+    assert "\u5de5\u4eba" in JsonIncidentExporter().export([scored("\u5de5\u4eba")])  # not escaped as \\uXXXX
+    assert json.loads(JsonIncidentExporter().export([])) == []
+
+
+def test_every_exporter_can_stand_in_for_the_base_class():
+    incidents = [scored(), scored(location="Site C")]
+    for exporter in (CsvIncidentExporter(), JsonIncidentExporter()):
+        assert isinstance(exporter, IncidentExporter)
+        text = exporter.export(incidents)
+        assert isinstance(text, str) and "Site C" in text
+        assert exporter.file_name(date(2026, 11, 13)) == f"incidents_2026-11-13.{exporter.extension}"
+        assert exporter.rows(incidents)[1]["location"] == "Site C"
+    assert JsonIncidentExporter().extension == "json" and JsonIncidentExporter().content_type == "application/json"
