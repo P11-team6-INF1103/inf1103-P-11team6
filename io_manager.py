@@ -895,6 +895,17 @@ class IOManager:
         print(f"\nIncident #{number}: {incident.location} - {incident.description}")
         return self._ask_yes_no("Delete this incident permanently? (yes/no): ")
 
+    # Prints the incidents found by a location query.
+    def display_query_results(self, results: list[Incident]) -> None:
+        if not results:
+            print("No matching incidents found.")
+            return
+        print(f"{len(results)} matching incident(s):")
+        for incident in results:
+            outcome = incident.get("outcome")
+            print(f"[{self._printer.format_time(incident.timestamp)}] {incident.location} -> "
+                  f"{self._printer.OUTCOME_NAMES.get(outcome, outcome)}")
+
     # Asks which incident number to edit.
     def get_edit_choice(self, count: int) -> int | None:
         return self._ask_number(f"Enter the incident # to edit (1-{count}, or press Enter to go back): ", count)
@@ -934,3 +945,27 @@ class IOManager:
         if not self._ask_yes_no(f"Copy version {number} in as the newest version? Nothing is deleted. (yes/no): "):
             return None
         return number
+
+    # Prints what changed against the previous version, then the new full report.
+    def display_edit_result(self, previous: Incident, current: Incident) -> None:
+        self._printer.print_incident(current)
+        self._printer.print_comparison(previous, current)
+        print()
+
+    # Prints the full report for one processed incident.
+    def display_outcome(self, incident: Incident) -> None:
+        self._printer.print_incident(incident)
+
+    # Prints the summary and severity guide; when interactive, lets the user open any incident's full report.
+    def display_summary(self, records: list[Incident], interactive: bool = True) -> None:
+        self._printer.print_summary(records)
+        if not records:
+            return
+        self._printer.print_severity_guide()
+        print()
+        while interactive:
+            number = self._ask_number("Enter an incident # for its full report (or press Enter to go back): ",
+                                      len(records))
+            if number is None:
+                break
+            self._printer.print_incident(records[number - 1], number)
