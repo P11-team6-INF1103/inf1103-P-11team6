@@ -53,7 +53,6 @@ class LogicManager:
 
     # Daniel
     # 'day', 'dusk_dawn' or 'night' from the timestamp hour; an unreadable timestamp counts as 'day'.
-    @staticmethod
     def get_time_of_day(timestamp: str | None) -> str:
         try:
             hour = datetime.fromisoformat(timestamp).hour
@@ -68,7 +67,6 @@ class LogicManager:
 
     # Daniel
     # Singapore's monsoon season for the incident date; an unreadable timestamp gives 'inter_monsoon'.
-    @staticmethod
     def get_monsoon_season(timestamp: str | None) -> str:
         try:
             when = datetime.fromisoformat(timestamp)
@@ -219,20 +217,14 @@ class LogicManager:
             })
             return result
         similar = record.get("similar_incidents") or []
-        similar_escalated = any(
-            isinstance(item, dict)
-            and item.get("outcome") in self._ESCALATED_OUTCOMES
-            for item in similar
-                               )
+        similar_escalated = any(item.get("outcome") in self._ESCALATED_OUTCOMES for item in similar)
         severity, reasons = self._score_injury(record)
         change, more_reasons = self._score_conditions(record, similar_escalated)
-        severity = max(1, min(severity + change, MAX_SEVERITY))
+        severity = max(1, min(severity + change, self.MAX_SEVERITY))
         injured = record.get("injury") or record.get("injury_treatment") in ("first_aid", "hospital", "died")
-        if injured and severity < INJURY_MIN_SEVERITY:
-           severity = INJURY_MIN_SEVERITY
-        reasons.append(
-        f"Someone was injured, so severity is at least {INJURY_MIN_SEVERITY}"
-        )
+        if injured and severity < self.INJURY_MIN_SEVERITY:
+            severity = self.INJURY_MIN_SEVERITY
+            reasons.append(f"Someone was injured, so severity is at least {self.INJURY_MIN_SEVERITY}")
         result.update({
             "hazard_type": record.get("hazard_category"),
             "severity_estimate": severity,
