@@ -894,3 +894,43 @@ class IOManager:
     def confirm_delete(self, incident: Incident, number: int) -> bool:
         print(f"\nIncident #{number}: {incident.location} - {incident.description}")
         return self._ask_yes_no("Delete this incident permanently? (yes/no): ")
+
+    # Asks which incident number to edit.
+    def get_edit_choice(self, count: int) -> int | None:
+        return self._ask_number(f"Enter the incident # to edit (1-{count}, or press Enter to go back): ", count)
+
+    # Asks what to do with the chosen incident; returns 'edit', 'reanalyse', 'history', 'revert' or None to go back.
+    def get_edit_action(self, incident: Incident) -> str | None:
+        older = len(incident.history)
+        print(f"\n{incident.location} - {incident.description}")
+        print(f"This is version {incident.version}" + (f" ({older} older version(s) kept)." if older else "."))
+        options = {"1": ("edit", "Edit the details and run the AI again"),
+                   "2": ("reanalyse", "Re-analyse: ask the AI again with the same details (no retyping)")}
+        if older:
+            options["3"] = ("history", "View the version history")
+            options["4"] = ("revert", "Go back to an older version")
+        for key, (_, text) in options.items():
+            print(f"  {key}. {text}")
+        try:
+            choice = input("Choose (or press Enter to go back): ").strip()
+            while choice != "" and choice not in options:
+                choice = input(f"Please choose {', '.join(options)} (or press Enter to go back): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return None
+        return options[choice][0] if choice else None
+
+    # Prints the version list of an incident.
+    def display_history(self, incident: Incident) -> None:
+        self._printer.print_history(incident)
+
+    # Asks which older version to go back to and confirms; returns its number, or None.
+    def get_version_choice(self, incident: Incident) -> int | None:
+        self._printer.print_history(incident)
+        count = len(incident.history)
+        number = self._ask_number(f"Go back to which version? (1-{count}, or press Enter to go back): ", count)
+        if number is None:
+            return None
+        if not self._ask_yes_no(f"Copy version {number} in as the newest version? Nothing is deleted. (yes/no): "):
+            return None
+        return number
