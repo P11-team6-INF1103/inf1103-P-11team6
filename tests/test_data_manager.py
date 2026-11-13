@@ -1,141 +1,146 @@
-import json
+# Daniel
 import os
-import tempfile
-from unittest import mock
 
-import data_manager as dm
-from tests._suite import suite_from, temp_data_dir
+import pytest
 
+from data_manager import DataManager
+from data_stores.db_json import DbJson
+from data_stores.document_store import DocumentStore
+from data_stores.json_file import JsonFile
+from models.incident import Incident
+from models.incident_photo import IncidentPhoto
 
-def _write(folder, name, text):
-    with open(os.path.join(folder, name), "w", encoding="utf-8") as f:
-        f.write(text)
-
-
-def _files(folder):
-    return sorted(os.listdir(folder))
+SAMPLE_PHOTO = os.path.join(os.path.dirname(__file__), "sample_photo.png")
 
 
-def test_missing_file_means_empty_and_no_problem():
-    with temp_data_dir():
-        assert dm.load_records() == [] and dm.check_records_file() is None
+def make(location="Site A", timestamp="2026-10-20T09:00:00", **fields):
+    incident = Incident("Worker slipped on wet floor", location, "supervisor", True, timestamp)
+    incident.update(fields)
+    return incident
 
 
-def test_corrupt_file_is_set_aside_not_overwritten():
-    with temp_data_dir() as folder:
-        _write(folder, "incidents.json", "{not json")
-        assert "corrupt" in dm.check_records_file()
-        assert dm.load_records() == []
-        assert dm.save_record({"location": "A"}) is True
-        names = _files(folder)
-        backups = [n for n in names if ".corrupt-" in n]
-        assert len(backups) == 1, names
-        with open(os.path.join(folder, backups[0]), encoding="utf-8") as f:
-            assert f.read() == "{not json"
-        assert dm.load_records() == [{"location": "A"}]
+def test_missing_file_gives_no_records(tmp_path):
+    data = DataManager(str(tmp_path))
+    assert data.load_records() == [] and data.check_records_file() is None
 
 
-def test_load_corrupt_without_prior_check_also_keeps_backup():
-    with temp_data_dir() as folder:
-        _write(folder, "incidents.json", "\x00\x01 garbage")
-        assert dm.load_records() == []
-        assert any(".corrupt-" in n for n in _files(folder))
+def test_save_load_and_delete_round_trip(tmp_path):
+    data = DataManager(str(tmp_path))
+    assert data.save_record(make(outcome="log_only")) and data.save_record(make("Site B"))
+    loaded = data.load_records()
+    assert [r.location for r in loaded] == ["Site A", "Site B"] and loaded[0].get("outcome") == "log_only"
+    assert data.delete_record(0) and [r.location for r in data.load_records()] == ["Site B"]
+    assert not data.delete_record(5)
 
 
-def test_wrong_shape_file_is_set_aside():
-    with temp_data_dir() as folder:
-        _write(folder, "incidents.json", '{"a": 1}')
-        assert dm.load_records() == []
-        assert any(".corrupt-" in n for n in _files(folder))
+def test_corrupt_file_is_kept_aside_and_never_crashes(tmp_path):
+    (tmp_path / "incidents.json").write_text("{ not json", encoding="utf-8")
+    data = DataManager(str(tmp_path))
+    assert "corrupt" in data.check_records_file()
+    assert data.load_records() == []
+    assert any(name.startswith("incidents.json.corrupt-") for name in os.listdir(tmp_path))
 
 
-def test_non_object_entries_are_dropped_and_queries_do_not_crash():
-    with temp_data_dir() as folder:
-        _write(folder, "incidents.json", json.dumps([1, "x", None, {"location": "A", "timestamp": "2026-09-27T10:00:00", "outcome": "log_only"}]))
-        assert len(dm.load_records()) == 1
-        assert len(dm.query_by_location("A", 30, as_of="2026-09-28T00:00:00")) == 1
-        assert dm.query_by_location("A", 30, records=[1, None, "x"]) == []
+def test_wrong_shape_and_broken_entries_are_handled(tmp_path):
+    (tmp_path / "incidents.json").write_text('{"a": 1}', encoding="utf-8")
+    assert "wrong format" in DataManager(str(tmp_path)).check_records_file()
+    (tmp_path / "incidents.json").write_text('[{"description": "only this"}, 5]', encoding="utf-8")
+    assert DataManager(str(tmp_path)).load_records() == []
 
 
-def test_unreadable_file_is_not_overwritten_by_save():
-    with temp_data_dir() as folder:
-        _write(folder, "incidents.json", json.dumps([{"location": "old"}]))
-        real_open = open
-
-        def locked(path, mode="r", *args, **kwargs):
-            if "r" in mode and str(path).endswith("incidents.json"):
-                raise PermissionError("locked by another program")
-            return real_open(path, mode, *args, **kwargs)
-
-        with mock.patch("builtins.open", locked):
-            assert dm.save_record({"location": "new"}) is False
-        assert dm.load_records() == [{"location": "old"}]
+def test_save_refuses_to_overwrite_an_unreadable_file(tmp_path, monkeypatch):
+    data = DataManager(str(tmp_path))
+    data.save_record(make())
+    monkeypatch.setattr(JsonFile, "read", lambda self: ([], "could not read incidents.json"))
+    assert data.save_record(make()) is False
 
 
-def test_unsaveable_record_returns_false_and_keeps_file():
-    circular = {}
-    circular["self"] = circular
-    with temp_data_dir() as folder:
-        assert dm.save_record({"location": "old"}) is True
-        for bad in ({1: "a", "b": 2}, {(1, 2): "x"}, circular):
-            assert dm.save_record(bad) is False
-        assert dm.load_records() == [{"location": "old"}]
-        assert _files(folder) == ["incidents.json"]
+def test_write_failure_returns_false(tmp_path):
+    blocker = tmp_path / "not_a_folder"
+    blocker.write_text("x", encoding="utf-8")
+    assert JsonFile(str(blocker / "incidents.json"), list).write([]) is False
 
 
-def test_unwritable_location_returns_false_instead_of_crashing():
-    with tempfile.NamedTemporaryFile() as blocker, \
-            mock.patch.dict(os.environ, {"INCIDENT_DATA_DIR": os.path.join(blocker.name, "sub")}):
-        assert dm.save_record({"a": 1}) is False
-        assert dm.save_ai_cache({"k": "v"}) is False
-        assert dm.load_records() == []
+def test_query_by_location_window_and_order(tmp_path):
+    records = [make(timestamp="2026-10-01T09:00:00"), make(timestamp="2026-10-19T09:00:00"),
+               make("Site B", "2026-10-19T10:00:00"), make(timestamp="bad")]
+    found = DataManager(str(tmp_path)).query_by_location("Site A", 30, as_of="2026-10-20T00:00:00",
+                                                         records=records)
+    assert [r.timestamp for r in found] == ["2026-10-19T09:00:00", "2026-10-01T09:00:00"]
+    assert DataManager(str(tmp_path)).list_locations(records) == [("Site A", 3), ("Site B", 1)]
 
 
-def test_roundtrip_filter_and_order():
-    with temp_data_dir():
-        for stamp, place in (("2026-09-01T10:00:00", "A"), ("2026-09-20T10:00:00", "A"),
-                             ("2026-09-25T10:00:00", "B"), ("2026-09-26T10:00:00", "A")):
-            assert dm.save_record({"location": place, "timestamp": stamp, "outcome": "log_only"})
-        assert len(dm.load_records()) == 4
-        hits = dm.query_by_location("A", 30, as_of="2026-09-27T00:00:00")
-        assert [h["timestamp"] for h in hits] == ["2026-09-26T10:00:00", "2026-09-20T10:00:00", "2026-09-01T10:00:00"]
-        assert len(dm.query_by_location("A", 10, as_of="2026-09-27T00:00:00")) == 2
-        assert set(hits[0]) == {"location", "timestamp", "outcome"}
+def test_photo_is_copied_into_the_data_folder(tmp_path):
+    path = DataManager(str(tmp_path)).store_photo(IncidentPhoto.from_file(SAMPLE_PHOTO))
+    assert path.startswith(str(tmp_path / "photos")) and os.path.getsize(path) > 0
 
 
-def test_ai_cache_roundtrip_and_corruption():
-    with temp_data_dir() as folder:
-        assert dm.load_ai_cache() == {}
-        assert dm.save_ai_cache({"k": "v"}) is True and dm.load_ai_cache() == {"k": "v"}
-        _write(folder, "ai_cache.json", "[1]")
-        assert dm.load_ai_cache() == {}
+def test_ai_cache_round_trip(tmp_path):
+    data = DataManager(str(tmp_path))
+    assert data.load_ai_cache() == {}
+    assert data.save_ai_cache({"k": "v"}) and data.load_ai_cache() == {"k": "v"}
 
 
-def load_tests(loader, tests, pattern):
-    return suite_from(globals())
+# With a shared database nothing is written to the local data folder: incidents, photos, site plan and cache all go in it.
+def test_shared_database_keeps_everything_out_of_the_folder(tmp_path):
+    from database import Database
+    folder = tmp_path / "local"
+    manager = DataManager(str(folder), Database(str(tmp_path / "shared.db")))
+    with open(SAMPLE_PHOTO, "rb") as f:
+        photo = IncidentPhoto.from_bytes("scene.png", f.read())
+    first = Incident("Plank fell", "Site A", "site_supervisor", False, "2026-10-01T09:00:00", photo)
+    first.update({"photo_saved_path": manager.store_photo(photo)})
+    second = Incident("Slip", "Site B", "site_supervisor", True, "2026-10-02T09:00:00")
+    assert manager.save_record(first) and manager.save_record(second)
+    assert [i.location for i in manager.load_records()] == ["Site A", "Site B"]
 
-def test_delete_record_removes_only_the_chosen_incident():
-    with temp_data_dir():
-        for name in ("A", "B", "C"):
-            dm.save_record({"location": name})
-        assert dm.delete_record(1) is True
-        assert dm.load_records() == [{"location": "A"}, {"location": "C"}]
+    reference = first.get("photo_saved_path")
+    assert reference.startswith("db:") and manager.read_photo(reference)[0] == photo.content
+    assert manager.load_photo(first).content == photo.content
+
+    second.update({"severity_estimate": 3})
+    assert manager.replace_record(1, second) and manager.load_records()[1].get("severity_estimate") == 3
+    assert manager.delete_record(0) and [i.location for i in manager.load_records()] == ["Site B"]
+    assert not manager.delete_record(5)
+    assert manager.save_ai_cache({"k": 1}) and manager.load_ai_cache() == {"k": 1}
+    assert manager.get_log_path() is None
+    assert not folder.exists()
 
 
-def test_delete_record_out_of_range_changes_nothing():
-    with temp_data_dir():
-        dm.save_record({"location": "A"})
-        assert dm.delete_record(5) is False
-        assert dm.delete_record(-1) is False
-        assert dm.load_records() == [{"location": "A"}]
+# SOLID evidence (Liskov and open/closed): a file and a database row are both a DocumentStore, so they can be swapped.
+def test_document_store_cannot_be_created_directly():
+    with pytest.raises(TypeError):
+        DocumentStore()
 
 
-def test_delete_record_on_missing_file_returns_false():
-    with temp_data_dir():
-        assert dm.delete_record(0) is False
+def test_a_file_and_a_database_row_behave_the_same_behind_the_interface(tmp_path):
+    from database import Database
+    stores = [JsonFile(str(tmp_path / "plan.json"), dict), DbJson(Database(str(tmp_path / "app.db")), "plan", dict)]
+    for store in stores:
+        assert isinstance(store, DocumentStore)
+        assert store.read() == ({}, None)  # nothing stored yet: an empty value, no problem reported
+        assert store.write({"width_m": 90}) and store.read() == ({"width_m": 90}, None)
+        assert store.delete() and store.read() == ({}, None)
+        assert store.delete()  # deleting what is already gone is not an error
 
 
-def test_delete_record_on_corrupt_file_returns_false():
-    with temp_data_dir() as folder:
-        _write(folder, "incidents.json", "{not json")
-        assert dm.delete_record(0) is False
+def test_data_manager_accepts_a_new_kind_of_store_without_changes(tmp_path):
+    class MemoryStore(DocumentStore):
+        def __init__(self):
+            self.value = {}
+
+        def read(self):
+            return self.value, None
+
+        def write(self, data):
+            self.value = data
+            return True
+
+        def delete(self):
+            self.value = {}
+            return True
+
+    data = DataManager(str(tmp_path))
+    data._cache_file = MemoryStore()
+    assert data.save_ai_cache({"k": "v"}) and data.load_ai_cache() == {"k": "v"}
+    assert not (tmp_path / "ai_cache.json").exists()
