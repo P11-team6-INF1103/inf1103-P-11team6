@@ -45,19 +45,21 @@ class GroqSearchClient:
         return parsed
 
     # Tries each model in turn (with caching); raises if no key is set or every model fails.
-    def search_json(self, prompt: str, schema: dict) -> dict:
+    # 'subject' is the incident text inside the prompt: a saved reply for a similarly worded subject is reused.
+    def search_json(self, prompt: str, schema: dict, subject: str | None = None) -> dict:
         api_key = os.getenv("GROQ_API_KEY")
         if not api_key:
             raise RuntimeError("GROQ_API_KEY is not set in .env")
         key = ResponseCache.make_key("groq", prompt)
-        cached = self._cache.get(key)
+        scope = ResponseCache.make_scope("groq", prompt, subject) if subject else None
+        cached = self._cache.lookup(key, scope, subject)
         if isinstance(cached, dict):
             return cached
         last_error = None
         for model in self.MODELS:
             try:
                 result = self._call(model, prompt, schema, api_key)
-                self._cache.put(key, result)
+                self._cache.remember(key, result, scope, subject)
                 return result
             except Exception as error:
                 logger.warning("Groq web search with %s failed: %s", model, error)
