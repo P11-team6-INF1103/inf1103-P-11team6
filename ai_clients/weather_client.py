@@ -2,6 +2,7 @@
 import logging
 
 import requests
+
 from ai_clients.response_cache import ResponseCache
 
 logger = logging.getLogger(__name__)
