@@ -2,6 +2,7 @@ import json
 
 import io_manager as io
 
+from io_helpers.input_validator import InputValidator
 
 def _type(monkeypatch, lines):
     answers = iter(lines)
@@ -202,3 +203,20 @@ def test_blank_enter_is_not_special_for_other_yes_no_questions(monkeypatch):
     prompts = _type(monkeypatch, ["", "", "n"])
     assert io._ask_yes_no("Enter the incident again? (yes/no): ") is False
     assert prompts[1].startswith("Please answer yes or no") and "go back" not in prompts[1]
+
+
+# Sufi
+def test_validator_rules():
+    assert InputValidator.check_description("Worker slipped on a wet floor") is None
+    assert "too short" in InputValidator.check_description("fell")
+    assert "mostly words" in InputValidator.check_description("1234567890 !!!!")
+    assert "repeated" in InputValidator.check_description("aaaa aaaa aaaa")
+    assert InputValidator.check_location("Site A - Block 3") is None
+    assert InputValidator.check_location("12345") is not None
+    assert InputValidator.check_role("site_supervisor") is None
+    assert InputValidator.check_role("x") is not None
+
+
+def test_clean_path_handles_quotes_and_dragged_in_paths():
+    assert InputValidator.clean_path(" '/tmp/my photo.png' ") == "/tmp/my photo.png"
+    assert InputValidator.clean_path("/tmp/my\\ photo.png") == "/tmp/my photo.png"
