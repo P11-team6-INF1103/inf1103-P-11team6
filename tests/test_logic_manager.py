@@ -1,6 +1,17 @@
+import pytest
 import logic_manager as lm
+
 from logic_rules import constants
 from tests._suite import suite_from
+from logic_manager import LogicManager
+from logic_rules.constants import OUTCOME_ACTIONS, SYSTEMIC_INCIDENT_COUNT
+from logic_rules.log_only_rule import LogOnlyRule
+from logic_rules.outcome_rule import OutcomeRule
+from logic_rules.pending_review_rule import PendingReviewRule
+from logic_rules.photo_mismatch_rule import PhotoMismatchRule
+from logic_rules.stop_work_rule import StopWorkRule
+from logic_rules.systemic_risk_rule import SystemicRiskRule
+from models.incident import Incident
 
 
 def test_severity_and_outcome_constants_fit_together():
@@ -276,3 +287,142 @@ def test_screen_incident_decides_accept_or_reject_from_the_ai_flag():
 
 def load_tests(loader, tests, pattern):
     return suite_from(globals())
+
+
+#Sufi
+@pytest.fixture
+def logic():
+    return LogicManager(LogicManager.default_rules())
+
+
+def make(description="Worker fell from scaffold", injury=True, timestamp="2026-10-20T23:00:00", **fields):
+    incident = Incident(description, "Site A", "supervisor", injury, timestamp)
+    incident.update(fields)
+    return incident
+
+
+# Sample enriched record, as if the AI had replied (no live API).
+def enriched(injury=True, **changes):
+    fields = {"hazard_category": "fall_from_height", "injury_treatment": "hospital",
+              "working_at_height": True, "heavy_machinery_present": False, "ppe_status": "not_worn",
+              "lighting_condition": "dark", "similar_incidents": None, "context_flags_error": None}
+    fields.update(changes)
+    return make(injury=injury, **fields)
+
+
+#Sufi
+def test_multi_condition_rule_uses_two_ai_fields():
+    rule = StopWorkRule()
+    assert rule.applies(make(injury=True, severity_estimate=2, likelihood_recurrence="high"), [])
+    assert not rule.applies(make(injury=False, severity_estimate=2, likelihood_recurrence="high"), [])
+    assert not rule.applies(make(injury=True, severity_estimate=2, likelihood_recurrence="low"), [])
+
+
+# Sufi
+def test_screening_rejects_only_when_ai_says_not_an_incident(logic):
+    assert logic.screen_incident(make(is_valid_incident=False, invalid_reason="gibberish")) == (False, "gibberish")
+    assert logic.screen_incident(make(is_valid_incident=None))[0] is True
+
+
+# Sufi
+def test_photo_fills_in_ppe_height_and_machinery(logic):
+    incident = make(photo_analysed=True, ppe_status="unspecified", photo_ppe_status="not_worn",
+                    working_at_height=False, photo_shows_height=True,
+                    heavy_machinery_present=False, photo_shows_machinery=True)
+    logic.apply_photo_evidence(incident)
+    assert incident.get("ppe_status") == "not_worn"
+    assert incident.get("working_at_height") and incident.get("heavy_machinery_present")
+    assert len(incident.get("photo_evidence_used")) == 3
+
+
+def test_description_wins_over_photo_when_it_is_explicit(logic):
+    incident = make(photo_analysed=True, ppe_status="worn", photo_ppe_status="not_worn")
+    logic.apply_photo_evidence(incident)
+    assert incident.get("ppe_status") == "worn" and incident.get("photo_evidence_used") == []
+
+
+def test_photo_evidence_raises_the_severity(logic):
+    without = enriched(ppe_status="unspecified", lighting_condition="daylight", injury_treatment="none")
+    with_photo = enriched(ppe_status="unspecified", lighting_condition="daylight", injury_treatment="none",
+                          photo_analysed=True, photo_ppe_status="not_worn")
+    logic.apply_photo_evidence(with_photo)
+    logic.assess_severity(without, [])
+    logic.assess_severity(with_photo, [])
+    assert with_photo.get("severity_estimate") == without.get("severity_estimate") + 1
+
+
+def test_unanalysed_photo_changes_nothing(logic):
+    incident = make(photo_analysed=False, ppe_status="unspecified", photo_ppe_status="not_worn")
+    logic.apply_photo_evidence(incident)
+    assert incident.get("ppe_status") == "unspecified"
+
+
+def test_mismatched_photo_goes_to_photo_review_but_stop_work_still_wins(logic):
+    low = enriched(injury=False, hazard_category="other", injury_treatment="none", working_at_height=False,
+                   ppe_status="worn", lighting_condition="daylight", photo_matches_description=False)
+    logic.assess_severity(low, [])
+    assert logic.decide_outcome(low, []) == "photo_review"
+    high = enriched(injury_treatment="died", photo_matches_description=False)
+    logic.assess_severity(high, [])
+    assert logic.decide_outcome(high, []) == "stop_work_review"
+
+
+# --- SOLID evidence: OCP and LSP ---
+
+def test_every_rule_is_an_outcome_rule_and_can_be_swapped():
+    for rule in LogicManager.default_rules():
+        assert isinstance(rule, OutcomeRule)
+        assert isinstance(rule.applies(make(), []), bool) and isinstance(rule.outcome, str)
+    only_log = LogicManager([LogOnlyRule()])
+    assert only_log.decide_outcome(make(assessment_error="x"), []) == "log_only"
+
+
+def test_a_new_rule_can_be_added_without_changing_logic_manager():
+    class NightShiftRule(OutcomeRule):
+        @property
+        def outcome(self):
+            return "night_shift_review"
+
+        def applies(self, incident, history):
+            return incident.get("time_of_day") == "night"
+
+    logic = LogicManager([PendingReviewRule(), NightShiftRule(), SystemicRiskRule(), LogOnlyRule()])
+    assert logic.decide_outcome(make(time_of_day="night"), []) == "night_shift_review"
+    assert logic.decide_outcome(make(time_of_day="day"), []) == "log_only"
+    assert PhotoMismatchRule().outcome == "photo_review"
+
+
+def test_outcome_rule_cannot_be_created_directly():
+    with pytest.raises(TypeError):
+        OutcomeRule()
+
+
+# Sufi
+def test_the_systemic_threshold_is_exactly_three_earlier_incidents():
+    rule = SystemicRiskRule()
+    assert SYSTEMIC_INCIDENT_COUNT == 3
+    assert not rule.applies(make(), [object()] * (SYSTEMIC_INCIDENT_COUNT - 1))
+    assert rule.applies(make(), [object()] * SYSTEMIC_INCIDENT_COUNT)
+
+
+# Sufi
+def test_rules_are_asked_in_priority_order(logic):
+    broken = make(assessment_error="AI down", severity_estimate=5, photo_matches_description=False)
+    assert logic.decide_outcome(broken, [object()] * 3) == "pending_review"  # a person must look before anything else
+    severe = make(severity_estimate=5, photo_matches_description=False)
+    assert logic.decide_outcome(severe, [object()] * 3) == "stop_work_review"  # Rule 1 before the photo and Rule 2
+    mismatch = make(severity_estimate=1, photo_matches_description=False)
+    assert logic.decide_outcome(mismatch, [object()] * 3) == "photo_review"  # the photo before Rule 2
+
+
+# Sufi
+def test_with_no_rules_the_outcome_is_manual_review_not_a_crash():
+    assert LogicManager([]).decide_outcome(make(), []) == "pending_review"
+
+
+# Sufi
+def test_a_missing_or_wrong_typed_ai_value_never_breaks_a_rule():
+    for fields in ({}, {"severity_estimate": None}, {"likelihood_recurrence": None}):
+        assert not StopWorkRule().applies(make(injury=True, **fields), [])  # no usable AI value: no stop-work, no error
+    assert not PhotoMismatchRule().applies(make(photo_matches_description=None), [])
+    assert not PhotoMismatchRule().applies(make(), [])
