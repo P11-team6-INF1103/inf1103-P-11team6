@@ -3,6 +3,7 @@ import logging
 import os
 
 import requests
+
 from ai_clients.constants import AI_SEED
 from ai_clients.json_reply import JsonReply
 from ai_clients.response_cache import ResponseCache
