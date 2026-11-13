@@ -761,3 +761,44 @@ class IOManager:
             thread.join()
             sys.stdout.write("\r" + " " * (len(message) + 6) + "\r")
             sys.stdout.flush()
+
+    # Asks until the answer is yes or no; returns None if allow_back is set and Enter is pressed twice.
+    def _ask_yes_no(self, prompt: str, allow_back: bool = False) -> bool | None:
+        answer = self._read(prompt).strip().lower()
+        blank_before = False
+        while answer not in ("yes", "no", "y", "n"):
+            if allow_back and answer == "":
+                if blank_before:
+                    return None
+                blank_before = True
+                answer = self._read("Please answer yes or no, or press Enter again to go back: ").strip().lower()
+            else:
+                blank_before = False
+                answer = self._read("Please answer yes or no: ").strip().lower()
+        return answer in ("yes", "y")
+
+    # Asks whether to enter a rejected incident again.
+    def ask_try_again(self) -> bool:
+        return self._ask_yes_no("Enter the incident again? (yes/no): ")
+
+    # Warns that the incident is not on disk and asks whether to try saving again.
+    def ask_retry_save(self) -> bool:
+        print("\n" + "!" * 60)
+        print("  INCIDENT NOT SAVED: it could not be written to disk and")
+        print("  will be lost when you exit the program.")
+        print("!" * 60)
+        return self._ask_yes_no("Try saving again? (yes/no): ")
+
+    # Asks for a number from 1 to count; returns None if the user presses Enter, Ctrl+C or closes the input.
+    def _ask_number(self, prompt: str, count: int) -> int | None:
+        while True:
+            try:
+                choice = self._read(prompt).strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return None
+            if choice == "":
+                return None
+            if choice.isdigit() and 1 <= int(choice) <= count:
+                return int(choice)
+            print(f"Please enter a number from 1 to {count}.")
