@@ -1,6 +1,7 @@
 # Darrel
-from ai_clients.groq_search_client import GroqSearchClient
 from ai_steps.enrichment_step import EnrichmentStep
+
+from ai_clients.groq_search_client import GroqSearchClient
 from models.incident import Incident
 
 
