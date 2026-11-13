@@ -1,6 +1,251 @@
+# Daniel
 import json
 import os
 from datetime import datetime, timedelta
+
+from data_stores.db_json import DbJson
+from data_stores.document_store import DocumentStore
+from data_stores.json_file import JsonFile
+from database import Database
+from models.incident import Incident
+from models.incident_photo import IncidentPhoto
+from models.photo_error import PhotoError
+
+
+class DataManager:
+    # A saved photo's reference starts with this when the photo is in the database instead of a file.
+    DB_PHOTO_PREFIX = "db:"
+
+    # The data folder: INCIDENT_DATA_DIR if set, otherwise ./data next to this file.
+    @staticmethod
+    def default_folder() -> str:
+        return os.environ.get("INCIDENT_DATA_DIR") or os.path.join(os.path.dirname(__file__), "data")
+
+    # Creates and owns the JSON files it manages (composition). Given a shared database (Postgres), the incidents,
+    # AI cache and site plan live in it instead of in files, so they survive a server restart.
+    def __init__(self, folder: str | None = None, shared_database: Database | None = None) -> None:
+        self._folder = folder or self.default_folder()
+        self._shared = shared_database
+        self._database = shared_database
+        self._incidents_file = JsonFile(os.path.join(self._folder, "incidents.json"), list)
+        self._cache_file: DocumentStore = JsonFile(os.path.join(self._folder, "ai_cache.json"), dict)
+        self._plan_file: DocumentStore = JsonFile(os.path.join(self._folder, "site_plan.json"), dict)
+        if shared_database is not None:
+            self._cache_file = DbJson(shared_database, "ai_cache", dict)
+            self._plan_file = DbJson(shared_database, "site_plan", dict)
+
+    # The database for the priority workflow: the shared one, or a SQLite file in the data folder.
+    @property
+    def database(self) -> Database:
+        if self._database is None:
+            self._database = Database(self.database_path)
+        return self._database
+
+    # The SQLite file with each incident's priority and resolved status.
+    @property
+    def database_path(self) -> str:
+        return os.path.join(self._folder, "app.db")
+
+    # True when everything is kept in the shared database rather than in local files.
+    @property
+    def uses_database(self) -> bool:
+        return self._shared is not None
+
+    # Path of app.log, or None if the data folder cannot be created (or there is no local data at all).
+    def get_log_path(self) -> str | None:
+        if self._shared:
+            return None
+        try:
+            os.makedirs(self._folder, exist_ok=True)
+        except OSError:
+            return None
+        return os.path.join(self._folder, "app.log")
+
+    # Says what is wrong with the incidents file, or None if it is fine or missing.
+    def check_records_file(self) -> str | None:
+        if self._shared:
+            return None
+        _data, problem = self._incidents_file.read()
+        return problem
+
+    # The saved incidents as plain dicts, or None if the file exists but is unreadable.
+    def _read_record_dicts(self) -> list | None:
+        data, problem = self._incidents_file.read()
+        if problem and os.path.exists(self._incidents_file.path):
+            return None
+        return [item for item in data if isinstance(item, dict)]
+
+    # Loads every saved incident; a missing or corrupt file gives an empty list, and broken entries are skipped.
+    def load_records(self) -> list[Incident]:
+        if self._shared:
+            return self._load_shared()
+        data, _problem = self._incidents_file.read()
+        incidents = []
+        for item in data:
+            try:
+                incidents.append(Incident.from_dict(item))
+            except ValueError:
+                continue
+        return incidents
+
+    # Appends one incident; returns False and leaves the file alone if it is corrupt or cannot be written.
+    def save_record(self, incident: Incident) -> bool:
+        if self._shared:
+            return self._shared_write(
+                "INSERT INTO incidents (timestamp, location, data) VALUES (?, ?, ?)",
+                (incident.timestamp, incident.location, self._dump(incident)))
+        records = self._read_record_dicts()
+        if records is None:
+            return False
+        records.append(incident.to_dict())
+        return self._incidents_file.write(records)
+
+    # Replaces the incident at a 0-based position (an edit or revert); returns False if it could not be written.
+    def replace_record(self, index: int, incident: Incident) -> bool:
+        if self._shared:
+            return self._shared_write(
+                "UPDATE incidents SET timestamp = ?, location = ?, data = ? WHERE id = ?",
+                (incident.timestamp, incident.location, self._dump(incident)), index=index)
+        records = self._read_record_dicts()
+        if records is None or not 0 <= index < len(records):
+            return False
+        records[index] = incident.to_dict()
+        return self._incidents_file.write(records)
+
+    # Removes the incident at a 0-based position; returns False if the file is corrupt, the index is wrong or it cannot be written.
+    def delete_record(self, index: int) -> bool:
+        if self._shared:
+            return self._shared_write("DELETE FROM incidents WHERE id = ?", (), index=index)
+        records = self._read_record_dicts()
+        if records is None or not 0 <= index < len(records):
+            return False
+        del records[index]
+        return self._incidents_file.write(records)
+
+    @staticmethod
+    def _dump(incident: Incident) -> str:
+        return json.dumps(incident.to_dict(), default=str, sort_keys=True)
+
+    # Every saved incident in the order it was saved; a broken row is skipped.
+    def _load_shared(self) -> list[Incident]:
+        try:
+            with self._shared.connect() as connection:
+                rows = connection.execute("SELECT data FROM incidents ORDER BY id").fetchall()
+        except Exception:
+            return []
+        incidents = []
+        for row in rows:
+            try:
+                incidents.append(Incident.from_dict(json.loads(row["data"])))
+            except (ValueError, TypeError):
+                continue
+        return incidents
+
+    # Runs one write. With index (0-based, in save order) it targets that incident's row, passed last as the id.
+    def _shared_write(self, sql: str, params: tuple, index: int | None = None) -> bool:
+        try:
+            with self._shared.connect() as connection:
+                if index is not None:
+                    ids = [row["id"] for row in connection.execute("SELECT id FROM incidents ORDER BY id").fetchall()]
+                    if not 0 <= index < len(ids):
+                        return False
+                    params = (*params, ids[index])
+                connection.execute(sql, params)
+            return True
+        except Exception:
+            return False
+
+    # Copies an uploaded photo into data/photos so the evidence is kept; returns the saved path, or None on failure.
+    def store_photo(self, photo: IncidentPhoto) -> str | None:
+        if self._shared:
+            try:
+                with self._shared.connect() as connection:
+                    connection.execute(
+                        "INSERT INTO photos (fingerprint, mime_type, content) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
+                        (photo.fingerprint(), photo.mime_type, photo.content))
+            except Exception:
+                return None
+            return self.DB_PHOTO_PREFIX + photo.fingerprint()
+        extension = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}[photo.mime_type]
+        path = os.path.join(self._folder, "photos", photo.fingerprint() + extension)
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as f:
+                f.write(photo.content)
+        except OSError:
+            return None
+        return path
+
+    # (bytes, MIME type) of a photo stored in the database from its "db:<fingerprint>" reference, or None.
+    def read_photo(self, reference: str) -> tuple[bytes, str] | None:
+        if not self._shared or not str(reference).startswith(self.DB_PHOTO_PREFIX):
+            return None
+        try:
+            with self._shared.connect() as connection:
+                row = connection.execute("SELECT mime_type, content FROM photos WHERE fingerprint = ?",
+                                         (reference[len(self.DB_PHOTO_PREFIX):],)).fetchone()
+        except Exception:
+            return None
+        return (bytes(row["content"]), row["mime_type"]) if row else None
+
+    # Loads the photo saved for an incident again, or None if it has no photo or the file is gone or unusable.
+    def load_photo(self, incident: Incident) -> IncidentPhoto | None:
+        path = incident.get("photo_saved_path")
+        if not path:
+            return None
+        if path.startswith(self.DB_PHOTO_PREFIX):
+            stored = self.read_photo(path)
+            if not stored:
+                return None
+            extension = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}.get(stored[1], ".png")
+            try:
+                return IncidentPhoto.from_bytes(str(incident.get("photo_file") or "photo" + extension), stored[0])
+            except PhotoError:
+                return None
+        try:
+            return IncidentPhoto.from_file(path)
+        except PhotoError:
+            return None
+
+    # Loads the saved AI reply cache, or an empty dict if it is missing or corrupt.
+    def load_ai_cache(self) -> dict:
+        data, _problem = self._cache_file.read()
+        return data
+
+    # Saves the AI reply cache; returns False if it cannot be written.
+    def save_ai_cache(self, cache: dict) -> bool:
+        return self._cache_file.write(cache)
+
+    # Incidents at one location in the last N days, newest first; records with a bad timestamp are skipped.
+    def query_by_location(self, location: str, days: int, as_of: str | None = None,
+                          records: list[Incident] | None = None) -> list[Incident]:
+        try:
+            reference = datetime.fromisoformat(as_of) if as_of else datetime.now()
+        except (TypeError, ValueError):
+            reference = datetime.now()
+        cutoff = reference - timedelta(days=days)
+        matches = []
+        for incident in self.load_records() if records is None else records:
+            if incident.location != location:
+                continue
+            try:
+                when = datetime.fromisoformat(incident.timestamp)
+            except (TypeError, ValueError):
+                continue
+            if when >= cutoff:
+                matches.append(incident)
+        matches.sort(key=lambda item: item.timestamp, reverse=True)
+        return matches
+
+    # Saved locations with their incident counts, sorted by name.
+    def list_locations(self, records: list[Incident] | None = None) -> list[tuple[str, int]]:
+        counts = {}
+        for incident in self.load_records() if records is None else records:
+            location = incident.location
+            if isinstance(location, str) and location.strip():
+                counts[location] = counts.get(location, 0) + 1
+        return sorted(counts.items(), key=lambda item: (item[0].lower(), item[0]))
+
 
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
