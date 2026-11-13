@@ -1,7 +1,6 @@
 import json
 
 import io_manager as io
-
 from io_helpers.input_validator import InputValidator
 
 
