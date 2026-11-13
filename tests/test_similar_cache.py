@@ -1,6 +1,7 @@
 # Lennart
 import pytest
 
+from ai_clients.constants import MAX_SIMILAR_PER_SCOPE
 from ai_clients.gemini_client import GeminiClient
 from ai_clients.response_cache import ResponseCache
 from ai_clients.similarity_matcher import SimilarityMatcher
@@ -101,7 +102,26 @@ def test_refresh_makes_every_lookup_miss_but_still_saves_new_replies():
     assert cache.get("k2") == "weather"
 
 
-# --- The clients and the hazard step ---
+def test_saved_wordings_survive_a_save_and_load_and_old_caches_still_load():
+    cache = ResponseCache()
+    cache.remember("k1", "reply", "scope", FALL)
+    saved = cache.export()
+    assert saved["k1"] == "reply"
+    reloaded = ResponseCache(saved)
+    assert reloaded.lookup("other", "scope", FALL.lower()) == "reply"
+    assert ResponseCache({"gemini:abc": "text"}).get("gemini:abc") == "text"  # a cache saved before this feature
+    assert "__similar__" not in ResponseCache({"gemini:abc": "text"}).export()
+    assert ResponseCache({"__similar__": "damaged"}).export() == {}
+
+
+def test_only_the_newest_wordings_are_kept_per_scope():
+    cache = ResponseCache()
+    for number in range(MAX_SIMILAR_PER_SCOPE + 5):
+        cache.remember(f"k{number}", f"reply {number}", "scope", f"unique subject {number}x")
+    assert len(cache.export()["__similar__"]["scope"]) == MAX_SIMILAR_PER_SCOPE
+
+
+# --- The Gemini client ---
 
 def test_gemini_reuses_a_reply_for_a_similarly_worded_subject_without_calling_the_api():
     sdk = FakeSdk(['["fall"]', '["cut"]'])
