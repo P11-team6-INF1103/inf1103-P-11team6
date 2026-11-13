@@ -100,3 +100,12 @@ class ResponseCache:
     def stats(self) -> dict:
         with self.__lock:
             return dict(self.__counts)
+
+# Lennart
+    # A copy of every entry, and the saved wordings, so the data manager can save them.
+    def export(self) -> dict:
+        with self.__lock:
+            saved = dict(self.__entries)
+            if self.__similar:
+                saved[_SIMILAR_KEY] = {scope: [dict(item) for item in items] for scope, items in self.__similar.items()}
+            return saved
