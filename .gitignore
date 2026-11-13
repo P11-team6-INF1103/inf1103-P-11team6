@@ -1,44 +1,30 @@
+# Sufi
+
 # Environment / secrets
 .env
 
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
-build/
-dist/
-*.egg-info/
-.eggs/
-
-# Virtual environments
-venv/
 .venv/
-env/
-ENV/
-
-# Testing / coverage
+venv/
 .pytest_cache/
-.coverage
-htmlcov/
-.tox/
+.ruff_cache/
 
-# IDE / editor
+# IDE / OS
 .vscode/
 .idea/
-*.swp
-
-# OS
 .DS_Store
 ._*
-Thumbs.db
-
-# Logs
-*.log
 
 # Runtime data (written by every run, never committed)
-data/incidents.json
-data/ai_cache.json
-data/*.corrupt-*
-data/*.tmp
+*.log
+data/*
+!data/.gitkeep
+photos/*
+!photos/.gitkeep
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
