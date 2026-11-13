@@ -1,12 +1,18 @@
 # Lennart
+import sys
+
 import pytest
 
+import migrate_to_database
+from data_manager import DataManager
 from database import Database
 from db.database_unavailable import DatabaseUnavailable
 from db.postgres_connection import PostgresConnection
+from models.incident import Incident
 from tests.doubles.dead_pool import DeadPool
 from tests.doubles.fake_pool import FakePool
 from tests.doubles.recording_connection import RecordingConnection
+from workflow import WorkflowStore
 
 
 def test_sqlite_database_creates_every_table_and_can_be_opened_twice(tmp_path):
@@ -66,3 +72,33 @@ def test_an_unwritable_sqlite_location_gives_a_clean_error(tmp_path):
     blocker.write_text("x", encoding="utf-8")
     with pytest.raises(DatabaseUnavailable):
         Database(str(blocker / "inside" / "app.db"))
+
+
+def test_migration_copies_local_data_once(tmp_path, monkeypatch, capsys):
+    local = DataManager(str(tmp_path / "local"))
+    for stamp, place in (("2026-10-01T09:00:00", "Site A"), ("2026-10-02T09:00:00", "Site B")):
+        local.save_record(Incident("Plank fell", place, "site_supervisor", False, stamp))
+    WorkflowStore(local.database).set_priority("2026-10-01T09:00:00", 2)
+
+    target = str(tmp_path / "remote.db")
+    monkeypatch.setenv("INCIDENT_DATA_DIR", str(tmp_path / "local"))
+    monkeypatch.setenv("DATABASE_URL", target)
+    monkeypatch.setattr(migrate_to_database, "load_dotenv", lambda: None)  # never read the real .env
+    monkeypatch.setattr(sys, "argv", ["migrate_to_database.py"])
+    assert migrate_to_database.Migration.main() == 0
+    assert migrate_to_database.Migration.main() == 0  # a second run adds nothing
+
+    remote = DataManager(str(tmp_path / "unused"), Database(target))
+    assert [i.location for i in remote.load_records()] == ["Site A", "Site B"]
+    with remote.database.connect() as connection:
+        priorities = [r["priority"] for r in connection.execute("SELECT priority FROM incident_workflow").fetchall()]
+    assert priorities == [2]
+    assert "already has some" in capsys.readouterr().out
+
+
+def test_migration_stops_with_a_message_when_there_is_no_database_url(monkeypatch, capsys):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setattr(migrate_to_database, "load_dotenv", lambda: None)
+    monkeypatch.setattr(sys, "argv", ["migrate_to_database.py"])
+    assert migrate_to_database.Migration.main() == 1
+    assert "DATABASE_URL is not set" in capsys.readouterr().out
