@@ -10,7 +10,9 @@ from datetime import datetime
 
 from io_helpers.draft_command import DraftCommand
 from io_helpers.report_printer import ReportPrinter
+from models.constants import KEEP_PHOTO
 from models.incident import Incident
+from models.incident_photo import IncidentPhoto
 
 _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
@@ -796,6 +798,67 @@ class IOManager:
             print()
             return "7"
         return choice
+
+    # Text for one answer on the review screen.
+    @staticmethod
+    def _draft_text(field: str, value: object, original: dict | None) -> str:
+        if field == "injury":
+            return "Yes" if value else "No"
+        if field == "photo":
+            if value == KEEP_PHOTO:
+                return (original or {}).get("photo") or "none"
+            if isinstance(value, IncidentPhoto):
+                return value.file_name
+            return value if isinstance(value, str) and value else "none"
+        return str(value)
+
+    # Shows every answer, and for an edit what each changed field used to be.
+    def _show_draft(self, answers: dict, original: dict | None) -> None:
+        print("\n--- Review ---" if original is None else "\n--- Review your changes ---")
+        for number, field in enumerate(self._DRAFT_FIELDS, start=1):
+            text = self._draft_text(field, answers[field], original)
+            was = ""
+            if original is not None:
+                before = self._draft_text(field, original[field], original)
+                if before != text or (field == "photo" and isinstance(answers[field], IncidentPhoto)):
+                    was = f"   (was: {before})"
+            print(f"  {number}. {self._DRAFT_LABELS[field]:<15}{text}{was}")
+
+    # Asks whether to send the form, change an answer or throw it away.
+    def _ask_review(self, answers: dict, original: dict | None) -> str:
+        self._show_draft(answers, original)
+        if original is not None:
+            print("Nothing is changed or sent to the AI until you choose 'send'.")
+            question = "Save these changes and run the AI again? (send/edit/cancel): "
+        else:
+            print("Nothing is sent to the AI or saved until you choose 'send'.")
+            question = "Send this report? (send/edit/cancel): "
+        while True:
+            choice = self._read(question).strip().lower()
+            if choice in ("send", "s", "yes", "y"):
+                return "send"
+            if choice in ("edit", "e"):
+                return "edit"
+            if choice in ("cancel", "c", "no", "n"):
+                return "cancel"
+            question = "Please type send, edit or cancel: "
+
+    # Applies /undo (take back the last answer) or /redo (put it back).
+    def _apply_command(self, name: str, answers: dict, redo: list) -> None:
+        if name == "undo":
+            if not answers:
+                print("Nothing to undo.")
+                return
+            field, value = answers.popitem()
+            redo.append((field, value))
+            print(f"Undid '{self._DRAFT_LABELS[field]}'. You can answer it again, or type /redo to put it back.")
+        else:
+            if not redo:
+                print("Nothing to redo.")
+                return
+            field, value = redo.pop()
+            answers[field] = value
+            print(f"Restored '{self._DRAFT_LABELS[field]}': {self._draft_text(field, value, None)}")
 
     # Asks whether to enter a rejected incident again.
     def ask_try_again(self) -> bool:
