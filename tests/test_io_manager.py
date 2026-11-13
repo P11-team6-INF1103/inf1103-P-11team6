@@ -1,8 +1,8 @@
 import json
 
 import io_manager as io
-
 from io_helpers.input_validator import InputValidator
+
 
 def _type(monkeypatch, lines):
     answers = iter(lines)
