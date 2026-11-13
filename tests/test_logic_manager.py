@@ -1,10 +1,9 @@
 import pytest
-import logic_manager as lm
 
-from logic_rules import constants
-from tests._suite import suite_from
+import logic_manager as lm
 from logic_manager import LogicManager
-from logic_rules.constants import OUTCOME_ACTIONS, SYSTEMIC_INCIDENT_COUNT
+from logic_rules import constants
+from logic_rules.constants import SYSTEMIC_INCIDENT_COUNT
 from logic_rules.log_only_rule import LogOnlyRule
 from logic_rules.outcome_rule import OutcomeRule
 from logic_rules.pending_review_rule import PendingReviewRule
@@ -12,6 +11,7 @@ from logic_rules.photo_mismatch_rule import PhotoMismatchRule
 from logic_rules.stop_work_rule import StopWorkRule
 from logic_rules.systemic_risk_rule import SystemicRiskRule
 from models.incident import Incident
+from tests._suite import suite_from
 
 
 def test_severity_and_outcome_constants_fit_together():
