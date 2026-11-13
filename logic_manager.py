@@ -20,6 +20,7 @@ from logic_rules.stop_work_rule import StopWorkRule
 from logic_rules.systemic_risk_rule import SystemicRiskRule
 from models.incident import Incident
 
+
 #Sufi
 class LogicManager:
     # Whole-word match only: "window" must not count as "wind", "constraint" as
@@ -93,13 +94,13 @@ class LogicManager:
 
     # Darrel
     # True if the description mentions weather, so the weather API should be called.
-    def is_weather_relevant(record: dict) -> bool:
-        return bool(_WEATHER_WORDS.search(str(record.get("description", ""))))
+    def is_weather_relevant(self, record: dict) -> bool:
+        return bool(self._WEATHER_WORDS.search(str(record.get("description", ""))))
 
 
     # Decides which optional lookups to run: weather when it matters, otherwise similar past incidents.
-    def plan_enrichment(record: dict) -> dict:
-        relevant = is_weather_relevant(record)
+    def plan_enrichment(self, record: dict) -> dict:
+        relevant = self.is_weather_relevant(record)
         return {"run_weather": relevant, "run_similar": not relevant}
 
 
@@ -124,12 +125,12 @@ class LogicManager:
 
 
     # Adds what needs no API (weather relevance, lookup plan, time of day, monsoon season); returns a new dict.
-    def derive_context(incident: dict) -> dict:
+    def derive_context(self, incident: dict) -> dict:
         result = dict(incident)
-        result["weather_relevant"] = is_weather_relevant(incident)
-        result.update(plan_enrichment(incident))
-        result["time_of_day"] = get_time_of_day(incident.get("timestamp"))
-        result["monsoon_season"] = get_monsoon_season(incident.get("timestamp"))
+        result["weather_relevant"] = self.is_weather_relevant(incident)
+        result.update(self.plan_enrichment(incident))
+        result["time_of_day"] = self.get_time_of_day(incident.get("timestamp"))
+        result["monsoon_season"] = self.get_monsoon_season(incident.get("timestamp"))
         return result
 
 
@@ -163,44 +164,44 @@ class LogicManager:
 
 
     # Adds lighting_condition from the time of day and the weather; returns a new dict.
-    def apply_lighting(enriched: dict) -> dict:
+    def apply_lighting(self, enriched: dict) -> dict:
         lit = dict(enriched)
-        lit["lighting_condition"] = classify_lighting_condition(
+        lit["lighting_condition"] = self.classify_lighting_condition(
             enriched.get("time_of_day", "day"), enriched.get("condition")
         )
         return lit
 
 
     # The non-empty strings in a list, stripped and lower-cased; anything else is ignored.
-    def _text_list(value: object) -> list[str]:
+    def _text_list(self, value: object) -> list[str]:
         if not isinstance(value, list):
             return []
         return [item.strip().lower() for item in value if isinstance(item, str) and item.strip()]
 
 
     # Adds working_at_height and heavy_machinery_present from the AI's elevated-place and equipment lists; returns a new dict.
-    def apply_hazard_rules(enriched: dict) -> dict:
+    def apply_hazard_rules(self, enriched: dict) -> dict:
         result = dict(enriched)
-        equipment = _text_list(enriched.get("equipment_mentioned"))
-        places = _text_list(enriched.get("elevated_places"))
+        equipment = self._text_list(enriched.get("equipment_mentioned"))
+        places = self._text_list(enriched.get("elevated_places"))
         result["working_at_height"] = bool(places)
         result["heavy_machinery_present"] = any(
-            word in name for name in equipment for word in _HEAVY_MACHINERY_WORDS
+            word in name for name in equipment for word in self._HEAVY_MACHINERY_WORDS
         )
         return result
 
 
     # Daniel
     # Starting severity and its reasons from what happened to the person (5 if someone died).
-    def _score_injury(record: dict) -> tuple[int, list[str]]:
+    def _score_injury(self, record: dict) -> tuple[int, list[str]]:
         treatment = record.get("injury_treatment", "unspecified")
         if treatment == "died":
             return MAX_SEVERITY, ["Someone died (set to 5)"]
         severity, reasons = 1, []
-        points = _INJURY_POINTS.get(treatment, 0)
+        points = self._INJURY_POINTS.get(treatment, 0)
         if points:
             severity += points
-            reasons.append(f"{_INJURY_LABELS[treatment]} (+{points})")
+            reasons.append(f"{self._INJURY_LABELS[treatment]} (+{points})")
         if record.get("injury") and treatment in ("none", "unspecified"):
             severity += 1
             reasons.append("Someone was hurt, but how badly wasn't described (+1)")
@@ -209,17 +210,17 @@ class LogicManager:
 
     # Daniel
     # Points added or removed by the hazard type and the site conditions, with a reason for each.
-    def _score_conditions(record: dict, similar_escalated: bool) -> tuple[int, list[str]]:
+    def _score_conditions(self, record: dict, similar_escalated: bool) -> tuple[int, list[str]]:
         at_height = record.get("working_at_height")
         machinery = record.get("heavy_machinery_present")
         ppe_not_worn = record.get("ppe_status") == "not_worn"
         checks = [
-            (record.get("hazard_category") in _TYPE_A_HAZARDS, 1, "One of MOM's highest-risk hazard types"),
+            (record.get("hazard_category") in self._TYPE_A_HAZARDS, 1, "One of MOM's highest-risk hazard types"),
             (at_height, 1, "Working at height"),
             (machinery and ppe_not_worn, 1, "Heavy machinery around, without safety gear"),
             (ppe_not_worn, 1, "Safety gear (PPE) not worn"),
             (record.get("ppe_status") == "worn", -1, "Safety gear (PPE) was worn"),
-            (record.get("lighting_condition") in _POOR_LIGHT_LEVELS, 1, "Poor lighting or dark"),
+            (record.get("lighting_condition") in self._POOR_LIGHT_LEVELS, 1, "Poor lighting or dark"),
             (record.get("condition") == "rain" and (at_height or machinery), 1,
             "Raining during work at height or with machinery"),
             (similar_escalated, 1, "A similar past incident on our sites was escalated"),
@@ -234,10 +235,10 @@ class LogicManager:
 
     # Daniel
     # 'low', 'medium' or 'high' chance of this kind of incident happening again.
-    def _recurrence_level(severity: int, record: dict, history: list, similar_escalated: bool) -> str:
-        if severity >= HIGH_SEVERITY or len(history) >= SYSTEMIC_INCIDENT_COUNT or similar_escalated:
+    def _recurrence_level(self, severity: int, record: dict, history: list, similar_escalated: bool) -> str:
+        if severity >= self.HIGH_SEVERITY or len(history) >= self.SYSTEMIC_INCIDENT_COUNT or similar_escalated:
             return "high"
-        if record.get("lighting_condition") in _POOR_LIGHT_LEVELS or history:
+        if record.get("lighting_condition") in self._POOR_LIGHT_LEVELS or history:
             return "medium"
         return "low"
 
@@ -246,7 +247,7 @@ class LogicManager:
     # Scores the incident (hazard type, severity 1-5, recurrence, reasons); sets assessment_error instead of guessing if the AI failed.
     # weather_data is no longer read (rain comes from the record's own condition); it stays only so the current
     # main.py call keeps working, and goes when this moves into LogicManager. Returns a new dict.
-    def assess_severity(record: dict, weather_data: dict | None = None, history: list | None = None) -> dict:
+    def assess_severity(self, record: dict, weather_data: dict | None = None, history: list | None = None) -> dict:
         history = history or []
         result = dict(record)
         if record.get("context_flags_error") or record.get("hazard_category") is None:
@@ -258,18 +259,18 @@ class LogicManager:
             })
             return result
         similar = record.get("similar_incidents") or []
-        similar_escalated = any(item.get("outcome") in _ESCALATED_OUTCOMES for item in similar)
-        severity, reasons = _score_injury(record)
-        change, more_reasons = _score_conditions(record, similar_escalated)
-        severity = max(1, min(severity + change, MAX_SEVERITY))
+        similar_escalated = any(item.get("outcome") in self._ESCALATED_OUTCOMES for item in similar)
+        severity, reasons = self._score_injury(record)
+        change, more_reasons = self._score_conditions(record, similar_escalated)
+        severity = max(1, min(severity + change, self.MAX_SEVERITY))
         injured = record.get("injury") or record.get("injury_treatment") in ("first_aid", "hospital", "died")
-        if injured and severity < INJURY_MIN_SEVERITY:
+        if injured and severity < self.INJURY_MIN_SEVERITY:
             severity = INJURY_MIN_SEVERITY
             reasons.append(f"Someone was injured, so severity is at least {INJURY_MIN_SEVERITY}")
         result.update({
             "hazard_type": record.get("hazard_category"),
             "severity_estimate": severity,
-            "likelihood_recurrence": _recurrence_level(severity, record, history, similar_escalated),
+            "likelihood_recurrence": self._recurrence_level(severity, record, history, similar_escalated),
             "severity_reasons": reasons + more_reasons,
             "assessment_error": None,
         })
@@ -286,12 +287,6 @@ class LogicManager:
 
 
     # Sufi
-    # Rule 2: this location already has 3 or more incidents in the history window.
-    def is_systemic_risk(record: dict, history: list) -> bool:
-        return len(history) >= SYSTEMIC_INCIDENT_COUNT
-
-
-    # Sufi
     # Picks the outcome in order: pending_review, stop_work_review, systemic_escalation, log_only.
     def decide_outcome(self, incident: Incident, history: list) -> str:
         for rule in self._rules:
@@ -301,13 +296,3 @@ class LogicManager:
         incident.update({"outcome": "pending_review"})
         return "pending_review"
 
-
-    # Rejects an incident only when the AI said it is not a real safety incident; accepts it if the AI is down.
-    def screen_incident(record: dict) -> dict:
-        if not isinstance(record, dict) or record.get("is_valid_incident") is not False:
-            return {"accepted": True, "reject_reason": None}
-        reason = str(record.get("invalid_reason") or "").strip()
-        return {
-            "accepted": False,
-            "reject_reason": reason or "it does not describe a workplace safety incident",
-        }
