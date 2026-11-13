@@ -8,7 +8,7 @@ from typing import ClassVar
 import requests
 from google import genai
 
-from ai_clients import GeminiClient
+from ai_clients.gemini_client import GeminiClient
 from models.incident import Incident
 
 # from site_plan import ELEMENT_KINDS, SitePlan, SitePlanError (New Import for later)
