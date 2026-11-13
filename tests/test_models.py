@@ -3,6 +3,7 @@ import os
 
 import pytest
 
+from models.edit_result import EditResult
 from models.incident import Incident
 from models.incident_photo import IncidentPhoto
 from models.photo_error import PhotoError
@@ -52,3 +53,11 @@ def test_incident_protects_typed_fields_and_round_trips():
 def test_from_dict_rejects_broken_records():
     with pytest.raises(ValueError):
         Incident.from_dict({"description": "no location"})
+
+
+def test_edit_result_defaults_and_carries_both_versions():
+    assert EditResult("unchanged").incident is None and EditResult("unchanged").message is None
+    before = Incident("Slip", "Site A", "supervisor", True, "2026-10-20T09:00:00")
+    after = Incident.from_dict(before.to_dict())
+    result = EditResult("updated", incident=after, previous=before)
+    assert result.status == "updated" and result.previous is before and result.incident is after
