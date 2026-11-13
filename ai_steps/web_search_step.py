@@ -50,7 +50,7 @@ class WebSearchStep(EnrichmentStep):
 
     # Runs the Groq web search and keeps at most 3 incidents that have a summary and a web link.
     def run(self, incident: Incident, history: list[Incident]) -> dict:
-        parsed = self._search.search_json(self.build_prompt(incident), self.SCHEMA)
+        parsed = self._search.search_json(self.build_prompt(incident), self.SCHEMA, subject=incident.description)
         keys = self.SCHEMA["properties"]["incidents"]["items"]["required"]
         incidents = [
             {key: item[key].strip() for key in keys}
