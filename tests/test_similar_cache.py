@@ -3,6 +3,7 @@ import pytest
 
 from ai_clients.constants import MAX_SIMILAR_PER_SCOPE
 from ai_clients.gemini_client import GeminiClient
+from ai_clients.groq_search_client import GroqSearchClient
 from ai_clients.response_cache import ResponseCache
 from ai_clients.similarity_matcher import SimilarityMatcher
 
@@ -149,3 +150,19 @@ def test_gemini_ignores_a_saved_similar_reply_that_no_longer_fits_the_schema():
     sdk = FakeSdk(['["fresh"]'])
     assert GeminiClient(cache, sdk).ask_json(prompt_for(FALL.lower()), SCHEMA, subject=FALL.lower()) == ["fresh"]
     assert len(sdk.inputs) == 1
+
+
+def test_groq_reuses_a_similar_search(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    calls = []
+
+    class Counting(GroqSearchClient):
+        def _call(self, model, prompt, schema, api_key):
+            calls.append(prompt)
+            return {"industry_context": "ctx", "incidents": []}
+
+    client = Counting(ResponseCache())
+    client.search_json(f"Incident: {FALL}\nHazard: fall", {}, subject=FALL)
+    client.search_json(f"Incident: {FALL.upper()}\nHazard: fall", {}, subject=FALL.upper())
+    client.search_json(f"Incident: {FALL}\nHazard: electrical", {}, subject=FALL)  # another hazard: asked again
+    assert len(calls) == 2
