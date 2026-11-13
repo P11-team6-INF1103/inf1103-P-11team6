@@ -8,6 +8,9 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import datetime
 
+from io_helpers.draft_command import DraftCommand
+from io_helpers.report_printer import ReportPrinter
+
 _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 
@@ -705,3 +708,56 @@ def read_incident_file(path: str) -> tuple[list, list]:
         else:
             incidents.append(incident)
     return incidents, problems
+
+
+# Daniel
+class IOManager:
+    _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+    # The questions of an incident form, in the order they are asked.
+    _DRAFT_FIELDS = ("description", "location", "role", "injury", "photo")
+    _DRAFT_LABELS = {"description": "What happened", "location": "Location", "role": "Your role",
+                     "injury": "Anyone injured", "photo": "Photo"}
+    _BACK = object()
+
+    # Creates and owns its report printer (composition).
+    def __init__(self, severity_levels: dict, outcome_actions: dict) -> None:
+        self._printer = ReportPrinter(severity_levels, outcome_actions)
+        self._accept_commands = False
+
+    # Reads one answer; while an incident form is open, /undo and /redo are raised as DraftCommand instead.
+    def _read(self, prompt: str) -> str:
+        answer = input(prompt)
+        command = answer.strip().lower()
+        if self._accept_commands and command in ("/undo", "/redo"):
+            raise DraftCommand(command[1:])
+        return answer
+
+    # Prints one line of text; the only way other classes show messages.
+    def display_message(self, text: str) -> None:
+        print(text)
+
+    # Shows a spinner in a background thread while the with-block runs; does nothing if output is not a terminal.
+    @contextmanager
+    def show_loading(self, message: str = "AI is thinking") -> Iterator[None]:
+        if not sys.stdout.isatty():
+            yield
+            return
+        stop = threading.Event()
+
+        def animate() -> None:
+            frame = 0
+            while not stop.is_set():
+                sys.stdout.write(f"\r{self._SPINNER_FRAMES[frame % 10]} {message}{'.' * (frame // 3 % 4):<3}")
+                sys.stdout.flush()
+                frame += 1
+                stop.wait(0.1)
+
+        thread = threading.Thread(target=animate, daemon=True)
+        thread.start()
+        try:
+            yield
+        finally:
+            stop.set()
+            thread.join()
+            sys.stdout.write("\r" + " " * (len(message) + 6) + "\r")
+            sys.stdout.flush()
