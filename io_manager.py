@@ -10,6 +10,7 @@ from datetime import datetime
 
 from io_helpers.draft_command import DraftCommand
 from io_helpers.report_printer import ReportPrinter
+from models.incident import Incident
 
 _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
@@ -777,6 +778,25 @@ class IOManager:
                 answer = self._read("Please answer yes or no: ").strip().lower()
         return answer in ("yes", "y")
 
+    # Shows the main menu and returns '1' to '7'; Ctrl+C or closed input returns '7'.
+    def get_menu_choice(self) -> str:
+        print("\n=== Workplace Safety Incident Triage System ===")
+        print("1. Log a new incident (with optional photo)")
+        print("2. View summary of all incidents")
+        print("3. Query incidents by location")
+        print("4. Delete an incident")
+        print("5. Edit or re-analyse an incident")
+        print("6. Export incidents to a file (CSV or JSON)")
+        print("7. Exit")
+        try:
+            choice = input("Choose an option (1-7): ").strip()
+            while choice not in ("1", "2", "3", "4", "5", "6", "7"):
+                choice = input("Invalid choice. Please enter 1, 2, 3, 4, 5, 6 or 7: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return "7"
+        return choice
+
     # Asks whether to enter a rejected incident again.
     def ask_try_again(self) -> bool:
         return self._ask_yes_no("Enter the incident again? (yes/no): ")
@@ -802,3 +822,12 @@ class IOManager:
             if choice.isdigit() and 1 <= int(choice) <= count:
                 return int(choice)
             print(f"Please enter a number from 1 to {count}.")
+
+    # Asks which incident number to delete.
+    def get_delete_choice(self, count: int) -> int | None:
+        return self._ask_number(f"Enter the incident # to delete (1-{count}, or press Enter to go back): ", count)
+
+    # Shows the incident about to be deleted and asks the user to confirm.
+    def confirm_delete(self, incident: Incident, number: int) -> bool:
+        print(f"\nIncident #{number}: {incident.location} - {incident.description}")
+        return self._ask_yes_no("Delete this incident permanently? (yes/no): ")
