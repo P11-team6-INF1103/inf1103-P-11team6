@@ -1,5 +1,6 @@
 # Lennart
 import os
+import re
 import threading
 from typing import TYPE_CHECKING
 
@@ -11,6 +12,7 @@ from io_helpers.report_printer import ReportPrinter
 from logic_rules.constants import OUTCOME_ACTIONS, SEVERITY_LEVELS
 from models.incident import Incident
 from models.incident_photo import IncidentPhoto
+from search_engine import IncidentSearch
 from web_support.rate_limiter import RateLimiter
 from workflow import PRIORITY_LEVELS, WorkflowStore
 
@@ -30,6 +32,7 @@ class WebApi:
     def __init__(self, app: "IncidentTriageApp", origins: list[str], post_limit: int = 10) -> None:
         self._app = app
         self._workflow = WorkflowStore(app.database)
+        self._search = IncidentSearch(ReportPrinter.HAZARD_NAMES)
         self._printer = ReportPrinter(SEVERITY_LEVELS, OUTCOME_ACTIONS)
         self._limiter = RateLimiter(post_limit)
         # One pipeline run at a time: two at once could both append to incidents.json and lose a record.
@@ -53,6 +56,7 @@ class WebApi:
             ("/api/health", "GET", self.health),
             ("/api/meta", "GET", self.meta),
             ("/api/incidents", "GET", self.list_incidents),
+            ("/api/incidents/search", "GET", self.search_incidents),
             ("/api/incidents/<int:number>", "GET", self.get_incident),
             ("/api/locations", "GET", self.list_locations),
             ("/api/locations/query", "GET", self.query_location),
@@ -132,6 +136,36 @@ class WebApi:
         found = self._app.query_location(location, int(days))
         rows = self._workflow.all()
         return jsonify([self._to_json(r, records.index(r) + 1, rows=rows) for r in found]), 200
+
+    # Daniel
+    # Ranked search. Query string: q (words, "phrases", #number) and the filters severity_min, hazard, outcome,
+    # location, priority, status (open or resolved), date_from, date_to (YYYY-MM-DD), has_photo.
+    def search_incidents(self) -> tuple:
+        args = request.args
+        filters: dict = {key: args.get(key, "").strip() for key in ("hazard", "outcome", "location", "date_from", "date_to")}
+        filters["status"] = args.get("status", "") if args.get("status") in ("open", "resolved") else ""
+        filters["has_photo"] = args.get("has_photo", "").lower() in ("true", "1", "yes")
+        problems = []
+        for key, low, high in (("severity_min", 1, 5), ("priority", 1, 4)):
+            raw = args.get(key, "")
+            if raw == "":
+                filters[key] = None
+            elif raw.isdigit() and low <= int(raw) <= high:
+                filters[key] = int(raw)
+            else:
+                problems.append(f"{key} must be a whole number from {low} to {high}.")
+        for key in ("date_from", "date_to"):
+            if filters[key] and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", filters[key]):
+                problems.append(f"{key} must look like 2026-10-31.")
+        if problems:
+            return jsonify({"errors": problems}), 422
+        with self._lock:
+            records = self._app.reload_records()
+        rows = self._workflow.all()
+        everything = [self._to_json(r, n, rows=rows) for n, r in enumerate(records, start=1)]
+        results = self._search.search(everything, args.get("q", ""), filters)
+        return jsonify({"query": args.get("q", ""), "count": len(results), "total": len(everything),
+                        "results": results}), 200
 
 
 # Used by gunicorn on Render: gunicorn "web_api:create_app()". gunicorn needs a plain function here, so it only hands over.
