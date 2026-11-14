@@ -5,8 +5,10 @@ import shutil
 import pytest
 
 from io_helpers.input_validator import InputValidator
+from io_helpers.report_printer import ReportPrinter
 from io_manager import IOManager
 from logic_rules.constants import OUTCOME_ACTIONS, SEVERITY_LEVELS
+from models.incident import Incident
 
 SAMPLE_PHOTO = os.path.join(os.path.dirname(__file__), "sample_photo.png")
 
@@ -83,3 +85,17 @@ def test_batch_file_validation(tmp_path, io):
     assert len(incidents) == 1 and incidents[0].has_photo() and incidents[0].injury is True
     assert len(problems) == 3 and "photo_path" in problems[1]
     assert io.read_incident_file(str(tmp_path / "nothing.json"))[0] == []
+
+
+# Darrel
+def test_report_shows_photo_section_and_friendly_errors(capsys):
+    incident = Incident("Plank fell from scaffold", "Site B", "officer", False, "2026-10-21T21:40:00")
+    incident.update({"photo_file": "scene.png", "photo_analysed": True, "photo_summary": "A scaffold.",
+                     "photo_hazards_seen": ["no helmet"], "photo_matches_description": False,
+                     "photo_evidence_used": ["The photo shows work at height"], "severity_estimate": 4,
+                     "outcome": "stop_work_review", "hazard_type": "fall_from_height",
+                     "web_search_error": "GROQ_API_KEY is not set"})
+    ReportPrinter(SEVERITY_LEVELS, OUTCOME_ACTIONS).print_incident(incident)
+    out = capsys.readouterr().out
+    assert "WHAT THE PHOTO SHOWS" in out and "does not seem to match" in out
+    assert "STOP WORK" in out and "API key looks missing" in out
