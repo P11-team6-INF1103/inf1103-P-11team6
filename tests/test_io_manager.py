@@ -112,3 +112,12 @@ def test_summary_counts_photos(capsys, io):
 
 
 DESCRIPTION = "Worker fell from a ladder at the loading bay"
+
+
+def test_undo_takes_back_the_last_answer_and_redo_puts_it_back(monkeypatch, io, capsys):
+    type_answers(monkeypatch, [DESCRIPTION, "Site A", "/undo", "Site B", "site_supervisor", "/undo", "/redo",
+                               "no", "", "send"])
+    incident = io.get_incident_input()
+    assert incident.location == "Site B" and incident.get("reporter_role") == "site_supervisor"
+    assert incident.injury is False
+    assert "Undid 'Location'" in capsys.readouterr().out
