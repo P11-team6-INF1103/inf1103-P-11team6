@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import shutil
 import sys
@@ -1123,3 +1124,37 @@ class IOManager:
             if number is None:
                 break
             self._printer.print_incident(records[number - 1], number)
+
+    # Checks one batch item with the same rules as typed input; returns (incident, []) or (None, problems).
+    def _validate_batch_item(self, item: dict, base_folder: str) -> tuple[Incident | None, list[str]]:
+        fields, bad = self._validator.validate_fields(item)
+        photo = None
+        if item.get("photo_path"):
+            try:
+                photo = IncidentPhoto.from_file(os.path.join(base_folder, str(item["photo_path"])))
+            except PhotoError as error:
+                bad.append(f"photo_path ({error})")
+        if bad:
+            return None, bad
+        return Incident(**fields, photo=photo), []
+
+    # Reads a JSON list of incidents for batch mode; returns (valid incidents, problem messages), never raises.
+    def read_incident_file(self, path: str) -> tuple[list[Incident], list[str]]:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                items = json.load(f)
+        except (OSError, ValueError) as error:
+            return [], [f"Could not read {path}: {error}"]
+        if not isinstance(items, list):
+            return [], [f"{path} must contain a JSON list of incidents"]
+        incidents, problems = [], []
+        for number, item in enumerate(items, start=1):
+            if not isinstance(item, dict):
+                problems.append(f"Item {number}: not an object")
+                continue
+            incident, bad = self._validate_batch_item(item, os.path.dirname(os.path.abspath(path)))
+            if incident is None:
+                problems.append(f"Item {number}: missing or invalid " + ", ".join(bad))
+            else:
+                incidents.append(incident)
+        return incidents, problems
