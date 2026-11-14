@@ -40,8 +40,8 @@ class FakeGemini:
         self.error = error
         self.calls = []
 
-    def ask_json(self, prompt: str, schema: dict, photo: object = None) -> object:
-        self.calls.append({"prompt": prompt, "schema": schema, "photo": photo})
+    def ask_json(self, prompt: str, schema: dict, photo: object = None, subject: str | None = None) -> object:
+        self.calls.append({"prompt": prompt, "schema": schema, "photo": photo, "subject": subject})
         if self.error:
             raise self.error
         return self.replies[id(schema)]
