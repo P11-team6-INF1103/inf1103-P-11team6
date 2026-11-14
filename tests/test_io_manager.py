@@ -154,3 +154,8 @@ def test_edit_form_shows_old_values_and_photo_choices(monkeypatch, io, capsys):
     assert draft["fields"]["reporter_role"] == "foreman" and draft["photo"] is None
     out = capsys.readouterr().out
     assert "(was: officer)" in out and "(was: old.png)" in out
+
+
+def test_edit_form_cancel_returns_none(monkeypatch, io):
+    type_answers(monkeypatch, ["cancel"])
+    assert io.get_incident_edit(Incident(DESCRIPTION, "Site A", "officer", False)) is None
