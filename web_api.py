@@ -60,6 +60,9 @@ class WebApi:
             ("/api/incidents", "GET", self.list_incidents),
             ("/api/incidents/search", "GET", self.search_incidents),
             ("/api/reports/summary", "GET", self.summary_report),
+            ("/api/incidents/<int:number>/priority", "PUT", self.set_priority),
+            ("/api/incidents/<int:number>/resolve", "POST", self.resolve_incident),
+            ("/api/incidents/<int:number>/reopen", "POST", self.reopen_incident),
             ("/api/incidents/<int:number>", "GET", self.get_incident),
             ("/api/locations", "GET", self.list_locations),
             ("/api/locations/query", "GET", self.query_location),
@@ -186,6 +189,38 @@ class WebApi:
                 "Content-Type": "text/csv; charset=utf-8",
                 "Content-Disposition": f'attachment; filename="incident_summary_{raw}_days.csv"'})
         return jsonify(report), 200
+
+    # Set the priority (1 Urgent to 4 Low), or null to go back to the suggested one. Body: {"priority": 2}.
+    def set_priority(self, number: int) -> tuple:
+        incident = self._find(number)
+        if incident is None:
+            return jsonify({"errors": [f"No incident #{number}."]}), 404
+        body = request.get_json(silent=True)
+        priority = body.get("priority") if isinstance(body, dict) else "bad"
+        if priority is not None and (not isinstance(priority, int) or isinstance(priority, bool)
+                                     or priority not in PRIORITY_LEVELS):
+            return jsonify({"errors": ["priority must be 1 (Urgent), 2 (High), 3 (Normal), 4 (Low) or null."]}), 422
+        self._workflow.set_priority(incident.timestamp, priority)
+        return jsonify(self._to_json(incident, number, history=True)), 200
+
+    # Mark an incident resolved, with an optional note. Body: {"note": "Guard rail fixed"}.
+    def resolve_incident(self, number: int) -> tuple:
+        incident = self._find(number)
+        if incident is None:
+            return jsonify({"errors": [f"No incident #{number}."]}), 404
+        body = request.get_json(silent=True)
+        note = InputValidator.sanitise(str(body.get("note", ""))) if isinstance(body, dict) else ""
+        if len(note) > 500:
+            return jsonify({"errors": ["The note must be 500 characters or fewer."]}), 422
+        self._workflow.resolve(incident.timestamp, note)
+        return jsonify(self._to_json(incident, number, history=True)), 200
+
+    def reopen_incident(self, number: int) -> tuple:
+        incident = self._find(number)
+        if incident is None:
+            return jsonify({"errors": [f"No incident #{number}."]}), 404
+        self._workflow.reopen(incident.timestamp)
+        return jsonify(self._to_json(incident, number, history=True)), 200
 
 
 # Used by gunicorn on Render: gunicorn "web_api:create_app()". gunicorn needs a plain function here, so it only hands over.
