@@ -10,6 +10,8 @@ from database import Database
 from models.incident import Incident
 from models.incident_photo import IncidentPhoto
 from models.photo_error import PhotoError
+from site_plan.site_plan import SitePlan
+from site_plan.site_plan_error import SitePlanError
 
 
 class DataManager:
@@ -206,6 +208,24 @@ class DataManager:
             return IncidentPhoto.from_file(path)
         except PhotoError:
             return None
+
+    # The saved site plan, or None if there is none or the file is corrupt (a corrupt file is set aside).
+    def load_site_plan(self) -> SitePlan | None:
+        data, _problem = self._plan_file.read()
+        if not data:
+            return None
+        try:
+            return SitePlan.from_dict(data)
+        except SitePlanError:
+            return None
+
+    # Saves the site plan (replacing any earlier one); returns False if it could not be written.
+    def save_site_plan(self, plan: SitePlan) -> bool:
+        return self._plan_file.write(plan.to_dict())
+
+    # Removes the saved site plan; returns False only if the file exists and cannot be removed.
+    def delete_site_plan(self) -> bool:
+        return self._plan_file.delete()
 
     # Loads the saved AI reply cache, or an empty dict if it is missing or corrupt.
     def load_ai_cache(self) -> dict:
