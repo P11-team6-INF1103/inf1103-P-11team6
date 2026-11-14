@@ -203,9 +203,19 @@ class IncidentTriageApp:
             return EditResult("unchanged", old, old, "Nothing was changed, so the AI was not run again.")
         return self._save_new_version(index, fields, photo)
 
+    # Runs the AI and scoring again on the incident as it is saved, with no change to its details, and saves the
+    # result as the newest version (the old one is kept). Unlike an edit it never skips the AI and it ignores the
+    # saved AI replies, so the AI really answers again. Use it after a wording-only edit (which keeps the old
+    # analysis), after a failed AI step, or to ask for a fresh opinion. Nothing is changed unless it succeeds.
+    def reanalyse_incident(self, index: int) -> EditResult:
+        if not 0 <= index < len(self._records):
+            return EditResult("failed", message="There is no such incident.")
+        with self._cache.refresh():
+            return self._save_new_version(index, {}, KEEP_PHOTO, reanalysed=True)
+
     # Builds the new version of the incident at a 0-based position from 'fields' and 'photo', analyses it, and saves it
-    # as the newest version.
-    def _save_new_version(self, index: int, fields: dict, photo: object) -> EditResult:
+    # as the newest version. 'reanalysed' marks a version made by reanalyse_incident, for the history list.
+    def _save_new_version(self, index: int, fields: dict, photo: object, reanalysed: bool = False) -> EditResult:
         old = self._records[index]
         kept = self._data.load_photo(old) if photo == KEEP_PHOTO else photo
         merged = {name: fields.get(name, old.get(name)) for name in _EDIT_FIELDS}
@@ -216,6 +226,8 @@ class IncidentTriageApp:
         if photo == KEEP_PHOTO and kept is None and old.get("photo_file"):
             # The saved photo is gone from disk: keep the record of it, but it cannot be analysed again.
             new.update({"photo_file": old.get("photo_file"), "photo_saved_path": old.get("photo_saved_path")})
+        if reanalysed:
+            new.update({"reanalysed": True})
         # The incident being edited must not count as an earlier incident (Rule 2 and the similar-incidents check).
         others = [record for position, record in enumerate(self._records) if position != index]
         reason = self._analyse(new, others)
