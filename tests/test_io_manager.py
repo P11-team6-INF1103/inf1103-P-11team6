@@ -139,3 +139,8 @@ def test_review_screen_can_cancel_and_nothing_is_returned(monkeypatch, io, capsy
 def test_review_screen_edit_changes_one_answer(monkeypatch, io):
     type_answers(monkeypatch, [DESCRIPTION, "Site A", "officer", "yes", "", "edit", "2", "Site Z", "send"])
     assert io.get_incident_input().location == "Site Z"
+
+
+def test_commands_are_ignored_outside_the_incident_form(monkeypatch, io, capsys):
+    type_answers(monkeypatch, ["/undo", "yes"])
+    assert io._ask_yes_no("Delete? ") is True
