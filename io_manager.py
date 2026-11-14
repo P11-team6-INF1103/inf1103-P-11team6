@@ -1101,6 +1101,22 @@ class IOManager:
             return None
         return number
 
+    # Asks which export format and file name to use; 'defaults' maps each format name to its usual file name. Returns
+    # (format, path), or None to go back. An existing file is only replaced after a yes.
+    def get_export_choice(self, defaults: dict[str, str]) -> tuple[str, str] | None:
+        names = list(defaults)
+        print("\nExport every saved incident to a file:")
+        for number, name in enumerate(names, start=1):
+            print(f"  {number}. {name.upper()}")
+        number = self._ask_number(f"Export as (1-{len(names)}, or press Enter to go back): ", len(names))
+        if number is None:
+            return None
+        name = names[number - 1]
+        path = self._read(f"File name (press Enter for {defaults[name]}): ").strip() or defaults[name]
+        if os.path.exists(path) and not self._ask_yes_no(f"{path} already exists. Replace it? (yes/no): "):
+            return None
+        return name, path
+
     # Prints what changed against the previous version, then the new full report.
     def display_edit_result(self, previous: Incident, current: Incident) -> None:
         self._printer.print_incident(current)
