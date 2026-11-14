@@ -1,7 +1,7 @@
 # Lennart
 from database import Database
 from models.incident import Incident
-from web_api import WebApi
+from web_api import WebApi, create_app
 
 
 class _StubApp:
@@ -83,3 +83,9 @@ def test_get_of_a_missing_number_is_a_404(tmp_path):
         response = client.get(f"/api/incidents/{number}")
         assert response.status_code == 404
         assert response.get_json() == {"errors": [f"No incident #{number}."]}
+
+
+def test_create_app_hands_over_the_flask_server_of_the_environment_api(tmp_path, monkeypatch):
+    api = WebApi(_StubApp(Database(str(tmp_path / "web.db"))), ["http://localhost:5173"])
+    monkeypatch.setattr(WebApi, "from_environment", classmethod(lambda cls: api))
+    assert create_app() is api.flask

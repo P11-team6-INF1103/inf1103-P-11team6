@@ -113,3 +113,12 @@ class WebApi:
         if incident is None:
             return jsonify({"errors": [f"No incident #{number}."]}), 404
         return jsonify(self._to_json(incident, number, history=True)), 200
+
+
+# Used by gunicorn on Render: gunicorn "web_api:create_app()". gunicorn needs a plain function here, so it only hands over.
+def create_app() -> Flask:
+    return WebApi.from_environment().flask
+
+
+if __name__ == "__main__":
+    create_app().run(port=int(os.environ.get("PORT", "8000")), debug=False)
