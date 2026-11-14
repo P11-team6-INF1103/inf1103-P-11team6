@@ -27,7 +27,7 @@ export default function IncidentReport({ incident, meta }) {
       <h2>Incident #{incident.id} · {incident.location}</h2>
       <div className="meta">
         {formatDate(incident.timestamp)} · reported by {incident.reporter_role}
-        {incident.version > 1 && ` · version ${incident.version}${incident.reverted_from ? ` (copied from version ${incident.reverted_from})` : " (edited)"}`}
+        {incident.version > 1 && ` · version ${incident.version}${incident.reverted_from ? ` (copied from version ${incident.reverted_from})` : incident.reanalysed ? " (re-analysed)" : " (edited)"}`}
       </div>
 
       <dl className="kv">
