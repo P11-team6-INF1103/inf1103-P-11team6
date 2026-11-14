@@ -11,7 +11,7 @@ from logic_rules.constants import OUTCOME_ACTIONS, SEVERITY_LEVELS
 from models.incident import Incident
 from models.incident_photo import IncidentPhoto
 from web_support.rate_limiter import RateLimiter
-from workflow import WorkflowStore
+from workflow import PRIORITY_LEVELS, WorkflowStore
 
 if TYPE_CHECKING:
     from main import IncidentTriageApp
@@ -49,6 +49,8 @@ class WebApi:
     # Connects each URL to the method that handles it. Each route's owner adds their own line here.
     def _add_routes(self) -> None:
         routes = [
+            ("/api/health", "GET", self.health),
+            ("/api/meta", "GET", self.meta),
         ]
         for path, method, handler in routes:
             self.flask.add_url_rule(path, f"{method}_{path}", handler, methods=[method])
@@ -84,3 +86,16 @@ class WebApi:
     @staticmethod
     def _too_large(_error: Exception) -> tuple:
         return jsonify({"errors": ["The photo is larger than 5 MB. Please use a smaller photo."]}), 413
+
+    def health(self) -> tuple:
+        return jsonify({"status": "ok", "incidents": len(self._app.records)}), 200
+
+    # Labels and meanings, so the dashboard uses the same wording as the terminal app.
+    def meta(self) -> tuple:
+        return jsonify({
+            "severity_levels": {str(k): {"name": n, "meaning": m} for k, (n, m) in SEVERITY_LEVELS.items()},
+            "outcome_actions": OUTCOME_ACTIONS,
+            "outcome_names": ReportPrinter.OUTCOME_NAMES,
+            "hazard_names": ReportPrinter.HAZARD_NAMES,
+            "priority_levels": {str(k): v for k, v in PRIORITY_LEVELS.items()},
+        }), 200
