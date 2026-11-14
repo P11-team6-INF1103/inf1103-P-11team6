@@ -128,3 +128,9 @@ def test_undo_with_nothing_to_undo_and_redo_with_nothing_to_redo(monkeypatch, io
     assert io.get_incident_input().location == "Site C"
     out = capsys.readouterr().out
     assert "Nothing to undo." in out and "Nothing to redo." in out
+
+
+def test_review_screen_can_cancel_and_nothing_is_returned(monkeypatch, io, capsys):
+    type_answers(monkeypatch, [DESCRIPTION, "Site A", "officer", "yes", "", "cancel"])
+    assert io.get_incident_input() is None
+    assert "Nothing is sent to the AI or saved until you choose 'send'" in capsys.readouterr().out
