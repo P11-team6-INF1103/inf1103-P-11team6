@@ -1,17 +1,20 @@
 # Lennart
+import io
 import os
 import re
 import threading
 from typing import TYPE_CHECKING
 
-from flask import Flask, Response, jsonify, request
+from flask import Flask, Response, jsonify, request, send_file
 from flask_cors import CORS
 
 from io_helpers.input_validator import InputValidator
 from io_helpers.report_printer import ReportPrinter
 from logic_rules.constants import OUTCOME_ACTIONS, SEVERITY_LEVELS
+from models.constants import KEEP_PHOTO
 from models.incident import Incident
 from models.incident_photo import IncidentPhoto
+from models.photo_error import PhotoError
 from search_engine import IncidentSearch
 from trend_report import TrendReport
 from web_support.rate_limiter import RateLimiter
@@ -127,6 +130,127 @@ class WebApi:
             return jsonify({"errors": [f"No incident #{number}."]}), 404
         return jsonify(self._to_json(incident, number, history=True)), 200
 
+    # Ren Xiang
+    # The form fields from a multipart upload (with an optional 'photo' file) or a JSON body.
+    @staticmethod
+    def _read_form() -> tuple[dict, object]:
+        if request.is_json:
+            body = request.get_json(silent=True)
+            return (body if isinstance(body, dict) else {}), None
+        return request.form.to_dict(), request.files.get("photo")
+
+    # Runs one incident through the whole pipeline. 422 with 'errors' for a bad form, 422 with 'rejected'
+    # when the AI says it is not a safety incident, 201 with the saved incident otherwise.
+    def create_incident(self) -> tuple:
+        form, upload = self._read_form()
+        fields, problems = InputValidator.validate_fields(form)
+        photo = None
+        if upload is not None and upload.filename:
+            try:
+                photo = IncidentPhoto.from_bytes(upload.filename, upload.read())
+            except PhotoError as error:
+                problems.append(f"photo ({error})")
+        if problems:
+            return jsonify({"errors": problems}), 422
+        client = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+        if self._limiter.too_many(client):
+            return jsonify({"errors": ["Too many incidents from this connection. Try again in a few minutes."]}), 429
+        incident = Incident(**fields, photo=photo)
+        with self._lock:
+            result = self._app.process_incident(incident, interactive=False)
+            number = len(self._app.records)
+        if result is None:
+            return jsonify({"rejected": incident.get("reject_reason")}), 422
+        return jsonify(self._to_json(result, number, history=True)), 201
+
+    # Edits an incident and runs the AI again: send any of description, location, reporter_role, injury,
+    # a new 'photo' file, or remove_photo=true; fields left out keep their value. 200 with the new version
+    # (history[-1] is the version it replaced) or status 'unchanged'; rerun_ai=false saves only new wording
+    # (description, location, role) without the AI and keeps the earlier analysis; 422 for a bad form or an AI rejection;
+    # 502 if the AI could not assess it, in which case the old version stays current.
+    def edit_incident(self, number: int) -> tuple:
+        old = self._find(number)
+        if old is None:
+            return jsonify({"errors": [f"No incident #{number}."]}), 404
+        form, upload = self._read_form()
+        current = {"description": old.description, "location": old.location,
+                   "reporter_role": old.get("reporter_role"), "injury": old.injury}
+        fields, problems = InputValidator.validate_fields({**current, **form, "timestamp": old.timestamp})
+        photo: object = KEEP_PHOTO
+        if upload is not None and upload.filename:
+            try:
+                photo = IncidentPhoto.from_bytes(upload.filename, upload.read())
+            except PhotoError as error:
+                problems.append(f"photo ({error})")
+        elif str(form.get("remove_photo", "")).lower() in ("true", "1", "yes"):
+            photo = None
+        if problems:
+            return jsonify({"errors": problems}), 422
+        fields.pop("timestamp")
+        if str(form.get("rerun_ai", "true")).lower() in ("false", "0", "no"):
+            if photo is not KEEP_PHOTO:
+                return jsonify({"errors": ["Changing the photo needs the AI to run again."]}), 422
+            with self._lock:
+                result = self._app.edit_incident_text(number - 1, fields)
+            return self._edit_response(result, number)
+        if not self._app.describe_changes(old, fields, photo):
+            return jsonify({"status": "unchanged", **self._to_json(old, number, history=True)}), 200
+        client = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+        if self._limiter.too_many(client):
+            return jsonify({"errors": ["Too many incidents from this connection. Try again in a few minutes."]}), 429
+        with self._lock:
+            result = self._app.edit_incident(number - 1, fields, photo)
+        return self._edit_response(result, number)
+
+    # Turns an EditResult into the HTTP answer.
+    def _edit_response(self, result: object, number: int) -> tuple:
+        if result.status == "updated":
+            return jsonify({"status": "updated", **self._to_json(result.incident, number, history=True)}), 200
+        if result.status == "unchanged":
+            return jsonify({"status": "unchanged", **self._to_json(result.incident, number, history=True)}), 200
+        if result.status == "rejected":
+            return jsonify({"rejected": result.message}), 422
+        if result.status == "failed" and result.previous is None:
+            return jsonify({"errors": [result.message]}), 404
+        return jsonify({"errors": [result.message], "kept_version": result.previous.version}), \
+            (400 if result.status == "failed" and "no version" in str(result.message) else 502)
+
+    # Copies an older version in as the newest one. Body: {"version": 1}. No AI call.
+    def revert_incident(self, number: int) -> tuple:
+        if self._find(number) is None:
+            return jsonify({"errors": [f"No incident #{number}."]}), 404
+        body = request.get_json(silent=True)
+        version = body.get("version") if isinstance(body, dict) else None
+        if not isinstance(version, int) or isinstance(version, bool):
+            return jsonify({"errors": ["version must be a whole number."]}), 422
+        with self._lock:
+            result = self._app.revert_incident(number - 1, version)
+        return self._edit_response(result, number)
+
+    def delete_incident(self, number: int) -> tuple:
+        with self._lock:
+            incident = self._find(number)
+            if incident is None:
+                return jsonify({"errors": [f"No incident #{number}."]}), 404
+            if not self._app.remove_incident(number - 1):
+                return jsonify({"errors": ["The data file could not be updated."]}), 500
+            self._workflow.delete(incident.timestamp)
+        return jsonify({"deleted": number}), 200
+
+    # The saved photo of an incident (or of an older version with ?version=N), if it is still on the server's disk.
+    def get_photo(self, number: int) -> object:
+        incident = self._find(number)
+        path = incident.get("photo_saved_path") if incident else None
+        version = request.args.get("version", "")
+        if incident and version.isdigit() and 1 <= int(version) <= len(incident.history):
+            path = incident.history[int(version) - 1].get("photo_saved_path")
+        stored = self._app.read_photo(path) if path else None
+        if stored:
+            return send_file(io.BytesIO(stored[0]), mimetype=stored[1])
+        if not path or not os.path.isfile(path):
+            return jsonify({"errors": ["No photo saved for this incident."]}), 404
+        return send_file(path)
+    
     # Daniel
     def list_locations(self) -> tuple:
         return jsonify([{"location": name, "count": count} for name, count in self._app.locations()]), 200
