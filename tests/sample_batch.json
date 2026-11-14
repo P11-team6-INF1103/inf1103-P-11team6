@@ -1,23 +1,30 @@
 [
   {
-    "description": "Worker fell from scaffolding about 10 metres, no harness worn, fracture",
+    "description": "Worker slipped on a wet floor near the site office during heavy rain and twisted an ankle",
     "location": "Site A - Block 3",
-    "reporter_role": "safety_officer",
-    "injury": true,
-    "timestamp": "2026-09-27T20:44:00"
-  },
-  {
-    "description": "Worker slipped on a freshly mopped floor near the stairwell, no injury",
-    "location": "Site A - Block 3",
-    "reporter_role": "safety_officer",
-    "injury": false,
-    "timestamp": "2026-09-28T09:15:00"
-  },
-  {
-    "description": "Forklift reversed into a stack of pallets, nobody hurt, PPE worn",
-    "location": "Site B - Warehouse",
     "reporter_role": "site_supervisor",
+    "injury": true,
+    "timestamp": "2026-10-20T09:15:00"
+  },
+  {
+    "description": "Scaffold plank fell from level 4 and landed next to a worker who was not wearing a helmet",
+    "location": "Site B - Tower 1",
+    "reporter_role": "safety_officer",
     "injury": false,
-    "timestamp": "2026-09-29T14:05:00"
+    "timestamp": "2026-10-21T21:40:00",
+    "photo_path": "sample_photo.png"
+  },
+  {
+    "description": "Forklift reversed into a stack of cement bags, no one was hurt",
+    "location": "Site A - Block 3",
+    "reporter_role": "site_supervisor",
+    "injury": "no",
+    "timestamp": "2026-10-22T14:05:00"
+  },
+  {
+    "description": "???",
+    "location": "Site C",
+    "reporter_role": "site_supervisor",
+    "injury": true
   }
 ]
