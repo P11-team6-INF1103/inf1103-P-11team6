@@ -4,7 +4,7 @@ import re
 import threading
 from typing import TYPE_CHECKING
 
-from flask import Flask, jsonify, request
+from flask import Flask, Response, jsonify, request
 from flask_cors import CORS
 
 from io_helpers.input_validator import InputValidator
@@ -13,6 +13,7 @@ from logic_rules.constants import OUTCOME_ACTIONS, SEVERITY_LEVELS
 from models.incident import Incident
 from models.incident_photo import IncidentPhoto
 from search_engine import IncidentSearch
+from trend_report import TrendReport
 from web_support.rate_limiter import RateLimiter
 from workflow import PRIORITY_LEVELS, WorkflowStore
 
@@ -33,6 +34,7 @@ class WebApi:
         self._app = app
         self._workflow = WorkflowStore(app.database)
         self._search = IncidentSearch(ReportPrinter.HAZARD_NAMES)
+        self._summary = TrendReport.standard(ReportPrinter.HAZARD_NAMES)
         self._printer = ReportPrinter(SEVERITY_LEVELS, OUTCOME_ACTIONS)
         self._limiter = RateLimiter(post_limit)
         # One pipeline run at a time: two at once could both append to incidents.json and lose a record.
@@ -57,6 +59,7 @@ class WebApi:
             ("/api/meta", "GET", self.meta),
             ("/api/incidents", "GET", self.list_incidents),
             ("/api/incidents/search", "GET", self.search_incidents),
+            ("/api/reports/summary", "GET", self.summary_report),
             ("/api/incidents/<int:number>", "GET", self.get_incident),
             ("/api/locations", "GET", self.list_locations),
             ("/api/locations/query", "GET", self.query_location),
@@ -166,6 +169,23 @@ class WebApi:
         results = self._search.search(everything, args.get("q", ""), filters)
         return jsonify({"query": args.get("q", ""), "count": len(results), "total": len(everything),
                         "results": results}), 200
+
+    # The trend and summary report: ?days=7 (1 to 180) compared with the same number of days before, and
+    # ?format=csv to download it as a spreadsheet instead of JSON.
+    def summary_report(self) -> tuple:
+        raw = request.args.get("days", "7")
+        if not raw.isdigit() or not TrendReport.MIN_DAYS <= int(raw) <= TrendReport.MAX_DAYS:
+            low, high = TrendReport.MIN_DAYS, TrendReport.MAX_DAYS
+            return jsonify({"errors": [f"days must be a whole number from {low} to {high}."]}), 422
+        with self._lock:
+            records = self._app.reload_records()
+        rows = self._workflow.all()
+        report = self._summary.build([self._to_json(r, n, rows=rows) for n, r in enumerate(records, start=1)], int(raw))
+        if request.args.get("format") == "csv":
+            return Response(self._summary.to_csv(report), 200, {
+                "Content-Type": "text/csv; charset=utf-8",
+                "Content-Disposition": f'attachment; filename="incident_summary_{raw}_days.csv"'})
+        return jsonify(report), 200
 
 
 # Used by gunicorn on Render: gunicorn "web_api:create_app()". gunicorn needs a plain function here, so it only hands over.
