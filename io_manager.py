@@ -844,6 +844,23 @@ class IOManager:
             return "7"
         return choice
 
+    # Asks one question of the incident form; returns the answer, or _BACK if the user gave up on it.
+    def _ask_field(self, field: str, in_review: bool, keep_photo: str | None = None) -> object:
+        back = "the review screen" if in_review else "the main menu"
+        v = self._validator
+        if field == "photo":
+            return self.ask_for_photo(keep_photo)
+        if field == "injury":
+            answer = self._ask_yes_no("Was anyone injured? (yes/no): ", allow_back=True)
+        else:
+            prompt, check = {
+                "description": ("Describe what happened: ", v.check_description),
+                "location": ("Location (e.g. 'Site A - Block 3'): ", v.check_location),
+                "role": ("Your role (e.g. 'site_supervisor'): ", v.check_role),
+            }[field]
+            answer = self._ask_valid(prompt, check, back)
+        return self._BACK if answer is None else answer
+
     # Text for one answer on the review screen.
     @staticmethod
     def _draft_text(field: str, value: object, original: dict | None) -> str:
@@ -904,6 +921,71 @@ class IOManager:
             field, value = redo.pop()
             answers[field] = value
             print(f"Restored '{self._DRAFT_LABELS[field]}': {self._draft_text(field, value, None)}")
+
+    # Fills the form one question at a time, then shows the review screen; returns the answers, or None to cancel.
+    def _collect_draft(self, answers: dict, original: dict | None = None) -> dict | None:
+        redo: list = []
+        keep_photo = (original or {}).get("photo")
+        while True:
+            try:
+                if len(answers) < len(self._DRAFT_FIELDS):
+                    field = self._DRAFT_FIELDS[len(answers)]
+                    value = self._ask_field(field, False, keep_photo)
+                    if value is self._BACK:
+                        return None
+                    answers[field] = value
+                    redo.clear()
+                    continue
+                choice = self._ask_review(answers, original)
+                if choice == "send":
+                    return answers
+                if choice == "cancel":
+                    return None
+                number = self._ask_number("Which answer do you want to change? (1-5, or press Enter to go back): ", 5)
+                if number is None:
+                    continue
+                field = self._DRAFT_FIELDS[number - 1]
+                value = self._ask_field(field, True, keep_photo)
+                if value is not self._BACK:
+                    answers[field] = value
+                    redo.clear()
+            except DraftCommand as command:
+                self._apply_command(command.name, answers, redo)
+
+    # Asks for the incident details and an optional photo, then a review screen to send, edit or cancel.
+    # /undo and /redo work at every prompt. Returns None if the user cancels.
+    def get_incident_input(self) -> Incident | None:
+        print("\n--- Log a New Incident ---")
+        print("(Type /undo to take back your last answer, /redo to put it back.")
+        print(" Press Enter twice on a blank answer to return to the main menu.)")
+        self._accept_commands = True
+        try:
+            answers = self._collect_draft({})
+        finally:
+            self._accept_commands = False
+        if answers is None:
+            return None
+        return Incident(answers["description"], answers["location"], answers["role"], answers["injury"],
+                        photo=answers["photo"])
+
+    # Shows the saved answers of an incident and lets the user change them; returns
+    # {'fields': {...new typed fields}, 'photo': IncidentPhoto | None | KEEP_PHOTO}, or None to cancel.
+    def get_incident_edit(self, incident: Incident) -> dict | None:
+        original = {"description": incident.description, "location": incident.location,
+                    "role": incident.get("reporter_role"), "injury": incident.injury,
+                    "photo": incident.get("photo_file")}
+        print(f"\n--- Edit Incident (version {incident.version}) ---")
+        print("(Choose 'edit' to change an answer. /undo and /redo work here too.)")
+        self._accept_commands = True
+        try:
+            answers = self._collect_draft({**original, "photo": KEEP_PHOTO}, original)
+        finally:
+            self._accept_commands = False
+        if answers is None:
+            return None
+        return {"fields": {"description": answers["description"], "location": answers["location"],
+                           "reporter_role": answers["role"], "injury": answers["injury"]},
+                "photo": answers["photo"]}
 
     # Asks whether to enter a rejected incident again.
     def ask_try_again(self) -> bool:
