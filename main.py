@@ -115,3 +115,58 @@ class IncidentTriageApp:
             self._io.display_message(f"Warning: {problem}. Starting with no saved incidents.")
         self._records = self._data.load_records()
         self._io.display_message(f"Loaded {len(self._records)} saved incident(s).")
+
+    # Saves the incident (asking to retry if allowed) and the AI reply cache.
+    def _save(self, incident: Incident, interactive: bool) -> None:
+        if incident.has_photo():
+            incident.update({"photo_saved_path": self._data.store_photo(incident.photo)})
+        saved = self._data.save_record(incident)
+        while not saved and interactive and self._io.ask_retry_save():
+            saved = self._data.save_record(incident)
+        if not saved:
+            self._io.display_message("Warning: could not save this incident to disk.")
+        self._records.append(incident)
+        if not self._data.save_ai_cache(self._cache.export()):
+            self._io.display_message("Warning: could not save the AI reply cache.")
+
+    # The AI and rule steps for one incident, without saving; 'records' is what counts as earlier incidents.
+    # Returns the reason it was rejected, or None if it was accepted and scored.
+    def _analyse(self, incident: Incident, records: list[Incident]) -> str | None:
+        self._logic.derive_context(incident)
+        with self._io.show_loading("AI is analysing the incident"):
+            self._ai.extract_hazards(incident)
+            accepted, reason = self._logic.screen_incident(incident)
+            if accepted:
+                self._ai.gather_evidence(incident, records)
+                self._logic.apply_site_conditions(incident)
+                self._logic.apply_photo_evidence(incident)
+                self._ai.write_review(incident)
+        if not accepted:
+            incident.update({"reject_reason": reason})
+            return reason
+        history = self._data.query_by_location(incident.location, 30, as_of=incident.timestamp, records=records)
+        self._logic.assess_severity(incident, history)
+        self._logic.decide_outcome(incident, history)
+        return None
+
+    # The whole pipeline for one incident: AI, rules, outcome, save; returns None if the AI rejected it.
+    def process_incident(self, incident: Incident, interactive: bool = True) -> Incident | None:
+        reason = self._analyse(incident, self._records)
+        if reason is not None:
+            self._io.display_message("Incident rejected: " + reason)
+            return None
+        self._save(incident, interactive)
+        return incident
+
+    # Menu option 1: asks for an incident, processes it and shows the report; offers to re-enter a rejected one.
+    def log_incident(self) -> None:
+        while True:
+            incident = self._io.get_incident_input()
+            if incident is None:
+                self._io.display_message("Cancelled. Returning to the main menu.")
+                return
+            if self.process_incident(incident) is not None:
+                self._io.display_outcome(incident)
+                return
+            if not self._io.ask_try_again():
+                return
