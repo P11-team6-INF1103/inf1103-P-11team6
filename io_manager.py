@@ -1022,6 +1022,33 @@ class IOManager:
         print(f"\nIncident #{number}: {incident.location} - {incident.description}")
         return self._ask_yes_no("Delete this incident permanently? (yes/no): ")
 
+    # Asks for a location (or 'list') and a number of days; returns (location, days), or None to go back.
+    def get_location_query(self, known_locations: list[tuple[str, int]]) -> tuple[str, int] | None:
+        prompt = "Location to search, type 'list' to pick from saved locations (or press Enter to go back): "
+        while True:
+            location = self._validator.sanitise(input(prompt))
+            if location == "":
+                return None
+            if location.lower() == "list":
+                if not known_locations:
+                    print("No incidents have been saved yet, so there are no locations to list.")
+                    return None
+                for number, (name, count) in enumerate(known_locations, start=1):
+                    print(f"  {number}. {name} ({count} incident{'s' if count != 1 else ''})")
+                picked = self._ask_number("Choose a number (or press Enter to go back): ", len(known_locations))
+                if picked is None:
+                    return None
+                location = known_locations[picked - 1][0]
+            error = self._validator.check_location(location)
+            if error is None:
+                break
+            print("Error: " + error)
+            prompt = "Try again (or press Enter to go back to the menu): "
+        days = input("How many days back? (Enter for 30): ").strip()
+        while days != "" and not (days.isdigit() and int(days) > 0):
+            days = input("Please enter a whole number of days, 1 or more: ").strip()
+        return location, int(days) if days else 30
+
     # Prints the incidents found by a location query.
     def display_query_results(self, results: list[Incident]) -> None:
         if not results:
