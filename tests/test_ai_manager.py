@@ -1,115 +1,102 @@
-# import os
-# import time
+import os
 
-# import pytest
+import pytest
 
-# from ai_clients import (
-#     GeminiClient,
-#     JsonReply,
-#     ResponseCache,
-# )
-# from ai_manager import (
-#     AIManager,
-#     EnrichmentStep,
-#     HazardFlagStep,
-#     PhotoAnalysisStep,
-#     ReviewStep,
-#     SimilarIncidentStep,
-#     WeatherStep,
-#     WebSearchStep,
-# )
-# from logic_manager import OUTCOME_ACTIONS
-# from models.incident import Incident
-# from models.incident_photo import IncidentPhoto
-# from tests.fakes import HAZARD_REPLY, FakeGemini, FakeSearch, FakeWeather
+from ai_clients.gemini_client import GeminiClient
+from ai_clients.json_reply import JsonReply
+from ai_clients.response_cache import ResponseCache
+from ai_steps.hazard_flag_step import HazardFlagStep
+from models.incident import Incident
+from models.incident_photo import IncidentPhoto
+from tests.fakes import HAZARD_REPLY
 
-# # Ren Xiang
-# SAMPLE_PHOTO = os.path.join(os.path.dirname(__file__), "sample_photo.png")
+# Ren Xiang
+SAMPLE_PHOTO = os.path.join(os.path.dirname(__file__), "sample_photo.png")
 
 
-# def make(photo=False, **fields):
-#     incident = Incident("Scaffold plank fell from level 4", "Site B", "safety_officer", False,
-#                         "2026-10-21T21:40:00", IncidentPhoto.from_file(SAMPLE_PHOTO) if photo else None)
-#     incident.update(fields)
-#     return incident
+def make(photo=False, **fields):
+    incident = Incident("Scaffold plank fell from level 4", "Site B", "safety_officer", False,
+                        "2026-10-21T21:40:00", IncidentPhoto.from_file(SAMPLE_PHOTO) if photo else None)
+    incident.update(fields)
+    return incident
 
 
-# # Ren Xiang
-# # --- Reply parsing and schema validation ---
+# Ren Xiang
+# --- Reply parsing and schema validation ---
 
-# def test_parse_strips_code_fences_and_rejects_non_json():
-#     assert JsonReply.parse('```json\n{"a": 1}\n```') == {"a": 1}
-#     with pytest.raises(ValueError):
-#         JsonReply.parse("Sorry, I cannot help with that")
-
-
-# def test_schema_validation_catches_wrong_types_enums_and_missing_keys():
-#     JsonReply.validate(HAZARD_REPLY, HazardFlagStep.SCHEMA)
-#     for broken in ({**HAZARD_REPLY, "hazard_category": "earthquake"},
-#                    {**HAZARD_REPLY, "elevated_places": "roof"},
-#                    {k: v for k, v in HAZARD_REPLY.items() if k != "ppe_status"}):
-#         with pytest.raises(ValueError):
-#             JsonReply.validate(broken, HazardFlagStep.SCHEMA)
+def test_parse_strips_code_fences_and_rejects_non_json():
+    assert JsonReply.parse('```json\n{"a": 1}\n```') == {"a": 1}
+    with pytest.raises(ValueError):
+        JsonReply.parse("Sorry, I cannot help with that")
 
 
-# def test_extract_object_finds_json_inside_text():
-#     assert JsonReply.extract_object('Here you go: {"a": 1} thanks') == {"a": 1}
-#     assert JsonReply.extract_object("no json here") is None
+def test_schema_validation_catches_wrong_types_enums_and_missing_keys():
+    JsonReply.validate(HAZARD_REPLY, HazardFlagStep.SCHEMA)
+    for broken in ({**HAZARD_REPLY, "hazard_category": "earthquake"},
+                   {**HAZARD_REPLY, "elevated_places": "roof"},
+                   {k: v for k, v in HAZARD_REPLY.items() if k != "ppe_status"}):
+        with pytest.raises(ValueError):
+            JsonReply.validate(broken, HazardFlagStep.SCHEMA)
 
 
-# # Ren Xiang
-# # --- Gemini client with a fake SDK (no live API) ---
-
-# class FakeSdk:
-#     def __init__(self, texts):
-#         self.texts = list(texts)
-#         self.inputs = []
-#         self.interactions = self
-
-#     def create(self, model, input, response_format, generation_config):
-#         self.inputs.append(input)
-#         text = self.texts.pop(0)
-#         if isinstance(text, Exception):
-#             raise text
-#         return type("Reply", (), {"output_text": text})()
+def test_extract_object_finds_json_inside_text():
+    assert JsonReply.extract_object('Here you go: {"a": 1} thanks') == {"a": 1}
+    assert JsonReply.extract_object("no json here") is None
 
 
-# def test_gemini_retries_once_on_malformed_reply_then_caches():
-#     sdk = FakeSdk(["not json", '["x"]'])
-#     client = GeminiClient(ResponseCache(), sdk)
-#     schema = {"type": "array", "items": {"type": "string"}}
-#     assert client.ask_json("prompt", schema) == ["x"]
-#     assert client.ask_json("prompt", schema) == ["x"]  # second call comes from the cache
-#     assert len(sdk.inputs) == 2
+# Ren Xiang
+# --- Gemini client with a fake SDK (no live API) ---
+
+class FakeSdk:
+    def __init__(self, texts):
+        self.texts = list(texts)
+        self.inputs = []
+        self.interactions = self
+
+    def create(self, model, input, response_format, generation_config):
+        self.inputs.append(input)
+        text = self.texts.pop(0)
+        if isinstance(text, Exception):
+            raise text
+        return type("Reply", (), {"output_text": text})()
 
 
-# def test_gemini_gives_up_after_two_malformed_replies():
-#     client = GeminiClient(ResponseCache(), FakeSdk(["{bad", '{"wrong": "shape"}']))
-#     with pytest.raises(ValueError, match="malformed"):
-#         client.ask_json("prompt", {"type": "array"})
+def test_gemini_retries_once_on_malformed_reply_then_caches():
+    sdk = FakeSdk(["not json", '["x"]'])
+    client = GeminiClient(ResponseCache(), sdk)
+    schema = {"type": "array", "items": {"type": "string"}}
+    assert client.ask_json("prompt", schema) == ["x"]
+    assert client.ask_json("prompt", schema) == ["x"]  # second call comes from the cache
+    assert len(sdk.inputs) == 2
 
 
-# def test_gemini_falls_back_to_the_next_model_on_connection_failure():
-#     sdk = FakeSdk([ConnectionError("timeout"), "[]"])
-#     assert GeminiClient(ResponseCache(), sdk).ask_json("p", {"type": "array"}) == []
-#     all_fail = FakeSdk([ConnectionError("down")] * 3)
-#     with pytest.raises(RuntimeError, match="All Gemini models failed"):
-#         GeminiClient(ResponseCache(), all_fail).ask_json("p", {"type": "array"})
+def test_gemini_gives_up_after_two_malformed_replies():
+    client = GeminiClient(ResponseCache(), FakeSdk(["{bad", '{"wrong": "shape"}']))
+    with pytest.raises(ValueError, match="malformed"):
+        client.ask_json("prompt", {"type": "array"})
 
 
-# def test_gemini_without_api_key_raises_a_clear_error():
-#     with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
-#         GeminiClient(ResponseCache()).ask_json("p", {"type": "array"})
+def test_gemini_falls_back_to_the_next_model_on_connection_failure():
+    sdk = FakeSdk([ConnectionError("timeout"), "[]"])
+    assert GeminiClient(ResponseCache(), sdk).ask_json("p", {"type": "array"}) == []
+    all_fail = FakeSdk([ConnectionError("down")] * 3)
+    with pytest.raises(RuntimeError, match="All Gemini models failed"):
+        GeminiClient(ResponseCache(), all_fail).ask_json("p", {"type": "array"})
 
 
-# def test_photo_is_sent_to_gemini_as_an_image_part():
-#     sdk = FakeSdk(["[]"])
-#     photo = IncidentPhoto.from_file(SAMPLE_PHOTO)
-#     GeminiClient(ResponseCache(), sdk).ask_json("describe", {"type": "array"}, photo)
-#     text_part, image_part = sdk.inputs[0]
-#     assert text_part == {"type": "text", "text": "describe"}
-#     assert image_part["type"] == "image" and image_part["mime_type"] == "image/png"
-#     assert image_part["data"] == photo.as_base64()
+def test_gemini_without_api_key_raises_a_clear_error():
+    with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
+        GeminiClient(ResponseCache()).ask_json("p", {"type": "array"})
+
+
+def test_photo_is_sent_to_gemini_as_an_image_part():
+    sdk = FakeSdk(["[]"])
+    photo = IncidentPhoto.from_file(SAMPLE_PHOTO)
+    GeminiClient(ResponseCache(), sdk).ask_json("describe", {"type": "array"}, photo)
+    text_part, image_part = sdk.inputs[0]
+    assert text_part == {"type": "text", "text": "describe"}
+    assert image_part["type"] == "image" and image_part["mime_type"] == "image/png"
+    assert image_part["data"] == photo.as_base64()
 
 # # Ren Xiang
 # # --- Steps (polymorphism, LSP) ---
@@ -136,35 +123,8 @@
 #     assert fields["hazard_category"] == "fall_from_height" and fields["height_estimate_m"] == 12
 #     assert fields["context_flags_error"] is None
 
-
-# # Sufi
-# def test_photo_step_only_runs_with_a_photo_and_passes_it_on():
-#     gemini = FakeGemini()
-#     step = PhotoAnalysisStep(gemini)
-#     assert step.safe_run(make(photo=False), []) == {"photo_analysed": False, "photo_error": None}
-#     assert gemini.calls == []
-#     fields = step.safe_run(make(photo=True), [])
-#     assert fields["photo_analysed"] is True and fields["photo_ppe_status"] == "not_worn"
-#     assert isinstance(gemini.calls[0]["photo"], IncidentPhoto)
-
-
-# def test_photo_step_turns_a_bad_reply_into_photo_error():
-#     gemini = FakeGemini(replies={id(PhotoAnalysisStep.SCHEMA): {"photo_summary": "missing fields"}})
-#     fields = PhotoAnalysisStep(gemini).safe_run(make(photo=True), [])
-#     assert fields["photo_analysed"] is False and "Photo analysis failed" in fields["photo_error"]
-
-
-# def test_similar_step_ignores_made_up_ids_and_copies_saved_facts():
-#     past = make(outcome="stop_work_review", hazard_type="fall_from_height")
-#     gemini = FakeGemini(replies={id(SimilarIncidentStep.SCHEMA): [
-#         {"id": 0, "resolution_notes": "Work stopped."}, {"id": 7, "resolution_notes": "invented"}]})
-#     fields = SimilarIncidentStep(gemini, OUTCOME_ACTIONS).safe_run(make(run_similar=True), [past])
-#     assert len(fields["similar_incidents"]) == 1
-#     assert fields["similar_incidents"][0]["outcome"] == "stop_work_review"
-
-
-# # Ren Xiang
-# # --- AIManager and threading (advanced feature) ---
+# Ren Xiang
+# --- AIManager and threading (advanced feature) ---
 
 # def test_ai_manager_fills_in_every_step():
 #     ai = AIManager(FakeGemini(), FakeSearch(),
