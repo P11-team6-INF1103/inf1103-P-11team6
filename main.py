@@ -1,246 +1,117 @@
-import argparse
 import logging
+import os
 
-import ai_manager
-import data_manager
-import io_manager
-import logic_manager
+from dotenv import load_dotenv
+
+from ai_clients.gemini_client import GeminiClient
+from ai_clients.groq_search_client import GroqSearchClient
+from ai_clients.response_cache import ResponseCache
+from ai_clients.weather_client import WeatherClient
+from ai_manager import AIManager
+from data_manager import DataManager
+from database import Database
+from db.database_unavailable import DatabaseUnavailable
+from io_manager import IOManager
+from logic_manager import LogicManager
+from logic_rules.constants import OUTCOME_ACTIONS, SEVERITY_LEVELS
 from models.incident import Incident
+from models.incident_photo import IncidentPhoto
+from site_plan.site_plan import SitePlan
 
-logger = logging.getLogger(__name__)
-
-SEVERITY_LEVELS = logic_manager.SEVERITY_LEVELS
-OUTCOME_ACTIONS = logic_manager.OUTCOME_ACTIONS
-logic = logic_manager.LogicManager(logic_manager.LogicManager.default_rules())
+_EDIT_FIELDS = ("description", "location", "reporter_role", "injury")
 
 
-# Sets up logging, warns about a corrupt incidents file, loads the saved incidents and the AI cache.
-def start_up() -> list:
-    log_path = data_manager.get_log_path()
-    if log_path:
-        logging.basicConfig(
-            filename=log_path, level=logging.INFO,
-            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        )
-    problem = data_manager.check_records_file()
-    if problem:
-        io_manager.display_message(f"Warning: {problem}. Starting with no saved incidents.")
-    records = data_manager.load_records()
-    ai_manager.load_response_cache(data_manager.load_ai_cache())
-    io_manager.display_message(f"Loaded {len(records)} saved incident(s).")
-    return records
+class IncidentTriageApp:
+    # Holds the four managers it is given and runs the pipeline between them (association).
+    def __init__(self, io: IOManager, ai: AIManager, logic: LogicManager, data: DataManager,
+                 cache: ResponseCache, notice: str | None = None) -> None:
+        self._io = io
+        self._ai = ai
+        self._logic = logic
+        self._data = data
+        self._cache = cache
+        self._notice = notice
+        self._records: list[Incident] = []
 
+    # The incidents loaded so far, in saved order (a copy, so callers cannot change the app's list).
+    @property
+    def records(self) -> list[Incident]:
+        return list(self._records)
 
-# Fields copied from the hazard extraction onto the record (the validity fields are copied first).
-_HAZARD_FLAG_KEYS = (
-    "hazard_category", "injury_treatment", "equipment_mentioned", "elevated_places",
-    "height_estimate_m", "ppe_status", "context_flags_error",
-)
+    # (bytes, MIME type) of a photo kept in the database, or None.
+    def read_photo(self, reference: str) -> tuple[bytes, str] | None:
+        return self._data.read_photo(reference)
 
+    @property
+    def database(self) -> Database:
+        return self._data.database
 
-# The weather step: returns the weather fields to add, with enrichment_error set if the lookup failed.
-def _weather_fields(record: dict) -> dict:
-    fields = {
-        "weather_available": False, "condition": None, "temperature_c": None,
-        "humidity_pct": None, "precipitation_mm": None, "enrichment_error": None,
-    }
-    if not record.get("run_weather"):
-        return fields
-    try:
-        weather = ai_manager.get_weather(record.get("timestamp"), record.get("location", ""))
-    except Exception as error:
-        logger.warning("Weather step failed: %s", error)
-        weather = None
-    if weather is None:
-        fields["enrichment_error"] = "Weather data unavailable or invalid"
-        return fields
-    fields["weather_available"] = True
-    for key in ("temperature_c", "humidity_pct", "precipitation_mm"):
-        fields[key] = weather[key]
-    return fields
+    # Reads the saved incidents again from disk.
+    def reload_records(self) -> list[Incident]:
+        self._records = self._data.load_records()
+        return self.records
 
+    # Incidents at one location in the last N days, newest first.
+    def query_location(self, location: str, days: int) -> list[Incident]:
+        return self._data.query_by_location(location, days, records=self._records)
 
-# The similar-incidents step: returns its fields; a lookup that raises becomes similar_incidents_error.
-def _similar_incident_fields(enriched: dict, history_records: list | None) -> dict:
-    if not enriched.get("run_similar"):
-        return {"similar_incidents_checked": False, "similar_incidents": None, "similar_incidents_error": None}
-    try:
-        found = ai_manager.find_similar_incidents(enriched, history_records or [], OUTCOME_ACTIONS)
-    except Exception as error:
-        logger.warning("Similar-incidents step failed: %s", error)
-        return {
-            "similar_incidents_checked": True, "similar_incidents": None,
-            "similar_incidents_error": f"Similar-incidents lookup failed: {error}",
-        }
-    return {"similar_incidents_checked": True, **found}
+    # Saved locations with their incident counts.
+    def locations(self) -> list[tuple[str, int]]:
+        return self._data.list_locations(self._records)
 
+    # Deletes the incident at a 0-based position and reloads; returns False if it could not be removed.
+    def remove_incident(self, index: int) -> bool:
+        removed = self._data.delete_record(index)
+        self.reload_records()
+        return removed
 
-# The web-search step: returns its fields; a search that raises becomes web_search_error.
-def _web_search_fields(enriched: dict) -> dict:
-    try:
-        return ai_manager.search_web_for_similar_incidents(enriched)
-    except Exception as error:
-        logger.warning("Web search step failed: %s", error)
-        return {"web_industry_context": None, "web_incidents": None, "web_search_error": str(error)}
+    # The saved site plan for the site map, or None.
+    def site_plan(self) -> SitePlan | None:
+        return self._data.load_site_plan()
 
+    # Reads an uploaded plan image into a draft plan with the AI; the draft is not saved. Raises SitePlanError.
+    def read_site_plan(self, image: IncidentPhoto, width_m: float, aspect: float, name: str = "") -> SitePlan:
+        try:
+            return self._ai.read_site_plan(image, width_m, aspect, name)
+        finally:
+            self._data.save_ai_cache(self._cache.export())
 
-# Lennart
-# Runs the AI steps for one incident (hazard flags first, then weather, similar incidents and web search); never raises.
-def enrich_record(record: dict, history_records: list | None = None) -> dict:
-    enriched = dict(record)
+    def save_site_plan(self, plan: SitePlan) -> bool:
+        return self._data.save_site_plan(plan)
 
-    flags = ai_manager.extract_hazard_context_flags(str(record.get("description") or ""))
-    enriched["is_valid_incident"] = flags.get("is_valid_incident")
-    enriched["invalid_reason"] = flags.get("invalid_reason")
-    accepted, _ = logic.screen_incident(enriched)
-    if not accepted:
-        return enriched
+    def delete_site_plan(self) -> bool:
+        return self._data.delete_site_plan()
 
-    enriched.update(_weather_fields(record))
-    for key in _HAZARD_FLAG_KEYS:
-        enriched[key] = flags[key]
-    enriched.update(_similar_incident_fields(enriched, history_records))
-    enriched.update(_web_search_fields(enriched))
-    return enriched
+    # Chooses where everything is kept. DATABASE_URL (a Postgres URL or a SQLite file path) means a database; without
+    # it, or if the database cannot be opened, the app keeps working with local files in the data folder.
+    # Returns the data manager and a message for the user when it is not using the database they asked for.
+    @staticmethod
+    def open_storage(url: str | None) -> tuple[DataManager, str | None]:
+        if not url:
+            return DataManager(), f"DATABASE_URL is not set, so incidents are saved in local files ({DataManager.default_folder()})."
+        try:
+            return DataManager(shared_database=Database(url)), None
+        except DatabaseUnavailable as error:
+            return DataManager(), (f"Warning: {error}. Saving to local files ({DataManager.default_folder()}) instead; "
+                                   "check DATABASE_URL.")
 
+    # Builds the real app: API keys from .env, saved AI replies from storage, logging to the console.
+    @classmethod
+    def create(cls) -> "IncidentTriageApp":
+        load_dotenv()
+        data, notice = cls.open_storage(os.environ.get("DATABASE_URL"))
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+        cache = ResponseCache(data.load_ai_cache())
+        ai = AIManager(GeminiClient(cache), GroqSearchClient(cache), WeatherClient(cache), OUTCOME_ACTIONS)
+        return cls(IOManager(SEVERITY_LEVELS, OUTCOME_ACTIONS), ai, LogicManager(LogicManager.default_rules()),
+                   data, cache, notice)
 
-# The whole pipeline for one incident: enrich, score, decide the outcome, save; returns the record, or None if rejected.
-def process_incident(incident: dict, records: list, interactive: bool = True) -> dict | None:
-    typed_incident = Incident.from_dict(incident)
-    # Preserve the context fallback when a direct caller omits the timestamp.
-    typed_incident.update({"timestamp": incident.get("timestamp")})
-    logic.derive_context(typed_incident)
-    with_context = typed_incident.to_dict()
-    with io_manager.show_loading("AI is analysing the incident"):
-        enriched = enrich_record(with_context, records)
-        accepted, reject_reason = logic.screen_incident(enriched)
-        if accepted:
-            enriched = logic.apply_weather(enriched)
-            enriched = logic.apply_lighting(enriched)
-            enriched = logic.apply_hazard_rules(enriched)
-            enriched.update(ai_manager.generate_incident_review(enriched))
-    if not accepted:
-        io_manager.display_message(f"Incident rejected: {reject_reason}")
-        return None
-
-    history = data_manager.query_by_location(
-        enriched.get("location", ""), 30, as_of=enriched.get("timestamp"), records=records
-    )
-    # Retain the weather data for future use.
-    _weather_data = {
-        "weather_available": enriched.get("weather_available"),
-        "condition": enriched.get("condition"),
-        "temperature_c": enriched.get("temperature_c"),
-        "humidity_pct": enriched.get("humidity_pct"),
-    }
-    typed_incident.update(enriched)
-    logic.assess_severity(typed_incident, history)
-    logic.decide_outcome(typed_incident, history)
-    final_record = typed_incident.to_dict()
-    if "timestamp" not in incident:
-        final_record.pop("timestamp", None)
-
-    saved = data_manager.save_record(final_record)
-    while saved is False and interactive and io_manager.ask_retry_save():
-        saved = data_manager.save_record(final_record)
-    if saved is False:
-        io_manager.display_message("Warning: could not save this incident to disk.")
-    records.append(final_record)
-    if not data_manager.save_ai_cache(ai_manager.export_response_cache()):
-        io_manager.display_message("Warning: could not save the AI reply cache.")
-    return final_record
-
-
-# Menu option 1: asks for an incident (pressing Enter twice on a blank answer returns to the menu), processes it, shows the report, and offers to re-enter it if rejected.
-def log_incident_flow(records: list) -> dict | None:
-    while True:
-        incident = io_manager.get_incident_input()
-        if incident is None:
-            io_manager.display_message("Cancelled. Returning to the main menu.")
-            return None
-        final_record = process_incident(incident, records)
-        if final_record is not None:
-            break
-        if not io_manager.ask_try_again():
-            return None
-    io_manager.display_outcome(final_record, SEVERITY_LEVELS, OUTCOME_ACTIONS)
-    return final_record
-
-
-# Processes every valid incident in a JSON file without prompting; returns 0, or 1 if there was nothing valid.
-def run_batch(path: str) -> int:
-    incidents, problems = io_manager.read_incident_file(path)
-    for problem in problems:
-        io_manager.display_message(f"Skipped: {problem}")
-    if not incidents:
-        io_manager.display_message("No valid incidents to process.")
-        return 1
-
-    records = start_up()
-    for incident in incidents:
-        final_record = process_incident(incident, records, interactive=False)
-        if final_record is None:
-            continue
-        io_manager.display_outcome(final_record, SEVERITY_LEVELS, OUTCOME_ACTIONS)
-    io_manager.display_summary(records, SEVERITY_LEVELS, OUTCOME_ACTIONS, interactive=False)
-    return 0
-
-
-# Menu option 2: reloads the saved incidents and shows the summary.
-def show_summary() -> list:
-    records = data_manager.load_records()
-    io_manager.display_summary(records, SEVERITY_LEVELS, OUTCOME_ACTIONS)
-    return records
-
-
-# Menu option 3: asks for a location and a number of days and shows the incidents found.
-def run_location_query(records: list) -> None:
-    query = io_manager.get_location_query(data_manager.list_locations(records))
-    if query is None:
-        return
-    location, days = query
-    io_manager.display_query_results(data_manager.query_by_location(location, days))
-
-
-# Menu option 4: shows the incidents, asks which one to delete, confirms, and removes it from the file.
-def run_delete_flow() -> list:
-    records = data_manager.load_records()
-    if not records:
-        io_manager.display_message("No incidents to delete.")
-        return records
-    io_manager.display_summary(records, SEVERITY_LEVELS, OUTCOME_ACTIONS, interactive=False)
-    number = io_manager.get_delete_choice(len(records))
-    if number is None or not io_manager.confirm_delete(records[number - 1], number):
-        return records
-    if data_manager.delete_record(number - 1):
-        io_manager.display_message(f"Incident #{number} deleted.")
-    else:
-        io_manager.display_message("Could not delete the incident: the data file could not be updated.")
-    return data_manager.load_records()
-
-
-# The interactive menu loop: log an incident, view the summary, query by location, delete an incident, exit.
-def main() -> None:
-    records = start_up()
-    while True:
-        choice = io_manager.get_menu_choice()
-        if choice == "1":
-            log_incident_flow(records)
-        elif choice == "2":
-            records = show_summary()
-        elif choice == "3":
-            run_location_query(records)
-        elif choice == "4":
-            records = run_delete_flow()
-        elif choice == "5":
-            io_manager.display_message("Goodbye.")
-            break
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Workplace Safety Incident Triage System")
-    parser.add_argument("--batch", metavar="FILE", help="process the incidents in FILE (JSON) and exit")
-    arguments = parser.parse_args()
-    if arguments.batch:
-        raise SystemExit(run_batch(arguments.batch))
-    main()
+    # Tells the user where data is kept if that is not the database they asked for, warns about a corrupt incidents file.
+    def start_up(self) -> None:
+        if self._notice:
+            self._io.display_message(self._notice)
+        problem = self._data.check_records_file()
+        if problem:
+            self._io.display_message(f"Warning: {problem}. Starting with no saved incidents.")
+        self._records = self._data.load_records()
+        self._io.display_message(f"Loaded {len(self._records)} saved incident(s).")
