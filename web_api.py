@@ -51,6 +51,8 @@ class WebApi:
         routes = [
             ("/api/health", "GET", self.health),
             ("/api/meta", "GET", self.meta),
+            ("/api/incidents", "GET", self.list_incidents),
+            ("/api/incidents/<int:number>", "GET", self.get_incident),
         ]
         for path, method, handler in routes:
             self.flask.add_url_rule(path, f"{method}_{path}", handler, methods=[method])
@@ -99,3 +101,15 @@ class WebApi:
             "hazard_names": ReportPrinter.HAZARD_NAMES,
             "priority_levels": {str(k): v for k, v in PRIORITY_LEVELS.items()},
         }), 200
+
+    def list_incidents(self) -> tuple:
+        with self._lock:
+            records = self._app.reload_records()
+        rows = self._workflow.all()
+        return jsonify([self._to_json(r, n, rows=rows) for n, r in enumerate(records, start=1)]), 200
+
+    def get_incident(self, number: int) -> tuple:
+        incident = self._find(number)
+        if incident is None:
+            return jsonify({"errors": [f"No incident #{number}."]}), 404
+        return jsonify(self._to_json(incident, number, history=True)), 200

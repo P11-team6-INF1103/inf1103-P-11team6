@@ -54,3 +54,32 @@ def test_cors_allows_only_the_configured_origin(tmp_path):
     other = client.get("/api/health", headers={"Origin": "https://example.com"})
     assert allowed.headers["Access-Control-Allow-Origin"] == "https://workplacelogging.netlify.app"
     assert "Access-Control-Allow-Origin" not in other.headers
+
+
+def test_list_gives_each_incident_its_number_and_workflow_fields(tmp_path):
+    client, _ = _client(tmp_path, [_incident(), _incident(location="Site C")])
+    body = client.get("/api/incidents").get_json()
+    assert [row["id"] for row in body] == [1, 2]
+    assert body[1]["location"] == "Site C"
+    assert {"priority", "priority_name", "resolved", "problems", "has_photo"} <= set(body[0])
+
+
+def test_list_is_empty_when_nothing_is_saved(tmp_path):
+    client, _ = _client(tmp_path)
+    assert client.get("/api/incidents").get_json() == []
+
+
+def test_get_returns_one_incident_with_its_history(tmp_path):
+    client, _ = _client(tmp_path, [_incident()])
+    response = client.get("/api/incidents/1")
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["id"] == 1 and body["history"] == []
+
+
+def test_get_of_a_missing_number_is_a_404(tmp_path):
+    client, _ = _client(tmp_path, [_incident()])
+    for number in (0, 2):
+        response = client.get(f"/api/incidents/{number}")
+        assert response.status_code == 404
+        assert response.get_json() == {"errors": [f"No incident #{number}."]}
