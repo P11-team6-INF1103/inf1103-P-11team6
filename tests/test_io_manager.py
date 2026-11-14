@@ -134,3 +134,8 @@ def test_review_screen_can_cancel_and_nothing_is_returned(monkeypatch, io, capsy
     type_answers(monkeypatch, [DESCRIPTION, "Site A", "officer", "yes", "", "cancel"])
     assert io.get_incident_input() is None
     assert "Nothing is sent to the AI or saved until you choose 'send'" in capsys.readouterr().out
+
+
+def test_review_screen_edit_changes_one_answer(monkeypatch, io):
+    type_answers(monkeypatch, [DESCRIPTION, "Site A", "officer", "yes", "", "edit", "2", "Site Z", "send"])
+    assert io.get_incident_input().location == "Site Z"
