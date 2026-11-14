@@ -99,3 +99,16 @@ def test_report_shows_photo_section_and_friendly_errors(capsys):
     out = capsys.readouterr().out
     assert "WHAT THE PHOTO SHOWS" in out and "does not seem to match" in out
     assert "STOP WORK" in out and "API key looks missing" in out
+
+
+def test_summary_counts_photos(capsys, io):
+    a = Incident("Worker slipped on wet floor", "Site A", "officer", True, "2026-10-20T09:00:00")
+    a.update({"outcome": "log_only", "hazard_type": "fall", "severity_estimate": 2, "photo_file": "a.png"})
+    b = Incident("Forklift hit cement bags", "Site B", "officer", False, "2026-10-21T09:00:00")
+    b.update({"outcome": "pending_review", "hazard_type": "unassessed", "assessment_error": "down"})
+    io.display_summary([a, b], interactive=False)
+    out = capsys.readouterr().out
+    assert "Total incidents: 2" in out and "With a photo: 1" in out and "[photo]" in out
+
+
+DESCRIPTION = "Worker fell from a ladder at the loading bay"
