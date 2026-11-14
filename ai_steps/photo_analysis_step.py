@@ -1,9 +1,8 @@
 # Sufi
 
-from ai_steps.enrichment_step import EnrichmentStep
-
 from ai_clients.gemini_client import GeminiClient
 from ai_steps.constants import PPE_VALUES
+from ai_steps.enrichment_step import EnrichmentStep
 from models.incident import Incident
 
 

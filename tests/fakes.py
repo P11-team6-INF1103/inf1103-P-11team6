@@ -1,5 +1,5 @@
 #Ren Xiang
-from ai_clients import ResponseCache
+from ai_clients.response_cache import ResponseCache
 from ai_manager import (
     HazardFlagStep,
     PhotoAnalysisStep,
