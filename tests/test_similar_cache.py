@@ -6,6 +6,9 @@ from ai_clients.gemini_client import GeminiClient
 from ai_clients.groq_search_client import GroqSearchClient
 from ai_clients.response_cache import ResponseCache
 from ai_clients.similarity_matcher import SimilarityMatcher
+from ai_steps.hazard_flag_step import HazardFlagStep
+from models.incident import Incident
+from tests.fakes import HAZARD_REPLY
 
 SCHEMA = {"type": "array", "items": {"type": "string"}}
 FALL = "Worker slipped on the wet floor near the loading bay."
@@ -166,3 +169,18 @@ def test_groq_reuses_a_similar_search(monkeypatch):
     client.search_json(f"Incident: {FALL.upper()}\nHazard: fall", {}, subject=FALL.upper())
     client.search_json(f"Incident: {FALL}\nHazard: electrical", {}, subject=FALL)  # another hazard: asked again
     assert len(calls) == 2
+
+
+def test_hazard_step_passes_the_description_as_the_subject():
+    class Recording:
+        def __init__(self):
+            self.subjects = []
+
+        def ask_json(self, prompt, schema, photo=None, subject=None):
+            self.subjects.append(subject)
+            return HAZARD_REPLY
+
+    gemini = Recording()
+    incident = Incident(FALL, "Bay 2", "supervisor", False)
+    HazardFlagStep(gemini).run(incident, [])
+    assert gemini.subjects == [FALL]
