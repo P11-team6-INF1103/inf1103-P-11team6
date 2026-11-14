@@ -121,3 +121,10 @@ def test_undo_takes_back_the_last_answer_and_redo_puts_it_back(monkeypatch, io, 
     assert incident.location == "Site B" and incident.get("reporter_role") == "site_supervisor"
     assert incident.injury is False
     assert "Undid 'Location'" in capsys.readouterr().out
+
+
+def test_undo_with_nothing_to_undo_and_redo_with_nothing_to_redo(monkeypatch, io, capsys):
+    type_answers(monkeypatch, ["/undo", "/redo", DESCRIPTION, "Site C", "officer", "no", "", "send"])
+    assert io.get_incident_input().location == "Site C"
+    out = capsys.readouterr().out
+    assert "Nothing to undo." in out and "Nothing to redo." in out
