@@ -5,11 +5,13 @@ import ai_manager
 import data_manager
 import io_manager
 import logic_manager
+from models.incident import Incident
 
 logger = logging.getLogger(__name__)
 
 SEVERITY_LEVELS = logic_manager.SEVERITY_LEVELS
 OUTCOME_ACTIONS = logic_manager.OUTCOME_ACTIONS
+logic = logic_manager.LogicManager(logic_manager.LogicManager.default_rules())
 
 
 # Sets up logging, warns about a corrupt incidents file, loads the saved incidents and the AI cache.
@@ -90,7 +92,8 @@ def enrich_record(record: dict, history_records: list | None = None) -> dict:
     flags = ai_manager.extract_hazard_context_flags(str(record.get("description") or ""))
     enriched["is_valid_incident"] = flags.get("is_valid_incident")
     enriched["invalid_reason"] = flags.get("invalid_reason")
-    if not logic_manager.screen_incident(enriched)["accepted"]:
+    accepted, _ = logic.screen_incident(enriched)
+    if not accepted:
         return enriched
 
     enriched.update(_weather_fields(record))
@@ -103,32 +106,39 @@ def enrich_record(record: dict, history_records: list | None = None) -> dict:
 
 # The whole pipeline for one incident: enrich, score, decide the outcome, save; returns the record, or None if rejected.
 def process_incident(incident: dict, records: list, interactive: bool = True) -> dict | None:
-    with_context = logic_manager.derive_context(incident)
+    typed_incident = Incident.from_dict(incident)
+    # Preserve the context fallback when a direct caller omits the timestamp.
+    typed_incident.update({"timestamp": incident.get("timestamp")})
+    logic.derive_context(typed_incident)
+    with_context = typed_incident.to_dict()
     with io_manager.show_loading("AI is analysing the incident"):
         enriched = enrich_record(with_context, records)
-        screening = logic_manager.screen_incident(enriched)
-        if screening["accepted"]:
-            enriched = logic_manager.apply_weather(enriched)
-            enriched = logic_manager.apply_lighting(enriched)
-            enriched = logic_manager.apply_hazard_rules(enriched)
+        accepted, reject_reason = logic.screen_incident(enriched)
+        if accepted:
+            enriched = logic.apply_weather(enriched)
+            enriched = logic.apply_lighting(enriched)
+            enriched = logic.apply_hazard_rules(enriched)
             enriched.update(ai_manager.generate_incident_review(enriched))
-    if not screening["accepted"]:
-        io_manager.display_message("Incident rejected: " + screening["reject_reason"])
+    if not accepted:
+        io_manager.display_message(f"Incident rejected: {reject_reason}")
         return None
 
     history = data_manager.query_by_location(
         enriched.get("location", ""), 30, as_of=enriched.get("timestamp"), records=records
     )
-    weather_data = {
+    # Retain the weather data for future use.
+    _weather_data = {
         "weather_available": enriched.get("weather_available"),
         "condition": enriched.get("condition"),
         "temperature_c": enriched.get("temperature_c"),
         "humidity_pct": enriched.get("humidity_pct"),
     }
-    assessed = logic_manager.assess_severity(enriched, weather_data, history)
-
-    final_record = dict(assessed)
-    final_record["outcome"] = logic_manager.decide_outcome(assessed, history)
+    typed_incident.update(enriched)
+    logic.assess_severity(typed_incident, history)
+    logic.decide_outcome(typed_incident, history)
+    final_record = typed_incident.to_dict()
+    if "timestamp" not in incident:
+        final_record.pop("timestamp", None)
 
     saved = data_manager.save_record(final_record)
     while saved is False and interactive and io_manager.ask_retry_save():
