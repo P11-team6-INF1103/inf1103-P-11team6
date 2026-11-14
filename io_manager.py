@@ -767,6 +767,26 @@ class IOManager:
             sys.stdout.write("\r" + " " * (len(message) + 6) + "\r")
             sys.stdout.flush()
 
+    # Asks until the sanitised answer passes the check; pressing Enter twice on a blank answer returns None.
+    def _ask_valid(self, prompt: str, check: Callable[[str], str | None], back: str = "the main menu") -> str | None:
+        blank_before = False
+        while True:
+            answer = self._read(prompt)
+            if answer.strip() == "":
+                if blank_before:
+                    return None
+                blank_before = True
+                print(f"Nothing entered. Type your answer, or press Enter again to go back to {back}.")
+                prompt = "Try again: "
+                continue
+            blank_before = False
+            value = self._validator.sanitise(answer)
+            error = check(value)
+            if error is None:
+                return value
+            print("Error: " + error)
+            prompt = "Try again: "
+
     # Asks until the answer is yes or no; returns None if allow_back is set and Enter is pressed twice.
     def _ask_yes_no(self, prompt: str, allow_back: bool = False) -> bool | None:
         answer = self._read(prompt).strip().lower()
