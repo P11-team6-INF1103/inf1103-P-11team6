@@ -136,6 +136,33 @@
 #     assert fields["hazard_category"] == "fall_from_height" and fields["height_estimate_m"] == 12
 #     assert fields["context_flags_error"] is None
 
+
+# # Sufi
+# def test_photo_step_only_runs_with_a_photo_and_passes_it_on():
+#     gemini = FakeGemini()
+#     step = PhotoAnalysisStep(gemini)
+#     assert step.safe_run(make(photo=False), []) == {"photo_analysed": False, "photo_error": None}
+#     assert gemini.calls == []
+#     fields = step.safe_run(make(photo=True), [])
+#     assert fields["photo_analysed"] is True and fields["photo_ppe_status"] == "not_worn"
+#     assert isinstance(gemini.calls[0]["photo"], IncidentPhoto)
+
+
+# def test_photo_step_turns_a_bad_reply_into_photo_error():
+#     gemini = FakeGemini(replies={id(PhotoAnalysisStep.SCHEMA): {"photo_summary": "missing fields"}})
+#     fields = PhotoAnalysisStep(gemini).safe_run(make(photo=True), [])
+#     assert fields["photo_analysed"] is False and "Photo analysis failed" in fields["photo_error"]
+
+
+# def test_similar_step_ignores_made_up_ids_and_copies_saved_facts():
+#     past = make(outcome="stop_work_review", hazard_type="fall_from_height")
+#     gemini = FakeGemini(replies={id(SimilarIncidentStep.SCHEMA): [
+#         {"id": 0, "resolution_notes": "Work stopped."}, {"id": 7, "resolution_notes": "invented"}]})
+#     fields = SimilarIncidentStep(gemini, OUTCOME_ACTIONS).safe_run(make(run_similar=True), [past])
+#     assert len(fields["similar_incidents"]) == 1
+#     assert fields["similar_incidents"][0]["outcome"] == "stop_work_review"
+
+
 # # Ren Xiang
 # # --- AIManager and threading (advanced feature) ---
 
