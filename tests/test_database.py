@@ -1,18 +1,25 @@
 # Lennart
+import os
 import sys
 
 import pytest
 
 import migrate_to_database
 from data_manager import DataManager
+from data_stores.db_json import DbJson
 from database import Database
 from db.database_unavailable import DatabaseUnavailable
 from db.postgres_connection import PostgresConnection
 from models.incident import Incident
+from models.incident_photo import IncidentPhoto
+from site_plan.site_plan import SitePlan
 from tests.doubles.dead_pool import DeadPool
 from tests.doubles.fake_pool import FakePool
 from tests.doubles.recording_connection import RecordingConnection
+from tests.doubles.unreachable_database import UnreachableDatabase
 from workflow import WorkflowStore
+
+SAMPLE_PHOTO = os.path.join(os.path.dirname(__file__), "sample_photo.png")
 
 
 def test_sqlite_database_creates_every_table_and_can_be_opened_twice(tmp_path):
@@ -74,10 +81,50 @@ def test_an_unwritable_sqlite_location_gives_a_clean_error(tmp_path):
         Database(str(blocker / "inside" / "app.db"))
 
 
+def test_documents_round_trip_and_bad_content_is_reported_not_raised(tmp_path):
+    database = Database(str(tmp_path / "app.db"))
+    document = DbJson(database, "site_plan", dict)
+    assert document.read() == ({}, None)
+    assert document.write({"a": 1}) and document.write({"a": 2})  # the second write replaces the first
+    assert document.read() == ({"a": 2}, None)
+    with database.connect() as connection:
+        connection.execute("UPDATE documents SET data = ? WHERE name = ?", ("{ not json", "site_plan"))
+    data, problem = document.read()
+    assert data == {} and "corrupt" in problem
+    document.write([1, 2])
+    data, problem = document.read()
+    assert data == {} and "wrong format" in problem
+    assert document.delete() and document.read() == ({}, None)
+
+
+def test_database_photos_are_stored_once_and_read_back(tmp_path):
+    manager = DataManager(str(tmp_path / "local"), Database(str(tmp_path / "app.db")))
+    photo = IncidentPhoto.from_file(SAMPLE_PHOTO)
+    reference = manager.store_photo(photo)
+    assert reference.startswith("db:") and manager.store_photo(photo) == reference
+    with manager.database.connect() as connection:
+        assert connection.execute("SELECT COUNT(*) AS n FROM photos").fetchone()["n"] == 1
+    assert manager.read_photo(reference) == (photo.content, photo.mime_type)
+    assert manager.read_photo("db:unknown") is None and manager.read_photo("/tmp/a.png") is None
+
+
+def test_an_unreachable_database_never_crashes_the_data_manager(tmp_path):
+    manager = DataManager(str(tmp_path / "local"), UnreachableDatabase())
+    incident = Incident("Plank fell", "Site A", "site_supervisor", False, "2026-10-01T09:00:00")
+    assert manager.load_records() == []
+    assert not manager.save_record(incident) and not manager.replace_record(0, incident) and not manager.delete_record(0)
+    assert manager.store_photo(IncidentPhoto.from_file(SAMPLE_PHOTO)) is None
+    assert manager.read_photo("db:abc") is None and manager.load_site_plan() is None
+    assert manager.load_ai_cache() == {} and not manager.save_ai_cache({"k": 1})
+    _data, problem = DbJson(manager.database, "site_plan", dict).read()
+    assert "could not read" in problem
+
+
 def test_migration_copies_local_data_once(tmp_path, monkeypatch, capsys):
     local = DataManager(str(tmp_path / "local"))
     for stamp, place in (("2026-10-01T09:00:00", "Site A"), ("2026-10-02T09:00:00", "Site B")):
         local.save_record(Incident("Plank fell", place, "site_supervisor", False, stamp))
+    local.save_site_plan(SitePlan.from_dict({"width_m": 90, "depth_m": 56, "elements": [{"type": "gate", "name": "Main gate", "x": 2, "y": 44, "w": 15, "d": 10}]}))
     WorkflowStore(local.database).set_priority("2026-10-01T09:00:00", 2)
 
     target = str(tmp_path / "remote.db")
@@ -90,6 +137,7 @@ def test_migration_copies_local_data_once(tmp_path, monkeypatch, capsys):
 
     remote = DataManager(str(tmp_path / "unused"), Database(target))
     assert [i.location for i in remote.load_records()] == ["Site A", "Site B"]
+    assert remote.load_site_plan() is not None
     with remote.database.connect() as connection:
         priorities = [r["priority"] for r in connection.execute("SELECT priority FROM incident_workflow").fetchall()]
     assert priorities == [2]
