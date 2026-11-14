@@ -13,7 +13,6 @@ SKIPPED_FOLDERS = {".venv", "node_modules", ".git", "__pycache__", ".pytest_cach
 # empty, delete it and the xfail handling below.
 PENDING_SPLIT = {
     "ai_clients.py": "Ren Xiang: split into ai_clients/ (response_cache, json_reply, gemini_client)",
-    "ai_manager.py": "Ren Xiang: move the steps into ai_steps/ and keep only AIManager here",
     "tests/fakes.py": "Ren Xiang: move the fakes into tests/doubles/",
 }
 
