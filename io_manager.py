@@ -14,6 +14,7 @@ from io_helpers.report_printer import ReportPrinter
 from models.constants import KEEP_PHOTO
 from models.incident import Incident
 from models.incident_photo import IncidentPhoto
+from models.photo_error import PhotoError
 
 _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
@@ -801,6 +802,28 @@ class IOManager:
                 blank_before = False
                 answer = self._read("Please answer yes or no: ").strip().lower()
         return answer in ("yes", "y")
+
+    # New in Part 2: asks for an optional photo path until a usable photo is given or Enter skips it.
+    # When editing, 'current' is the photo's name: Enter keeps it and 'none' removes it (returns None).
+    def ask_for_photo(self, current: str | None = None) -> IncidentPhoto | str | None:
+        print("Attach a photo of the scene? Type or drag in the file path (.png .jpg .jpeg .webp, max 5 MB).")
+        if current:
+            print(f"Current photo: {current}. Press Enter to keep it, or type 'none' to remove it.")
+        prompt = "Photo path (or press Enter to keep it): " if current else "Photo path (or press Enter to skip): "
+        while True:
+            answer = self._read(prompt)
+            if answer.strip() == "":
+                return KEEP_PHOTO if current else None
+            if current and answer.strip().lower() == "none":
+                return None
+            try:
+                photo = IncidentPhoto.from_file(self._validator.clean_path(answer))
+            except PhotoError as error:
+                print(f"Error: {error}")
+                prompt = "Try another path (or press Enter to skip): "
+                continue
+            print(f"Photo attached: {photo.file_name}")
+            return photo
 
     # Shows the main menu and returns '1' to '7'; Ctrl+C or closed input returns '7'.
     def get_menu_choice(self) -> str:
