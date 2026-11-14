@@ -1,3 +1,4 @@
+import argparse
 import logging
 import os
 
@@ -107,6 +108,15 @@ class IncidentTriageApp:
         ai = AIManager(GeminiClient(cache), GroqSearchClient(cache), WeatherClient(cache), OUTCOME_ACTIONS)
         return cls(IOManager(SEVERITY_LEVELS, OUTCOME_ACTIONS), ai, LogicManager(LogicManager.default_rules()),
                    data, cache, notice)
+
+    # Command line entry point: the menu, or --batch FILE to process a JSON file and exit. Returns the exit code.
+    @classmethod
+    def cli(cls, argv: list[str] | None = None) -> int:
+        parser = argparse.ArgumentParser(description="Workplace Safety Incident Triage System")
+        parser.add_argument("--batch", metavar="FILE", help="process the incidents in FILE (JSON) and exit")
+        arguments = parser.parse_args(argv)
+        app = cls.create()
+        return app.run_batch(arguments.batch) if arguments.batch else (app.run() or 0)
 
     # Tells the user where data is kept if that is not the database they asked for, warns about a corrupt incidents file.
     def start_up(self) -> None:
@@ -256,3 +266,110 @@ class IncidentTriageApp:
                 return
             if not self._io.ask_try_again():
                 return
+
+    # Menu option 5: pick an incident, then edit it, re-analyse it, look at its older versions or go back to one of them.
+    def edit_saved_incident(self) -> None:
+        self.reload_records()
+        if not self._records:
+            self._io.display_message("No incidents to edit.")
+            return
+        self._io.display_summary(self._records, interactive=False)
+        number = self._io.get_edit_choice(len(self._records))
+        if number is None:
+            return
+        index = number - 1
+        while True:
+            action = self._io.get_edit_action(self._records[index])
+            if action is None:
+                return
+            if action == "history":
+                self._io.display_history(self._records[index])
+            elif action == "edit":
+                self._edit_by_prompt(index)
+            elif action == "reanalyse":
+                self._show_edit_result(self.reanalyse_incident(index))
+            elif action == "revert":
+                version = self._io.get_version_choice(self._records[index])
+                if version is not None:
+                    self._show_edit_result(self.revert_incident(index, version))
+
+    # Asks for the changes, shows what changed and asks to confirm, then runs the edit.
+    def _edit_by_prompt(self, index: int) -> None:
+        old = self._records[index]
+        draft = self._io.get_incident_edit(old)
+        if draft is None:
+            self._io.display_message("Cancelled. The incident was not changed.")
+            return
+        self._show_edit_result(self.edit_incident(index, draft["fields"], draft["photo"]))
+
+    # Tells the user what an edit or revert did; for a new version, shows the report beside the old insight.
+    def _show_edit_result(self, result: EditResult) -> None:
+        if result.status == "updated":
+            self._io.display_edit_result(result.previous, result.incident)
+        else:
+            self._io.display_message({
+                "unchanged": result.message,
+                "rejected": f"The edit was rejected, so the old version was kept: {result.message}",
+                "failed": f"The AI could not assess the incident, so the old version was kept. {result.message}",
+                "not_saved": result.message,
+            }[result.status])
+
+    # Menu option 2: reloads the saved incidents and shows the summary.
+    def show_summary(self) -> None:
+        self._io.display_summary(self.reload_records())
+
+    # Menu option 3: asks for a location and a number of days and shows the incidents found.
+    def run_location_query(self) -> None:
+        query = self._io.get_location_query(self.locations())
+        if query is not None:
+            self._io.display_query_results(self.query_location(*query))
+
+    # Menu option 4: shows the incidents, asks which one to delete, confirms, and removes it.
+    def delete_incident(self) -> None:
+        self.reload_records()
+        if not self._records:
+            self._io.display_message("No incidents to delete.")
+            return
+        self._io.display_summary(self._records, interactive=False)
+        number = self._io.get_delete_choice(len(self._records))
+        if number is None or not self._io.confirm_delete(self._records[number - 1], number):
+            return
+        if self.remove_incident(number - 1):
+            self._io.display_message(f"Incident #{number} deleted.")
+        else:
+            self._io.display_message("Could not delete the incident: the data file could not be updated.")
+
+    # The interactive menu loop.
+    def run(self) -> None:
+        self.start_up()
+        actions = {"1": self.log_incident, "2": self.show_summary, "3": self.run_location_query,
+                   "4": self.delete_incident, "5": self.edit_saved_incident}
+        while True:
+            choice = self._io.get_menu_choice()
+            if choice == "7":
+                self._io.display_message("Goodbye.")
+                return
+            action = actions.get(choice)
+            if action is None:
+                self._io.display_message("That option is not available yet.")
+            else:
+                action()
+
+    # Processes every valid incident in a JSON file without prompting; returns 0, or 1 if nothing was valid.
+    def run_batch(self, path: str) -> int:
+        incidents, problems = self._io.read_incident_file(path)
+        for problem in problems:
+            self._io.display_message(f"Skipped: {problem}")
+        if not incidents:
+            self._io.display_message("No valid incidents to process.")
+            return 1
+        self.start_up()
+        for incident in incidents:
+            if self.process_incident(incident, interactive=False) is not None:
+                self._io.display_outcome(incident)
+        self._io.display_summary(self._records, interactive=False)
+        return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(IncidentTriageApp.cli())
