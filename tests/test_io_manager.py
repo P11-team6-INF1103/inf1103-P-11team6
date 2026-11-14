@@ -144,3 +144,13 @@ def test_review_screen_edit_changes_one_answer(monkeypatch, io):
 def test_commands_are_ignored_outside_the_incident_form(monkeypatch, io, capsys):
     type_answers(monkeypatch, ["/undo", "yes"])
     assert io._ask_yes_no("Delete? ") is True
+
+
+def test_edit_form_shows_old_values_and_photo_choices(monkeypatch, io, capsys):
+    incident = Incident(DESCRIPTION, "Site A", "officer", False)
+    incident.update({"photo_file": "old.png"})
+    type_answers(monkeypatch, ["edit", "3", "foreman", "edit", "5", "none", "send"])
+    draft = io.get_incident_edit(incident)
+    assert draft["fields"]["reporter_role"] == "foreman" and draft["photo"] is None
+    out = capsys.readouterr().out
+    assert "(was: officer)" in out and "(was: old.png)" in out
