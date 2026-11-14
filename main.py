@@ -12,6 +12,8 @@ from ai_manager import AIManager
 from data_manager import DataManager
 from database import Database
 from db.database_unavailable import DatabaseUnavailable
+from exporters.exporter_factory import ExporterFactory
+from exporters.incident_exporter import IncidentExporter
 from io_manager import IOManager
 from logic_manager import LogicManager
 from logic_rules.constants import OUTCOME_ACTIONS, SEVERITY_LEVELS
@@ -114,8 +116,11 @@ class IncidentTriageApp:
     def cli(cls, argv: list[str] | None = None) -> int:
         parser = argparse.ArgumentParser(description="Workplace Safety Incident Triage System")
         parser.add_argument("--batch", metavar="FILE", help="process the incidents in FILE (JSON) and exit")
+        parser.add_argument("--export", metavar="FILE", help="save every incident to FILE (.csv or .json) and exit")
         arguments = parser.parse_args(argv)
         app = cls.create()
+        if arguments.export:
+            return app.run_export(arguments.export)
         return app.run_batch(arguments.batch) if arguments.batch else (app.run() or 0)
 
     # Tells the user where data is kept if that is not the database they asked for, warns about a corrupt incidents file.
@@ -279,6 +284,49 @@ class IncidentTriageApp:
             if not self._io.ask_try_again():
                 return
 
+    # All saved incidents as text in one format ("csv" or "json"), with the exporter that wrote it (it knows the file
+    # ending and content type). Reads the saved incidents again first. Raises ValueError for an unknown format.
+    def export_text(self, format_name: str) -> tuple[IncidentExporter, str]:
+        exporter = ExporterFactory.create(format_name)
+        return exporter, exporter.export(self.reload_records())
+
+    # Writes every saved incident to 'path' (the format is named by the file ending, or by 'format_name') and returns
+    # how many were written. Raises ValueError for an unknown format and OSError if the file cannot be written.
+    def export_to_file(self, path: str, format_name: str | None = None) -> int:
+        exporter = ExporterFactory.create(format_name) if format_name else ExporterFactory.for_path(path)
+        text = exporter.export(self.reload_records())
+        with open(path, "w", encoding="utf-8", newline="") as file:
+            file.write(text)
+        return len(self._records)
+
+    # Menu option 6: asks for a format and a file name, then saves every incident to that file as a reference copy.
+    def export_incidents(self) -> None:
+        if not self.reload_records():
+            self._io.display_message("No incidents to export.")
+            return
+        defaults = {name: ExporterFactory.create(name).file_name() for name in ExporterFactory.names()}
+        choice = self._io.get_export_choice(defaults)
+        if choice is None:
+            self._io.display_message("Cancelled. Nothing was exported.")
+            return
+        format_name, path = choice
+        try:
+            count = self.export_to_file(path, format_name)
+        except OSError as error:
+            self._io.display_message(f"Could not write {path}: {error.strerror or error}")
+            return
+        self._io.display_message(f"Exported {count} incident(s) to {os.path.abspath(path)}.")
+
+    # Saves every incident to a file without prompting; returns 0, or 1 if the file could not be written.
+    def run_export(self, path: str) -> int:
+        try:
+            count = self.export_to_file(path)
+        except (ValueError, OSError) as error:
+            self._io.display_message(f"Export failed: {error}")
+            return 1
+        self._io.display_message(f"Exported {count} incident(s) to {os.path.abspath(path)}.")
+        return 0
+
     # Menu option 5: pick an incident, then edit it, re-analyse it, look at its older versions or go back to one of them.
     def edit_saved_incident(self) -> None:
         self.reload_records()
@@ -355,17 +403,13 @@ class IncidentTriageApp:
     def run(self) -> None:
         self.start_up()
         actions = {"1": self.log_incident, "2": self.show_summary, "3": self.run_location_query,
-                   "4": self.delete_incident, "5": self.edit_saved_incident}
+                   "4": self.delete_incident, "5": self.edit_saved_incident, "6": self.export_incidents}
         while True:
             choice = self._io.get_menu_choice()
             if choice == "7":
                 self._io.display_message("Goodbye.")
                 return
-            action = actions.get(choice)
-            if action is None:
-                self._io.display_message("That option is not available yet.")
-            else:
-                action()
+            actions[choice]()
 
     # Processes every valid incident in a JSON file without prompting; returns 0, or 1 if nothing was valid.
     def run_batch(self, path: str) -> int:

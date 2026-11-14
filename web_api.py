@@ -58,6 +58,7 @@ class WebApi:
             ("/api/health", "GET", self.health),
             ("/api/meta", "GET", self.meta),
             ("/api/incidents", "GET", self.list_incidents),
+            ("/api/incidents/export", "GET", self.export_incidents),
             ("/api/incidents/search", "GET", self.search_incidents),
             ("/api/reports/summary", "GET", self.summary_report),
             ("/api/incidents/<int:number>/priority", "PUT", self.set_priority),
@@ -104,6 +105,19 @@ class WebApi:
 
     def health(self) -> tuple:
         return jsonify({"status": "ok", "incidents": len(self._app.records)}), 200
+
+    # Downloads every saved incident as a file for reference (not a backup). ?format=csv (default) or json.
+    # 422 for another format.
+    def export_incidents(self) -> tuple:
+        name = request.args.get("format", "csv")
+        try:
+            with self._lock:
+                exporter, text = self._app.export_text(name)
+        except ValueError as error:
+            return jsonify({"errors": [str(error)]}), 422
+        return Response(text, 200, {
+            "Content-Type": f"{exporter.content_type}; charset=utf-8",
+            "Content-Disposition": f'attachment; filename="{exporter.file_name()}"'})
 
     # Labels and meanings, so the dashboard uses the same wording as the terminal app.
     def meta(self) -> tuple:
