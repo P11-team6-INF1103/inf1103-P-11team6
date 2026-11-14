@@ -16,6 +16,8 @@ from models.incident import Incident
 from models.incident_photo import IncidentPhoto
 from models.photo_error import PhotoError
 from search_engine import IncidentSearch
+from site_plan.site_plan import SitePlan
+from site_plan.site_plan_error import SitePlanError
 from trend_report import TrendReport
 from web_support.rate_limiter import RateLimiter
 from workflow import PRIORITY_LEVELS, WorkflowStore
@@ -250,6 +252,69 @@ class WebApi:
         if not path or not os.path.isfile(path):
             return jsonify({"errors": ["No photo saved for this incident."]}), 404
         return send_file(path)
+
+        # Ren Xiang
+    # The saved site plan for the site map, or {"plan": null} if none has been saved.
+    def get_site_plan(self) -> tuple:
+        plan = self._app.site_plan()
+        return jsonify({"plan": plan.to_dict() if plan else None}), 200
+
+    # Reads an uploaded plan image with the AI and returns a DRAFT plan to review (nothing is saved yet).
+    # Multipart form: 'plan' image file, 'site_width_m' (real width of the whole image in metres),
+    # optional 'image_aspect' (height / width, default 0.75) and 'site_name'.
+    def read_site_plan(self) -> tuple:
+        upload = request.files.get("plan")
+        problems = []
+        try:
+            width = float(request.form.get("site_width_m", ""))
+            if not SitePlan.MIN_SIDE_M <= width <= SitePlan.MAX_SIDE_M:
+                raise ValueError
+        except ValueError:
+            width = 0.0
+            problems.append(f"site_width_m must be a number from {SitePlan.MIN_SIDE_M:g} to {SitePlan.MAX_SIDE_M:g}.")
+        try:
+            aspect = float(request.form.get("image_aspect") or 0.75)
+            if not 0.2 <= aspect <= 5:
+                raise ValueError
+        except ValueError:
+            aspect = 0.75
+            problems.append("image_aspect must be the image height divided by its width (0.2 to 5).")
+        image = None
+        if upload is None or not upload.filename:
+            problems.append("Choose a plan image (.png, .jpg, .jpeg or .webp).")
+        else:
+            try:
+                image = IncidentPhoto.from_bytes(upload.filename, upload.read())
+            except PhotoError as error:
+                problems.append(f"plan ({error})")
+        if problems:
+            return jsonify({"errors": problems}), 422
+        client = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+        if self._limiter.too_many(client):
+            return jsonify({"errors": ["Too many requests from this connection. Try again in a few minutes."]}), 429
+        name = InputValidator.sanitise(request.form.get("site_name", ""))
+        try:
+            plan = self._app.read_site_plan(image, width, aspect, name)
+        except SitePlanError as error:
+            return jsonify({"errors": [str(error)]}), 502
+        return jsonify({"plan": plan.to_dict(), "warnings": plan.warnings}), 200
+
+    # Saves a reviewed plan (JSON body in the same shape as the template). 422 if it is unusable.
+    def save_site_plan(self) -> tuple:
+        try:
+            plan = SitePlan.from_dict(request.get_json(silent=True))
+        except SitePlanError as error:
+            return jsonify({"errors": [str(error)]}), 422
+        with self._lock:
+            if not self._app.save_site_plan(plan):
+                return jsonify({"errors": ["The site plan could not be saved to disk."]}), 500
+        return jsonify({"plan": plan.to_dict(), "warnings": plan.warnings}), 200
+
+    def delete_site_plan(self) -> tuple:
+        with self._lock:
+            if not self._app.delete_site_plan():
+                return jsonify({"errors": ["The site plan could not be removed."]}), 500
+        return jsonify({"plan": None}), 200
     
     # Daniel
     def list_locations(self) -> tuple:
