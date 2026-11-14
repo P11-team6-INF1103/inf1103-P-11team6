@@ -14,6 +14,8 @@ from db.database_unavailable import DatabaseUnavailable
 from io_manager import IOManager
 from logic_manager import LogicManager
 from logic_rules.constants import OUTCOME_ACTIONS, SEVERITY_LEVELS
+from models.constants import KEEP_PHOTO
+from models.edit_result import EditResult
 from models.incident import Incident
 from models.incident_photo import IncidentPhoto
 from site_plan.site_plan import SitePlan
@@ -157,6 +159,90 @@ class IncidentTriageApp:
             return None
         self._save(incident, interactive)
         return incident
+
+    # The names of the fields an edit would change, compared with the saved incident.
+    def describe_changes(self, old: Incident, fields: dict, photo: object = KEEP_PHOTO) -> list[str]:
+        changed = [name for name in _EDIT_FIELDS if fields.get(name, old.get(name)) != old.get(name)]
+        old_path = old.get("photo_saved_path")
+        if photo is None and old.get("photo_file") or isinstance(photo, IncidentPhoto) and (not old_path or os.path.splitext(
+                os.path.basename(old_path))[0] != photo.fingerprint()):
+            changed.append("photo")
+        return changed
+
+    # Saves 'new' as the newest version of the incident at a 0-based position, keeping the older versions.
+    def _replace(self, index: int, new: Incident, old: Incident) -> EditResult:
+        new.follow(old)
+        if new.has_photo():
+            new.update({"photo_saved_path": self._data.store_photo(new.photo)})
+        if not self._data.replace_record(index, new):
+            return EditResult("not_saved", previous=old,
+                              message="The new version could not be written to disk, so the old one was kept.")
+        self.reload_records()
+        if not self._data.save_ai_cache(self._cache.export()):
+            self._io.display_message("Warning: could not save the AI reply cache.")
+        return EditResult("updated", self._records[index], old)
+
+    # Edits the incident at a 0-based position and runs the AI and scoring again. 'fields' holds the new
+    # description, location, reporter_role and injury (any left out stay as they are); 'photo' is a new
+    # IncidentPhoto, None to remove the photo, or KEEP_PHOTO. Nothing is changed unless the new version succeeds.
+    def edit_incident(self, index: int, fields: dict, photo: object = KEEP_PHOTO) -> EditResult:
+        if not 0 <= index < len(self._records):
+            return EditResult("failed", message="There is no such incident.")
+        old = self._records[index]
+        if not self.describe_changes(old, fields, photo):
+            return EditResult("unchanged", old, old, "Nothing was changed, so the AI was not run again.")
+        return self._save_new_version(index, fields, photo)
+
+    # Builds the new version of the incident at a 0-based position from 'fields' and 'photo', analyses it, and saves it
+    # as the newest version.
+    def _save_new_version(self, index: int, fields: dict, photo: object) -> EditResult:
+        old = self._records[index]
+        kept = self._data.load_photo(old) if photo == KEEP_PHOTO else photo
+        merged = {name: fields.get(name, old.get(name)) for name in _EDIT_FIELDS}
+        new = Incident(merged["description"], merged["location"], merged["reporter_role"], merged["injury"],
+                       old.timestamp, kept if isinstance(kept, IncidentPhoto) else None)
+        if photo == KEEP_PHOTO and old.get("photo_file"):
+            new.update({"photo_file": old.get("photo_file")})  # the saved copy has a different file name
+        if photo == KEEP_PHOTO and kept is None and old.get("photo_file"):
+            # The saved photo is gone from disk: keep the record of it, but it cannot be analysed again.
+            new.update({"photo_file": old.get("photo_file"), "photo_saved_path": old.get("photo_saved_path")})
+        # The incident being edited must not count as an earlier incident (Rule 2 and the similar-incidents check).
+        others = [record for position, record in enumerate(self._records) if position != index]
+        reason = self._analyse(new, others)
+        if reason is not None:
+            return EditResult("rejected", previous=old, message=reason)
+        if new.get("assessment_error"):
+            return EditResult("failed", previous=old, message=new.get("assessment_error"))
+        return self._replace(index, new, old)
+
+    # Saves new wording for the description, location or reporter role as the newest version without running the AI:
+    # the earlier analysis is kept as it was. Injury and photo changes need the AI, so they are refused here.
+    def edit_incident_text(self, index: int, fields: dict) -> EditResult:
+        if not 0 <= index < len(self._records):
+            return EditResult("failed", message="There is no such incident.")
+        old = self._records[index]
+        if fields.get("injury", old.injury) != old.injury:
+            return EditResult("failed", previous=old, message="Changing the injury answer needs the AI to run again.")
+        text = {name: fields[name] for name in ("description", "location", "reporter_role")
+                if name in fields and fields[name] != old.get(name)}
+        if not text:
+            return EditResult("unchanged", old, old, "Nothing was changed.")
+        merged = {name: text.get(name, old.get(name)) for name in _EDIT_FIELDS}
+        new = Incident(merged["description"], merged["location"], merged["reporter_role"], merged["injury"], old.timestamp)
+        new.update({key: value for key, value in old.to_dict().items() if key != "history"})
+        new.update({"text_only_edit": True})
+        return self._replace(index, new, old)
+
+    # Makes an older version the newest one (the older versions stay in the history); no AI is run.
+    def revert_incident(self, index: int, version: int) -> EditResult:
+        if not 0 <= index < len(self._records):
+            return EditResult("failed", message="There is no such incident.")
+        old = self._records[index]
+        if not 1 <= version <= len(old.history):
+            return EditResult("failed", previous=old, message=f"There is no version {version} to go back to.")
+        copy = Incident.from_dict({key: value for key, value in old.history[version - 1].items() if key != "version"})
+        copy.update({"reverted_from": version})
+        return self._replace(index, copy, old)
 
     # Menu option 1: asks for an incident, processes it and shows the report; offers to re-enter a rejected one.
     def log_incident(self) -> None:
