@@ -3,9 +3,10 @@ import os
 import threading
 from typing import TYPE_CHECKING
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 
+from io_helpers.input_validator import InputValidator
 from io_helpers.report_printer import ReportPrinter
 from logic_rules.constants import OUTCOME_ACTIONS, SEVERITY_LEVELS
 from models.incident import Incident
@@ -53,6 +54,8 @@ class WebApi:
             ("/api/meta", "GET", self.meta),
             ("/api/incidents", "GET", self.list_incidents),
             ("/api/incidents/<int:number>", "GET", self.get_incident),
+            ("/api/locations", "GET", self.list_locations),
+            ("/api/locations/query", "GET", self.query_location),
         ]
         for path, method, handler in routes:
             self.flask.add_url_rule(path, f"{method}_{path}", handler, methods=[method])
@@ -113,6 +116,22 @@ class WebApi:
         if incident is None:
             return jsonify({"errors": [f"No incident #{number}."]}), 404
         return jsonify(self._to_json(incident, number, history=True)), 200
+
+    # Daniel
+    def list_locations(self) -> tuple:
+        return jsonify([{"location": name, "count": count} for name, count in self._app.locations()]), 200
+
+    # Same as terminal menu option 3: incidents at a location in the last N days.
+    def query_location(self) -> tuple:
+        location = InputValidator.sanitise(request.args.get("location", ""))
+        error = InputValidator.check_location(location)
+        days = request.args.get("days", "30")
+        if error or not (days.isdigit() and int(days) > 0):
+            return jsonify({"errors": [error or "Days must be a whole number, 1 or more."]}), 422
+        records = self._app.records
+        found = self._app.query_location(location, int(days))
+        rows = self._workflow.all()
+        return jsonify([self._to_json(r, records.index(r) + 1, rows=rows) for r in found]), 200
 
 
 # Used by gunicorn on Render: gunicorn "web_api:create_app()". gunicorn needs a plain function here, so it only hands over.
