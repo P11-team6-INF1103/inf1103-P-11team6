@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from datetime import datetime
 
 from io_helpers.draft_command import DraftCommand
+from io_helpers.input_validator import InputValidator
 from io_helpers.report_printer import ReportPrinter
 from models.constants import KEEP_PHOTO
 from models.incident import Incident
@@ -725,6 +726,7 @@ class IOManager:
     # Creates and owns its report printer (composition).
     def __init__(self, severity_levels: dict, outcome_actions: dict) -> None:
         self._printer = ReportPrinter(severity_levels, outcome_actions)
+        self._validator = InputValidator()
         self._accept_commands = False
 
     # Reads one answer; while an incident form is open, /undo and /redo are raised as DraftCommand instead.
