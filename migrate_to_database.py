@@ -1,5 +1,5 @@
 # Lennart
-# One-off: copies the local files (data/incidents.json and the priorities in data/app.db)
+# One-off: copies the local files (data/incidents.json, data/site_plan.json and the priorities in data/app.db)
 # into the database named by DATABASE_URL (Postgres, e.g. Neon). Safe to run twice: it only adds what is missing.
 #   python migrate_to_database.py
 import argparse
@@ -30,6 +30,11 @@ class Migration:
             return
         copied = sum(self._remote.save_record(Incident.from_dict(i.to_dict())) for i in incidents)
         print(f"Incidents: copied {copied} of {len(incidents)}.")
+
+    def copy_site_plan(self) -> None:
+        plan = self._local.load_site_plan()
+        if plan and self._remote.load_site_plan() is None:
+            print("Site plan: copied." if self._remote.save_site_plan(plan) else "Site plan: could not be copied.")
 
     # Each incident's priority and resolved status, from the local SQLite file.
     def copy_workflow(self) -> None:
@@ -62,6 +67,7 @@ class Migration:
             return 1
         migration = cls(DataManager.default_folder(), target)
         migration.copy_incidents()
+        migration.copy_site_plan()
         migration.copy_workflow()
         target.close()
         return 0
