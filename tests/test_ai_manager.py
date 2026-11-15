@@ -8,8 +8,10 @@ from ai_clients.json_reply import JsonReply
 from ai_clients.response_cache import ResponseCache
 from ai_clients.weather_client import WeatherClient
 from ai_steps.hazard_flag_step import HazardFlagStep
+from ai_steps.web_search_step import WebSearchStep
 from models.incident import Incident
 from models.incident_photo import IncidentPhoto
+from tests.doubles.fake_search import FakeSearch
 from tests.fakes import HAZARD_REPLY
 
 # Ren Xiang
@@ -180,3 +182,9 @@ def test_weather_validation():
     assert not WeatherClient.is_valid({"temperature_c": 99, "humidity_pct": 80, "precipitation_mm": 0})
     assert not WeatherClient.is_valid({"temperature_c": 30, "humidity_pct": 80, "precipitation_mm": -1})
     assert not WeatherClient.is_valid(None)
+
+
+# Darrel
+def test_web_step_drops_results_without_a_real_link():
+    fields = WebSearchStep(FakeSearch()).safe_run(make(), [])
+    assert fields["web_incidents"][0]["source_url"].startswith("https://")
