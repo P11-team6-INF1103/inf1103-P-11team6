@@ -8,6 +8,7 @@ from reports.location_ranking_section import LocationRankingSection
 from reports.overview_section import OverviewSection
 from reports.report_section import ReportSection
 from reports.severity_trend_section import SeverityTrendSection
+from tests.api_helpers import FORM, make_client
 from trend_report import TrendReport
 
 TODAY = date(2026, 11, 10)
@@ -117,3 +118,16 @@ def test_every_section_can_stand_in_for_the_base_type(section):
 def test_the_section_interface_cannot_be_created_directly():
     with pytest.raises(TypeError):
         ReportSection()
+
+
+def test_summary_endpoint_returns_json_and_csv_and_checks_days(tmp_path):
+    client = make_client(tmp_path)
+    client.post("/api/incidents", data=FORM)
+    body = client.get("/api/reports/summary?days=30").get_json()
+    assert body["days"] == 30 and body["sections"]["overview"]["total"] == 1
+    assert body["sections"]["locations"][0]["name"] == "Site B"
+    csv_response = client.get("/api/reports/summary?days=7&format=csv")
+    assert csv_response.status_code == 200 and csv_response.mimetype == "text/csv"
+    assert "attachment" in csv_response.headers["Content-Disposition"] and csv_response.text.startswith("section,item,value")
+    for bad in ("0", "181", "abc", "-3"):
+        assert client.get(f"/api/reports/summary?days={bad}").status_code == 422
