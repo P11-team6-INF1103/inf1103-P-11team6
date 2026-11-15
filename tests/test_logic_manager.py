@@ -455,5 +455,20 @@ def test_a_missing_or_wrong_typed_ai_value_never_breaks_a_rule():
     assert not PhotoMismatchRule().applies(make(), [])
 
 
+# Darrel
+def test_site_conditions_cope_with_dry_weather_and_malformed_ai_lists(logic):
+    dry = make(precipitation_mm=0, time_of_day="day", equipment_mentioned=["Excavator"], elevated_places=[])
+    logic.apply_site_conditions(dry)
+    assert dry.get("condition") == "clear" and dry.get("heavy_machinery_present") is True
+    assert dry.get("lighting_condition") == "daylight"
+    no_reading = make(time_of_day="day")
+    logic.apply_site_conditions(no_reading)
+    assert no_reading.get("condition") is None  # no weather reading: nothing is invented
+    malformed = make(equipment_mentioned="crane", elevated_places=[5, None, "  "], time_of_day="night")
+    logic.apply_site_conditions(malformed)  # a string and junk entries instead of lists of names
+    assert malformed.get("heavy_machinery_present") is False and malformed.get("working_at_height") is False
+    assert malformed.get("lighting_condition") == "dark"
+
+
 def load_tests(loader, tests, pattern):
     return suite_from(globals())
