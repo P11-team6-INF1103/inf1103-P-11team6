@@ -17,7 +17,10 @@ from logic_rules.constants import OUTCOME_ACTIONS, SEVERITY_LEVELS
 from main import IncidentTriageApp
 from models.incident import Incident
 from models.incident_photo import IncidentPhoto
-from tests.fakes import HAZARD_REPLY, PHOTO_REPLY, FakeGemini, FakeSearch, FakeWeather
+from tests.doubles.fake_gemini import FakeGemini
+from tests.doubles.fake_search import FakeSearch
+from tests.doubles.fake_weather import FakeWeather
+from tests.fakes import HAZARD_REPLY, PHOTO_REPLY
 
 TESTS = os.path.dirname(__file__)
 SAMPLE_PHOTO = os.path.join(TESTS, "sample_photo.png")
