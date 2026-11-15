@@ -155,7 +155,6 @@ class IncidentTriageApp:
             accepted, reason = self._logic.screen_incident(incident)
             if accepted:
                 self._ai.gather_evidence(incident, records)
-                self._logic.apply_site_conditions(incident)
                 self._logic.apply_photo_evidence(incident)
                 self._ai.write_review(incident)
         if not accepted:
