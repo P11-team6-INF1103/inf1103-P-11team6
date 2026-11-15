@@ -1,17 +1,7 @@
 import re
 from datetime import datetime
 
-# Daniel
-# OUTCOME_ACTIONS and SEVERITY_LEVELS are only here because main.py still reads them from logic_manager;
-# drop them (and the noqa) once main.py imports them from logic_rules.constants.
-from logic_rules.constants import (  # noqa: F401
-    HIGH_SEVERITY,
-    INJURY_MIN_SEVERITY,
-    MAX_SEVERITY,
-    OUTCOME_ACTIONS,
-    SEVERITY_LEVELS,
-    SYSTEMIC_INCIDENT_COUNT,
-)
+from logic_rules.constants import HIGH_SEVERITY, INJURY_MIN_SEVERITY, MAX_SEVERITY, SYSTEMIC_INCIDENT_COUNT
 from logic_rules.log_only_rule import LogOnlyRule
 from logic_rules.outcome_rule import OutcomeRule
 from logic_rules.pending_review_rule import PendingReviewRule
@@ -135,10 +125,9 @@ class LogicManager:
                 word in name for name in equipment for word in self._HEAVY_MACHINERY_WORDS),
         })
 
-
     # Daniel
     # Starting severity and its reasons from what happened to the person (5 if someone died).
-    def _score_injury(self, incident: Incident | dict) -> tuple[int, list[str]]:
+    def _score_injury(self, incident: Incident) -> tuple[int, list[str]]:
         treatment = incident.get("injury_treatment", "unspecified")
         if treatment == "died":
             return MAX_SEVERITY, ["Someone died (set to 5)"]
@@ -147,15 +136,14 @@ class LogicManager:
         if points:
             severity += points
             reasons.append(f"{self._INJURY_LABELS[treatment]} (+{points})")
-        if incident.get("injury") and treatment in ("none", "unspecified"):
+        if incident.injury and treatment in ("none", "unspecified"):
             severity += 1
             reasons.append("Someone was hurt, but how badly wasn't described (+1)")
         return severity, reasons
 
-
     # Daniel
     # Points added or removed by the hazard type and the site conditions, with a reason for each.
-    def _score_conditions(self, incident: Incident | dict, similar_escalated: bool) -> tuple[int, list[str]]:
+    def _score_conditions(self, incident: Incident, similar_escalated: bool) -> tuple[int, list[str]]:
         at_height = incident.get("working_at_height")
         machinery = incident.get("heavy_machinery_present")
         ppe_not_worn = incident.get("ppe_status") == "not_worn"
@@ -177,20 +165,17 @@ class LogicManager:
                 reasons.append(f"{text} ({points:+d})")
         return change, reasons
 
-
     # Daniel
     # 'low', 'medium' or 'high' chance of this kind of incident happening again.
-    def _recurrence_level(self, severity: int, incident: Incident | dict, history: list, similar_escalated: bool) -> str:
+    def _recurrence_level(self, severity: int, incident: Incident, history: list, similar_escalated: bool) -> str:
         if severity >= HIGH_SEVERITY or len(history) >= SYSTEMIC_INCIDENT_COUNT or similar_escalated:
             return "high"
         if incident.get("lighting_condition") in self._POOR_LIGHT_LEVELS or history:
             return "medium"
         return "low"
 
-
     # Daniel
     # Scores the incident (hazard type, severity 1-5, recurrence, reasons); sets assessment_error instead of guessing if the AI failed.
-    # Updates the incident in place using the condition already on the record.
     def assess_severity(self, incident: Incident, history: list) -> None:
         if incident.get("context_flags_error") or incident.get("hazard_category") is None:
             incident.update({

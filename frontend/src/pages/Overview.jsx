@@ -2,12 +2,13 @@
 
 import { AlertTriangle, ClipboardList, Eye, Gauge, OctagonX, Camera, TrendingUp, CheckCircle2 } from "lucide-react";
 import {
-  Area, CartesianGrid, Cell, ComposedChart, Legend, Line, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Area, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import StatCard from "../components/StatCard.jsx";
 import IncidentTable from "../components/IncidentTable.jsx";
 import SearchResults from "../components/SearchResults.jsx";
-import { HAZARD_COLORS, OUTCOME_COLORS, dayKey, needsReview } from "../labels.js";
+import HazardDonut from "../components/HazardDonut.jsx"; // Lennart
+import { OUTCOME_COLORS, dayKey, needsReview } from "../labels.js";
 
 // The last `count` days as "YYYY-MM-DD" strings, oldest first.
 function lastDays(count) {
@@ -66,7 +67,6 @@ export default function Overview({ incidents, meta, search = "", onOpen, onEdit 
     hazardCounts[name] = (hazardCounts[name] || 0) + 1;
   });
   const hazards = Object.entries(hazardCounts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-  const topHazard = hazards[0];
 
   const outcomes = [
     { id: "stop_work_review", icon: OctagonX },
@@ -140,31 +140,7 @@ export default function Overview({ incidents, meta, search = "", onOpen, onEdit 
         <div className="column">
           <div className="card">
             <div className="card-title"><h3>Incidents by hazard</h3></div>
-            <div style={{ height: 190, position: "relative" }}>
-              <ResponsiveContainer>
-                <PieChart>
-                  <Pie data={hazards} dataKey="value" nameKey="name" innerRadius={62} outerRadius={82}
-                       paddingAngle={3} cornerRadius={6} stroke="none">
-                    {hazards.map((h, i) => <Cell key={h.name} fill={HAZARD_COLORS[i % HAZARD_COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip contentStyle={tooltipStyle} itemStyle={{ color: "#e9efed" }} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", pointerEvents: "none" }}>
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: 24 }}>{incidents.length ? Math.round((topHazard.value / incidents.length) * 100) : 0}%</div>
-                  <div style={{ color: "var(--muted)", fontSize: 11 }}>{topHazard ? topHazard.name : "No data"}</div>
-                </div>
-              </div>
-            </div>
-            <div className="legend">
-              {hazards.slice(0, 4).map((h, i) => (
-                <div key={h.name} className="legend-item">
-                  <i style={{ background: HAZARD_COLORS[i % HAZARD_COLORS.length] }} />{h.name}
-                  <div>{h.value} incident{h.value === 1 ? "" : "s"}</div>
-                </div>
-              ))}
-            </div>
+            <HazardDonut hazards={hazards} total={incidents.length} />
           </div>
 
           <div className="card">

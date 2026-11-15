@@ -16,7 +16,7 @@ export default function Sidebar({ page, onNavigate, serverStatus, open, onClose 
       <div className="brand">
         <div className="brand-logo"><span /></div>
         <div>
-          <div className="brand-name">SiteSafe</div>
+          <div className="brand-name">Workplace</div>
           <div className="brand-sub">Incident triage</div>
         </div>
         <button className="icon-btn sidebar-close" aria-label="Close menu" onClick={onClose}><X size={18} /></button>
