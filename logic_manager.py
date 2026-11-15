@@ -111,6 +111,7 @@ class LogicManager:
         })
 
 
+    # Darrel
     # The non-empty strings in a list, stripped and lower-cased; anything else is ignored.
     @staticmethod
     def _text_list(value: object) -> list[str]:
