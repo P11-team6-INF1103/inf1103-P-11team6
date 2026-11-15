@@ -414,7 +414,11 @@ a.btn:visited { color: var(--text); }
 .backdrop { z-index: 50; }
 
 /* 2D site map (pin board) */
-.site-map svg { display: block; width: 100%; height: 100%; }
+.site-map svg { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+.site-map svg:active { cursor: grabbing; }
+.site-zoom { position: absolute; top: 10px; right: 10px; display: flex; flex-direction: column; gap: 4px; }
+.site-zoom button { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 6px; background: rgba(13, 18, 17, 0.9); color: var(--text); cursor: pointer; }
+.site-zoom button:hover { border-color: var(--accent); }
 .site-pulse { transform-box: fill-box; transform-origin: center; animation: site-pulse 1.6s ease-out infinite; }
 @keyframes site-pulse { from { transform: scale(0.6); opacity: 0.7; } to { transform: scale(1.8); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .site-pulse { animation: none; } }

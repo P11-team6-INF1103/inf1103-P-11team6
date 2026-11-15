@@ -80,7 +80,7 @@ export default function App() {
       <div className="topbar">
         <button className="icon-btn" aria-label="Open menu" onClick={() => setMenuOpen(true)}><Menu size={20} /></button>
         <div className="brand-logo"><span /></div>
-        <strong>SiteSafe</strong>
+        <strong>Workplace</strong>
       </div>
       <Sidebar page={page} onNavigate={(id) => { setPage(id); setMenuOpen(false); window.scrollTo(0, 0); }} serverStatus={serverStatus}
                open={menuOpen} onClose={() => setMenuOpen(false)} />
