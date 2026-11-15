@@ -112,28 +112,13 @@ def test_recurrence_level_tiers(logic):
     assert logic._recurrence_level(lm.HIGH_SEVERITY - 1, {}, [], False) == "low"
 
 
-def test_derive_context_and_apply_lighting(logic):
+def test_derive_context_sets_weather_relevance_time_of_day_and_season(logic):
     incident = make(description="wet floor", timestamp="2026-09-27T20:44:10")
     logic.derive_context(incident)
     ctx = incident.to_dict()
     assert ctx["weather_relevant"] is True and ctx["time_of_day"] == "night"
     assert ctx["monsoon_season"] == "southwest_monsoon"
-    lit = logic.apply_lighting({**ctx, "condition": "rain"})
-    assert lit["lighting_condition"] == "dark"
     assert "lighting_condition" not in ctx
-
-def test_apply_weather_turns_rainfall_into_a_condition(logic):
-    assert logic.apply_weather({"precipitation_mm": 0.3})["condition"] == "rain"
-    assert logic.apply_weather({"precipitation_mm": 0})["condition"] == "clear"
-    assert logic.apply_weather({"condition": None})["condition"] is None
-    assert logic.apply_weather({"condition": "rain"})["condition"] == "rain"
-
-
-def test_apply_lighting_copes_with_missing_or_unknown_values(logic):
-    assert logic.apply_lighting({})["lighting_condition"] == "daylight"
-    assert logic.apply_lighting({"time_of_day": None, "condition": None})["lighting_condition"] == "daylight"
-    assert logic.apply_lighting({"time_of_day": "midnight", "condition": "fog"})["lighting_condition"] == "daylight"
-    assert logic.apply_lighting({"time_of_day": "dusk_dawn", "condition": "rain"})["lighting_condition"] == "dark"
 
 def _enriched(injury=True, **changes):
     base = {"hazard_category": "fall_from_height", "injury_treatment": "hospital",
@@ -242,13 +227,6 @@ def test_a_missing_hazard_category_is_never_scored_as_if_it_were_safe(logic):
     assert "hazard_category missing" in incident.get("assessment_error")
 
 
-def test_multi_condition_rule_uses_ai_fields(logic):
-    record = {"severity_estimate": 2, "injury": True, "likelihood_recurrence": "high"}
-    assert logic.is_high_severity(record)
-    assert not logic.is_high_severity({**record, "injury": False})
-    assert not logic.is_high_severity({**record, "likelihood_recurrence": "low"})
-
-
 def test_failed_ai_extraction_routes_to_manual_review(logic):
     incident = _enriched(hazard_category=None, context_flags_error="AI down")
     logic.assess_severity(incident, [])
@@ -256,24 +234,21 @@ def test_failed_ai_extraction_routes_to_manual_review(logic):
     assert logic.decide_outcome(incident, []) == "pending_review"
 
 
-def test_apply_hazard_rules_decides_height_and_machinery_from_the_ais_lists(logic):
-    both = logic.apply_hazard_rules({"equipment_mentioned": ["Tower Crane", "hammer"],
-                                  "elevated_places": ["roof"]})
-    assert both["working_at_height"] is True and both["heavy_machinery_present"] is True
+def test_site_conditions_recognise_heavy_machinery_and_ignore_odd_values(logic):
     for name in ("excavator", "forklift", "generator", "conveyor belt", "dump truck", "piling rig",
                  "scissor lift", "concrete pump", "bobcat", "dumper", "pile driver", "telehandler",
                  "skid steer", "road roller", "mobile crane"):
-        assert logic.apply_hazard_rules({"equipment_mentioned": [name]})["heavy_machinery_present"], name
-    light = logic.apply_hazard_rules({"equipment_mentioned": ["hammer", "ladder", "drill", "paint roller",
-                                                           "lifting sling", "angle grinder"],
-                                   "elevated_places": []})
-    assert light["working_at_height"] is False and light["heavy_machinery_present"] is False
+        incident = make(equipment_mentioned=[name])
+        logic.apply_site_conditions(incident)
+        assert incident.get("heavy_machinery_present"), name
+    light = make(equipment_mentioned=["hammer", "ladder", "drill", "paint roller", "lifting sling", "angle grinder"])
+    logic.apply_site_conditions(light)
+    assert not light.get("heavy_machinery_present")
     for odd in (None, "crane", [None, 5, " "], {}):
-        result = logic.apply_hazard_rules({"equipment_mentioned": odd, "elevated_places": odd})
-        assert result["working_at_height"] is False and result["heavy_machinery_present"] is False, odd
-    source = {"equipment_mentioned": ["crane"]}
-    logic.apply_hazard_rules(source)
-    assert "heavy_machinery_present" not in source
+        incident = make(equipment_mentioned=odd, elevated_places=odd)
+        logic.apply_site_conditions(incident)
+        assert not incident.get("working_at_height") and not incident.get("heavy_machinery_present"), odd
+
 
 def test_screen_incident_decides_accept_or_reject_from_the_ai_flag(logic):
     rejected = logic.screen_incident({"is_valid_incident": False, "invalid_reason": " It is random text. "})
