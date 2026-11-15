@@ -1,5 +1,6 @@
 # Daniel
 from search_engine import IncidentSearch
+from tests.api_helpers import FORM, make_client
 
 INCIDENTS = [
     {"id": 1, "timestamp": "2026-10-30T09:00:00", "description": "Worker slipped on wet scaffold", "location": "Site A",
@@ -40,3 +41,13 @@ def test_search_filters():
     assert ids(SEARCH.search(INCIDENTS, "", {"priority": 1})) == [3]
     assert ids(SEARCH.search(INCIDENTS, "", {"date_from": "2026-10-30", "date_to": "2026-10-30"})) == [1]
     assert ids(SEARCH.search(INCIDENTS, "", {"has_photo": True})) == [2]
+
+
+def test_search_endpoint(tmp_path):
+    client = make_client(tmp_path)
+    client.post("/api/incidents", data=FORM)
+    found = client.get("/api/incidents/search?q=scaffold&severity_min=1").get_json()
+    assert found["count"] == 1 and found["results"][0]["matched"] and found["total"] == 1
+    assert client.get("/api/incidents/search?q=zebra").get_json()["count"] == 0
+    assert client.get("/api/incidents/search?severity_min=9").status_code == 422
+    assert client.get("/api/incidents/search?date_from=yesterday").status_code == 422
