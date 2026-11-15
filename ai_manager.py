@@ -15,7 +15,6 @@ from models.incident import Incident
 from models.incident_photo import IncidentPhoto
 from site_plan.site_plan import SitePlan
 
-# from site_plan import ELEMENT_KINDS, SitePlan, SitePlanError (New Import for later)
 logger = logging.getLogger(__name__)
 
 #Ren Xiang

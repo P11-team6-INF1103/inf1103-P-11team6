@@ -1,7 +1,11 @@
-# # Ren Xiang
-# # Runs every automated check from one command, offline: 
-# # no API keys and no real database are passed on.
-
+# Ren Xiang
+# Runs every automated check from one command, offline: no API keys and no real database are passed on.
+#   python run_tests.py                      everything that can run on this machine
+#   python run_tests.py --phase dev1         the checks due by the end of Development 1 (Sun 8 Nov)
+#   python run_tests.py --phase dev2         ... by the end of Development 2 (Sun 15 Nov), cumulative
+#   python run_tests.py --owner Daniel       only the tests tagged with that name, plus the checks that person owns
+#   python run_tests.py --fresh-clone --strict --report test_report.md    the final gate, from a clean clone of HEAD
+#   python run_tests.py --list               every check with its owner and phase
 import argparse
 import os
 import subprocess
