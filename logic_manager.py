@@ -108,7 +108,8 @@ class LogicManager:
         return result
 
 
-    # Adds weather relevance, lookup plan, time of day, and monsoon season to the incident.
+    # Darrel
+    # Adds what needs no API: weather relevance, which lookups to run, time of day and monsoon season.
     def derive_context(self, incident: Incident) -> None:
         relevant = self.is_weather_relevant(incident)
         incident.update({
