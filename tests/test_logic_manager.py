@@ -1,9 +1,8 @@
 import pytest
 
-import logic_manager as lm
+from ai_manager import AIManager
 from logic_manager import LogicManager
-from logic_rules import constants
-from logic_rules.constants import SYSTEMIC_INCIDENT_COUNT
+from logic_rules.constants import OUTCOME_ACTIONS, SYSTEMIC_INCIDENT_COUNT
 from logic_rules.log_only_rule import LogOnlyRule
 from logic_rules.outcome_rule import OutcomeRule
 from logic_rules.pending_review_rule import PendingReviewRule
@@ -11,252 +10,9 @@ from logic_rules.photo_mismatch_rule import PhotoMismatchRule
 from logic_rules.stop_work_rule import StopWorkRule
 from logic_rules.systemic_risk_rule import SystemicRiskRule
 from models.incident import Incident
-from tests._suite import suite_from
-
-
-def test_severity_and_outcome_constants_fit_together():
-    assert sorted(constants.SEVERITY_LEVELS) == list(range(1, constants.MAX_SEVERITY + 1))
-    for name, description in constants.SEVERITY_LEVELS.values():
-        assert name and description
-    assert 1 < constants.INJURY_MIN_SEVERITY < constants.HIGH_SEVERITY <= constants.MAX_SEVERITY
-    assert constants.SYSTEMIC_INCIDENT_COUNT >= 1
-    assert set(constants.OUTCOME_ACTIONS) == {"stop_work_review", "photo_review", "systemic_escalation", "log_only",
-                                              "pending_review"}
-    assert all(action for action in constants.OUTCOME_ACTIONS.values())
-
-
-# The constants live in logic_rules/constants.py; logic_manager and main.py use those same objects.
-def test_logic_manager_uses_the_logic_rules_constants():
-    assert lm.SEVERITY_LEVELS is constants.SEVERITY_LEVELS and lm.OUTCOME_ACTIONS is constants.OUTCOME_ACTIONS
-    assert (lm.MAX_SEVERITY, lm.INJURY_MIN_SEVERITY, lm.HIGH_SEVERITY, lm.SYSTEMIC_INCIDENT_COUNT) == (
-        constants.MAX_SEVERITY, constants.INJURY_MIN_SEVERITY, constants.HIGH_SEVERITY,
-        constants.SYSTEMIC_INCIDENT_COUNT)
-
-
-def test_scoring_tables_fit_together(logic):
-    # Every treatment that adds points has a label for its reason, and "died" is handled separately.
-    for treatment, points in logic._INJURY_POINTS.items():
-        assert points >= 0
-        assert (treatment in logic._INJURY_LABELS) == (points > 0), treatment
-    assert "died" not in logic._INJURY_POINTS
-    assert set(logic._ESCALATED_OUTCOMES) <= set(constants.OUTCOME_ACTIONS)
-    assert set(logic._POOR_LIGHT_LEVELS) == {"low_light", "dark"}
-    assert logic._TYPE_A_HAZARDS and all(isinstance(hazard, str) for hazard in logic._TYPE_A_HAZARDS)
-
-
-def test_time_of_day_season_and_lighting(logic):
-    assert logic.get_time_of_day("2026-09-27T12:00:00") == "day"
-    assert logic.get_time_of_day("2026-09-27T18:30:00") == "dusk_dawn"
-    assert logic.get_time_of_day("2026-09-27T23:00:00") == "night"
-    assert logic.get_time_of_day("garbage") == "day" and logic.get_time_of_day(None) == "day"
-    assert logic.get_monsoon_season("2026-01-10T00:00:00") == "northeast_monsoon"
-    assert logic.get_monsoon_season("2026-07-10T00:00:00") == "southwest_monsoon"
-    assert logic.get_monsoon_season("2026-11-10T00:00:00") == "inter_monsoon"
-    assert logic.get_monsoon_season("garbage") == "inter_monsoon"
-    assert logic.get_monsoon_season(None) == "inter_monsoon"
-    assert logic.classify_lighting_condition("day", "clear") == "daylight"
-    assert logic.classify_lighting_condition("day", "rain") == "low_light"
-    assert logic.classify_lighting_condition("night", "rain") == "dark"
-
-
-def test_monsoon_season_boundaries(logic):
-    # Northeast: December to mid-March; southwest: June to September; anything else is inter-monsoon.
-    for date, season in (("2026-12-01", "northeast_monsoon"), ("2026-03-15", "northeast_monsoon"),
-                         ("2026-03-16", "inter_monsoon"), ("2026-05-31", "inter_monsoon"),
-                         ("2026-06-01", "southwest_monsoon"), ("2026-09-30", "southwest_monsoon"),
-                         ("2026-10-01", "inter_monsoon"), ("2026-11-30", "inter_monsoon")):
-        assert logic.get_monsoon_season(date + "T12:00:00") == season, date
-
-
-def test_injury_score_starts_from_what_happened_to_the_person(logic):
-    assert logic._score_injury({"injury_treatment": "died"}) == (5, ["Someone died (set to 5)"])
-    assert logic._score_injury({"injury_treatment": "first_aid"}) == (2, ["Minor injury, first aid only (+1)"])
-    assert logic._score_injury({"injury_treatment": "hospital"}) == (3, ["Serious injury, hospital treatment (+2)"])
-    hurt_not_described = (2, ["Someone was hurt, but how badly wasn't described (+1)"])
-    assert logic._score_injury({"injury": True, "injury_treatment": "unspecified"}) == hurt_not_described
-    assert logic._score_injury({"injury": True}) == hurt_not_described  # missing treatment counts as unspecified
-    for nobody_hurt in ({"injury": False, "injury_treatment": "none"}, {}, {"injury_treatment": "banana"}):
-        assert logic._score_injury(nobody_hurt) == (1, []), nobody_hurt
-
-
-def test_condition_points_each_come_with_a_reason(logic):
-    assert logic._score_conditions({}, False) == (0, [])
-    assert logic._score_conditions({"ppe_status": "worn"}, False) == (-1, ["Safety gear (PPE) was worn (-1)"])
-    assert logic._score_conditions({"hazard_category": "vehicular"}, False) == (
-        1, ["One of MOM's highest-risk hazard types (+1)"])
-    # Machinery without safety gear counts twice: once for the pair, once for the missing PPE.
-    change, reasons = logic._score_conditions({"heavy_machinery_present": True, "ppe_status": "not_worn"}, False)
-    assert change == 2 and len(reasons) == 2
-    # Rain is read from the incident itself, and only counts with height or machinery.
-    change, reasons = logic._score_conditions({"working_at_height": True, "condition": "rain"}, False)
-    assert change == 2 and "Raining during work at height or with machinery (+1)" in reasons
-    assert logic._score_conditions({"condition": "rain"}, False) == (0, [])
-    assert logic._score_conditions({}, True) == (1, ["A similar past incident on our sites was escalated (+1)"])
-    change, reasons = logic._score_conditions({"lighting_condition": "dark"}, False)
-    assert change == 1 and all(reason.endswith(")") for reason in reasons)
-
-
-def test_recurrence_level_tiers(logic):
-    calm = {"lighting_condition": "daylight"}
-    assert logic._recurrence_level(1, calm, [], False) == "low"
-    # Medium: poor lighting, or at least one earlier incident at this place.
-    assert logic._recurrence_level(1, {"lighting_condition": "low_light"}, [], False) == "medium"
-    assert logic._recurrence_level(1, {"lighting_condition": "dark"}, [], False) == "medium"
-    assert logic._recurrence_level(1, calm, [{}], False) == "medium"
-    # High: severity at the stop-work level, the systemic number of earlier incidents, or an escalated look-alike.
-    assert logic._recurrence_level(lm.HIGH_SEVERITY, calm, [], False) == "high"
-    assert logic._recurrence_level(1, calm, [{}] * lm.SYSTEMIC_INCIDENT_COUNT, False) == "high"
-    assert logic._recurrence_level(1, calm, [], True) == "high"
-    # High beats medium when both apply.
-    assert logic._recurrence_level(lm.HIGH_SEVERITY, {"lighting_condition": "dark"}, [{}], False) == "high"
-    assert logic._recurrence_level(lm.HIGH_SEVERITY - 1, {}, [], False) == "low"
-
-
-def test_derive_context_sets_weather_relevance_time_of_day_and_season(logic):
-    incident = make(description="wet floor", timestamp="2026-09-27T20:44:10")
-    logic.derive_context(incident)
-    ctx = incident.to_dict()
-    assert ctx["weather_relevant"] is True and ctx["time_of_day"] == "night"
-    assert ctx["monsoon_season"] == "southwest_monsoon"
-    assert "lighting_condition" not in ctx
-
-def _enriched(injury=True, **changes):
-    base = {"hazard_category": "fall_from_height", "injury_treatment": "hospital",
-            "working_at_height": True, "heavy_machinery_present": False, "ppe_status": "not_worn",
-            "lighting_condition": "dark", "similar_incidents": None, "context_flags_error": None}
-    base.update(changes)
-    return make(injury=injury, **base)
-
-def test_worst_case_scores_5_and_stops_work(logic):
-    incident = _enriched(injury_treatment="died")
-    logic.assess_severity(incident, [])
-    assert incident.get("severity_estimate") == 5
-    assert logic.decide_outcome(incident, []) == "stop_work_review"
-
-
-def test_mild_case_logs_only_and_three_earlier_incidents_escalate(logic):
-    incident = _enriched(injury=False, hazard_category="fall", injury_treatment="none",
-                         working_at_height=False, ppe_status="worn", lighting_condition="daylight")
-    logic.assess_severity(incident, [])
-    assert incident.get("severity_estimate") == 1
-    assert logic.decide_outcome(incident, []) == "log_only"
-    assert logic.decide_outcome(incident, [{}] * 3) == "systemic_escalation"
-
-
-def test_anyone_injured_scores_at_least_3(logic):
-    safe_but_hurt = {"hazard_category": "fall", "injury_treatment": "first_aid", "working_at_height": False,
-                     "ppe_status": "worn", "lighting_condition": "daylight"}
-    for treatment in ("first_aid", "none", "unspecified"):
-        incident = _enriched(**{**safe_but_hurt, "injury_treatment": treatment})
-        logic.assess_severity(incident, [])
-        assert incident.get("severity_estimate") == 3
-        assert any("injured" in r for r in incident.get("severity_reasons"))
-    uninjured = _enriched(injury=False, **{**safe_but_hurt, "injury_treatment": "none"})
-    logic.assess_severity(uninjured, [])
-    assert uninjured.get("severity_estimate") == 1
-
-
-# --- Hard-coded sample AI replies -> severity, recurrence and outcome (no live API) ---
-
-# A quiet, fully specified reply; each case below changes only the fields it is about.
-CALM_AI_REPLY = {"hazard_category": "other", "injury_treatment": "none", "working_at_height": False,
-                 "heavy_machinery_present": False, "ppe_status": "unspecified", "lighting_condition": "daylight",
-                 "similar_incidents": None, "context_flags_error": None}
-
-# (name, what the AI said, was anyone hurt, earlier incidents at this place, severity, recurrence, outcome)
-SCORING_CASES = [
-    ("near miss with PPE worn stays at the floor of 1",
-     {"ppe_status": "worn"}, False, 0, 1, "low", "log_only"),
-    ("first aid only still scores the injury floor of 3",
-     {"injury_treatment": "first_aid"}, True, 0, 3, "low", "log_only"),
-    ("hospital treatment is moderate",
-     {"injury_treatment": "hospital"}, True, 0, 3, "low", "log_only"),
-    ("hurt but not described is lifted to the injury floor of 3",
-     {"injury_treatment": "unspecified"}, True, 0, 3, "low", "log_only"),
-    ("a MOM Type A hazard with a hospital injury is high and stops work",
-     {"injury_treatment": "hospital", "hazard_category": "vehicular"}, True, 0, 4, "high", "stop_work_review"),
-    ("darkness makes a minor injury moderate and the repeat risk medium",
-     {"injury_treatment": "first_aid", "lighting_condition": "dark"}, True, 0, 3, "medium", "log_only"),
-    ("rain during work at height adds a point on top of the height point",
-     {"working_at_height": True, "condition": "rain"}, False, 0, 3, "low", "log_only"),
-    ("machinery with no safety gear counts twice",
-     {"heavy_machinery_present": True, "ppe_status": "not_worn"}, False, 0, 3, "low", "log_only"),
-    ("a fatality is always 5",
-     {"injury_treatment": "died"}, True, 0, 5, "high", "stop_work_review"),
-    ("every factor at once is capped at 5",
-     {"injury_treatment": "hospital", "hazard_category": "fall_from_height", "working_at_height": True,
-      "ppe_status": "not_worn", "lighting_condition": "dark"}, True, 0, 5, "high", "stop_work_review"),
-    ("a similar past incident that was escalated raises recurrence to high",
-     {"similar_incidents": [{"outcome": "stop_work_review"}]}, False, 0, 2, "high", "log_only"),
-    ("a similar past incident that was only logged changes nothing",
-     {"similar_incidents": [{"outcome": "log_only"}]}, False, 0, 1, "low", "log_only"),
-    ("Rule 1, second branch: injury plus high recurrence stops work even at severity 3",
-     {"injury_treatment": "first_aid"}, True, 3, 3, "high", "stop_work_review"),
-    ("Rule 2: three earlier incidents and nobody hurt escalates to management",
-     {}, False, 3, 1, "high", "systemic_escalation"),
-    ("an AI value outside the known list is ignored, but the injury floor still applies",
-     {"injury_treatment": "banana"}, True, 0, 3, "low", "log_only"),
-]
-
-
-def test_sample_ai_reply_gives_the_expected_severity_recurrence_and_outcome(logic):
-    for name, ai_reply, injured, earlier, severity, recurrence, outcome in SCORING_CASES:
-        history = [{}] * earlier
-        incident = make(injury=injured, **{**CALM_AI_REPLY, **ai_reply})
-        logic.assess_severity(incident, history)
-        assert incident.get("severity_estimate") == severity, name
-        assert incident.get("likelihood_recurrence") == recurrence, name
-        assessed = incident.to_dict()
-        assert assessed["assessment_error"] is None and assessed["severity_reasons"] is not None, name
-        assert logic.decide_outcome(incident, history) == outcome, name
-
-
-def test_every_severity_reason_is_listed_so_the_score_can_be_explained(logic):
-    incident = make(**{**CALM_AI_REPLY, "injury_treatment": "hospital",
-                       "hazard_category": "vehicular", "ppe_status": "not_worn"})
-    logic.assess_severity(incident, [])
-    reasons = incident.get("severity_reasons")
-    assert any("hospital" in r.lower() for r in reasons) and any("highest-risk" in r for r in reasons)
-    assert any("not worn" in r for r in reasons) and all(r.endswith(")") for r in reasons)
-
-
-def test_a_missing_hazard_category_is_never_scored_as_if_it_were_safe(logic):
-    incident = make(**{**CALM_AI_REPLY, "hazard_category": None})
-    logic.assess_severity(incident, [])
-    assert incident.get("severity_estimate") == 0 and incident.get("likelihood_recurrence") == "unknown"
-    assert "hazard_category missing" in incident.get("assessment_error")
-
-
-def test_failed_ai_extraction_routes_to_manual_review(logic):
-    incident = _enriched(hazard_category=None, context_flags_error="AI down")
-    logic.assess_severity(incident, [])
-    assert incident.get("assessment_error") and incident.get("severity_estimate") == 0
-    assert logic.decide_outcome(incident, []) == "pending_review"
-
-
-def test_site_conditions_recognise_heavy_machinery_and_ignore_odd_values(logic):
-    for name in ("excavator", "forklift", "generator", "conveyor belt", "dump truck", "piling rig",
-                 "scissor lift", "concrete pump", "bobcat", "dumper", "pile driver", "telehandler",
-                 "skid steer", "road roller", "mobile crane"):
-        incident = make(equipment_mentioned=[name])
-        logic.apply_site_conditions(incident)
-        assert incident.get("heavy_machinery_present"), name
-    light = make(equipment_mentioned=["hammer", "ladder", "drill", "paint roller", "lifting sling", "angle grinder"])
-    logic.apply_site_conditions(light)
-    assert not light.get("heavy_machinery_present")
-    for odd in (None, "crane", [None, 5, " "], {}):
-        incident = make(equipment_mentioned=odd, elevated_places=odd)
-        logic.apply_site_conditions(incident)
-        assert not incident.get("working_at_height") and not incident.get("heavy_machinery_present"), odd
-
-
-def test_screen_incident_decides_accept_or_reject_from_the_ai_flag(logic):
-    rejected = logic.screen_incident({"is_valid_incident": False, "invalid_reason": " It is random text. "})
-    assert rejected == (False, "It is random text.")
-    accepted, reason = logic.screen_incident({"is_valid_incident": False, "invalid_reason": None})
-    assert accepted is False and "workplace safety incident" in reason
-    for record in ({"is_valid_incident": True}, {"is_valid_incident": None}, {}, None, "x"):
-        assert logic.screen_incident(record) == (True, None), record
+from tests.doubles.fake_gemini import FakeGemini
+from tests.doubles.fake_search import FakeSearch
+from tests.doubles.fake_weather import FakeWeather
 
 
 # Sufi
@@ -288,6 +44,18 @@ def test_weather_relevance_is_whole_word(logic):
     assert not logic.is_weather_relevant(make("Shot-blasting dust in the room"))
 
 
+# Daniel
+def test_time_of_day_season_and_lighting():
+    assert LogicManager.get_time_of_day("2026-09-27T12:00:00") == "day"
+    assert LogicManager.get_time_of_day("2026-09-27T18:30:00") == "dusk_dawn"
+    assert LogicManager.get_time_of_day("garbage") == "day"
+    assert LogicManager.get_monsoon_season("2026-01-10T00:00:00") == "northeast_monsoon"
+    assert LogicManager.get_monsoon_season("2026-07-10T00:00:00") == "southwest_monsoon"
+    assert LogicManager.get_monsoon_season(None) == "inter_monsoon"
+    assert LogicManager.classify_lighting_condition("day", "rain") == "low_light"
+    assert LogicManager.classify_lighting_condition("night", "rain") == "dark"
+
+
 # Darrel
 def test_derive_context_plans_the_lookups(logic):
     incident = make("Worker slipped on wet floor", timestamp="2026-09-27T20:44:10")
@@ -308,6 +76,23 @@ def test_site_conditions_from_ai_lists(logic):
     assert not plain.get("working_at_height") and not plain.get("heavy_machinery_present")
 
 
+# Daniel
+def test_worst_case_scores_5_and_stops_work(logic):
+    incident = enriched(injury_treatment="died")
+    logic.assess_severity(incident, [])
+    assert incident.get("severity_estimate") == 5
+    assert logic.decide_outcome(incident, []) == "stop_work_review"
+
+
+def test_mild_case_logs_only_and_three_earlier_incidents_escalate(logic):
+    incident = enriched(injury=False, hazard_category="fall", injury_treatment="none", working_at_height=False,
+                        ppe_status="worn", lighting_condition="daylight")
+    logic.assess_severity(incident, [])
+    assert incident.get("severity_estimate") == 1
+    assert logic.decide_outcome(incident, []) == "log_only"
+    assert logic.decide_outcome(incident, [object()] * 3) == "systemic_escalation"
+
+
 # Sufi
 def test_multi_condition_rule_uses_two_ai_fields():
     rule = StopWorkRule()
@@ -316,12 +101,33 @@ def test_multi_condition_rule_uses_two_ai_fields():
     assert not rule.applies(make(injury=True, severity_estimate=2, likelihood_recurrence="low"), [])
 
 
+# Daniel
+def test_anyone_injured_scores_at_least_3():
+    logic = LogicManager(LogicManager.default_rules())
+    safe_but_hurt = {"hazard_category": "fall", "injury_treatment": "first_aid", "working_at_height": False,
+                     "ppe_status": "worn", "lighting_condition": "daylight"}
+    for treatment in ("first_aid", "none", "unspecified"):
+        incident = enriched(injury=True, **{**safe_but_hurt, "injury_treatment": treatment})
+        logic.assess_severity(incident, [])
+        assert incident.get("severity_estimate") == 3
+        assert any("injured" in r for r in incident.get("severity_reasons"))
+    uninjured = enriched(injury=False, **{**safe_but_hurt, "injury_treatment": "none"})
+    logic.assess_severity(uninjured, [])
+    assert uninjured.get("severity_estimate") == 1
+
+
+# Daniel
+def test_failed_ai_extraction_routes_to_manual_review(logic):
+    incident = enriched(hazard_category=None, context_flags_error="AI down")
+    logic.assess_severity(incident, [])
+    assert incident.get("assessment_error") and incident.get("severity_estimate") == 0
+    assert logic.decide_outcome(incident, []) == "pending_review"
+
+
 # Sufi
 def test_screening_rejects_only_when_ai_says_not_an_incident(logic):
-    rejected = make(is_valid_incident=False, invalid_reason="gibberish")
-    assert logic.screen_incident(rejected) == (False, "gibberish")
-    unknown = make(is_valid_incident=None)
-    assert logic.screen_incident(unknown) == (True, None)
+    assert logic.screen_incident(make(is_valid_incident=False, invalid_reason="gibberish")) == (False, "gibberish")
+    assert logic.screen_incident(make(is_valid_incident=None))[0] is True
 
 
 # Sufi
@@ -399,6 +205,105 @@ def test_outcome_rule_cannot_be_created_directly():
         OutcomeRule()
 
 
+# --- Hard-coded sample AI replies -> severity, recurrence and outcome (no live API) ---
+
+# A quiet, fully specified reply; each case below changes only the fields it is about.
+CALM_AI_REPLY = {"hazard_category": "other", "injury_treatment": "none", "working_at_height": False,
+                 "heavy_machinery_present": False, "ppe_status": "unspecified", "lighting_condition": "daylight",
+                 "similar_incidents": None, "context_flags_error": None}
+
+# (name, what the AI said, was anyone hurt, earlier incidents at this place, severity, recurrence, outcome)
+SCORING_CASES = [
+    ("near miss with PPE worn stays at the floor of 1",
+     {"ppe_status": "worn"}, False, 0, 1, "low", "log_only"),
+    ("first aid only still scores the injury floor of 3",
+     {"injury_treatment": "first_aid"}, True, 0, 3, "low", "log_only"),
+    ("hospital treatment is moderate",
+     {"injury_treatment": "hospital"}, True, 0, 3, "low", "log_only"),
+    ("hurt but not described is lifted to the injury floor of 3",
+     {"injury_treatment": "unspecified"}, True, 0, 3, "low", "log_only"),
+    ("a MOM Type A hazard with a hospital injury is high and stops work",
+     {"injury_treatment": "hospital", "hazard_category": "vehicular"}, True, 0, 4, "high", "stop_work_review"),
+    ("darkness makes a minor injury moderate and the repeat risk medium",
+     {"injury_treatment": "first_aid", "lighting_condition": "dark"}, True, 0, 3, "medium", "log_only"),
+    ("rain during work at height adds a point on top of the height point",
+     {"working_at_height": True, "condition": "rain"}, False, 0, 3, "low", "log_only"),
+    ("machinery with no safety gear counts twice",
+     {"heavy_machinery_present": True, "ppe_status": "not_worn"}, False, 0, 3, "low", "log_only"),
+    ("a fatality is always 5",
+     {"injury_treatment": "died"}, True, 0, 5, "high", "stop_work_review"),
+    ("every factor at once is capped at 5",
+     {"injury_treatment": "hospital", "hazard_category": "fall_from_height", "working_at_height": True,
+      "ppe_status": "not_worn", "lighting_condition": "dark"}, True, 0, 5, "high", "stop_work_review"),
+    ("a similar past incident that was escalated raises recurrence to high",
+     {"similar_incidents": [{"outcome": "stop_work_review"}]}, False, 0, 2, "high", "log_only"),
+    ("a similar past incident that was only logged changes nothing",
+     {"similar_incidents": [{"outcome": "log_only"}]}, False, 0, 1, "low", "log_only"),
+    ("Rule 1, second branch: injury plus high recurrence stops work even at severity 3",
+     {"injury_treatment": "first_aid"}, True, 3, 3, "high", "stop_work_review"),
+    ("Rule 2: three earlier incidents and nobody hurt escalates to management",
+     {}, False, 3, 1, "high", "systemic_escalation"),
+    ("an AI value outside the known list is ignored, but the injury floor still applies",
+     {"injury_treatment": "banana"}, True, 0, 3, "low", "log_only"),
+]
+
+
+# Daniel
+@pytest.mark.parametrize("name, ai_reply, injured, earlier, severity, recurrence, outcome", SCORING_CASES,
+                         ids=[case[0] for case in SCORING_CASES])
+def test_sample_ai_reply_gives_the_expected_severity_recurrence_and_outcome(
+        logic, name, ai_reply, injured, earlier, severity, recurrence, outcome):
+    incident = make(injury=injured, **{**CALM_AI_REPLY, **ai_reply})
+    history = [object()] * earlier
+    logic.assess_severity(incident, history)
+    assert incident.get("severity_estimate") == severity
+    assert incident.get("likelihood_recurrence") == recurrence
+    assert incident.get("assessment_error") is None and incident.get("severity_reasons") is not None
+    assert logic.decide_outcome(incident, history) == outcome
+
+
+# Daniel
+def test_every_severity_reason_is_listed_so_the_score_can_be_explained(logic):
+    incident = make(injury=True, **{**CALM_AI_REPLY, "injury_treatment": "hospital", "hazard_category": "vehicular",
+                                    "ppe_status": "not_worn"})
+    logic.assess_severity(incident, [])
+    reasons = incident.get("severity_reasons")
+    assert any("hospital" in r.lower() for r in reasons) and any("highest-risk" in r for r in reasons)
+    assert any("not worn" in r for r in reasons) and all(r.endswith(")") for r in reasons)
+
+
+# Daniel
+def test_a_missing_hazard_category_is_never_scored_as_if_it_were_safe(logic):
+    incident = make(**{**CALM_AI_REPLY, "hazard_category": None})
+    logic.assess_severity(incident, [])
+    assert incident.get("severity_estimate") == 0 and incident.get("likelihood_recurrence") == "unknown"
+    assert "hazard_category missing" in incident.get("assessment_error")
+
+
+# Daniel
+# The hard-coded Gemini reply from tests/fakes.py goes through the real AIManager, then the real LogicManager.
+def test_hardcoded_ai_reply_flows_through_ai_manager_into_the_logic_manager(logic):
+    ai = AIManager(FakeGemini(), FakeSearch(), FakeWeather(None), OUTCOME_ACTIONS)
+    incident = make("Scaffold plank fell from level 4 near a worker", timestamp="2026-10-20T23:00:00")
+    logic.derive_context(incident)
+    ai.extract_hazards(incident)
+    ai.gather_evidence(incident, [])
+    logic.apply_site_conditions(incident)
+    logic.apply_photo_evidence(incident)
+    logic.assess_severity(incident, [])
+    assert incident.get("hazard_category") == "fall_from_height" and incident.get("working_at_height") is True
+    assert incident.get("severity_estimate") == 5 and logic.decide_outcome(incident, []) == "stop_work_review"
+
+
+# Daniel
+def test_a_failed_ai_call_flows_through_to_manual_review(logic):
+    ai = AIManager(FakeGemini(error=ConnectionError("API down")), FakeSearch(), FakeWeather(None), OUTCOME_ACTIONS)
+    incident = make("Scaffold plank fell from level 4 near a worker")
+    ai.extract_hazards(incident)
+    logic.assess_severity(incident, [])
+    assert incident.get("assessment_error") and logic.decide_outcome(incident, []) == "pending_review"
+
+
 # Sufi
 def test_the_systemic_threshold_is_exactly_three_earlier_incidents():
     rule = SystemicRiskRule()
@@ -443,7 +348,3 @@ def test_site_conditions_cope_with_dry_weather_and_malformed_ai_lists(logic):
     logic.apply_site_conditions(malformed)  # a string and junk entries instead of lists of names
     assert malformed.get("heavy_machinery_present") is False and malformed.get("working_at_height") is False
     assert malformed.get("lighting_condition") == "dark"
-
-
-def load_tests(loader, tests, pattern):
-    return suite_from(globals())

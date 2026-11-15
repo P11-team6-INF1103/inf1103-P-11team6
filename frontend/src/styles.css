@@ -164,6 +164,8 @@ tbody tr:hover td { background: var(--card-hover); }
 .btn.primary:disabled { opacity: 0.6; cursor: wait; }
 .btn.selected { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .btn.danger { color: var(--danger); }
+a.btn { color: var(--text); text-decoration: none; }
+a.btn:visited { color: var(--text); }
 
 .dropzone {
   border: 1.5px dashed var(--faint); border-radius: var(--radius); padding: 26px; text-align: center;
