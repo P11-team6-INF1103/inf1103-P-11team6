@@ -313,6 +313,14 @@ def test_weather_relevance_is_whole_word(logic):
     assert not logic.is_weather_relevant(make("Shot-blasting dust in the room"))
 
 
+# Darrel
+def test_derive_context_plans_the_lookups(logic):
+    incident = make("Worker slipped on wet floor", timestamp="2026-09-27T20:44:10")
+    logic.derive_context(incident)
+    assert incident.get("run_weather") is True and incident.get("run_similar") is False
+    assert incident.get("time_of_day") == "night"
+
+
 # Sufi
 def test_multi_condition_rule_uses_two_ai_fields():
     rule = StopWorkRule()
