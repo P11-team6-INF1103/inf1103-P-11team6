@@ -245,7 +245,8 @@ class ReportPrinter:
         for data in versions:
             version = Incident.from_dict(data)
             tag = "  <- current" if data["version"] == incident.version else ""
-            how = f" (copied from v{data['reverted_from']})" if data.get("reverted_from") else ""
+            how = (f" (copied from v{data['reverted_from']})" if data.get("reverted_from")
+                   else " (re-analysed)" if data.get("reanalysed") else "")
             outcome = data.get("outcome")
             print(textwrap.fill(
                 f"v{data['version']}{how}: severity {self._severity_text(version)}, "
