@@ -32,6 +32,8 @@ export const api = {
   revertIncident: (id, version) => request(`/api/incidents/${id}/revert`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ version }),
   }),
+  // Runs the AI again on the incident as saved (no form data) and saves the result as a new version
+  reanalyseIncident: (id) => request(`/api/incidents/${id}/reanalyse`, { method: "POST" }),
   deleteIncident: (id) => request(`/api/incidents/${id}`, { method: "DELETE" }),
   // version is optional: leave it out for the current photo
   photoUrl: (id, version) => `${API_URL}/api/incidents/${id}/photo${version ? `?version=${version}` : ""}`,
@@ -43,6 +45,8 @@ export const api = {
   reopenIncident: (id) => request(`/api/incidents/${id}/reopen`, { method: "POST" }),
   // The trend and summary report for the last `days` days; the CSV link downloads the same report.
   summary: (days) => request(`/api/reports/summary?days=${days}`),
+  // Every saved incident as a file for reference; format is "csv" or "json"
+  exportUrl: (format) => `${API_URL}/api/incidents/export?format=${format}`,
   summaryCsvUrl: (days) => `${API_URL}/api/reports/summary?days=${days}&format=csv`,
   queryLocation: (location, days) =>
     request(`/api/locations/query?location=${encodeURIComponent(location)}&days=${days}`),
