@@ -321,6 +321,18 @@ def test_derive_context_plans_the_lookups(logic):
     assert incident.get("time_of_day") == "night"
 
 
+# Darrel
+def test_site_conditions_from_ai_lists(logic):
+    incident = make(equipment_mentioned=["Tower Crane"], elevated_places=["roof"], precipitation_mm=0.5,
+                    time_of_day="day")
+    logic.apply_site_conditions(incident)
+    assert incident.get("condition") == "rain" and incident.get("lighting_condition") == "low_light"
+    assert incident.get("working_at_height") and incident.get("heavy_machinery_present")
+    plain = make(equipment_mentioned=["hammer"], elevated_places=[])
+    logic.apply_site_conditions(plain)
+    assert not plain.get("working_at_height") and not plain.get("heavy_machinery_present")
+
+
 # Sufi
 def test_multi_condition_rule_uses_two_ai_fields():
     rule = StopWorkRule()
