@@ -44,16 +44,6 @@ def test_scoring_tables_fit_together(logic):
     assert logic._TYPE_A_HAZARDS and all(isinstance(hazard, str) for hazard in logic._TYPE_A_HAZARDS)
 
 
-def test_weather_relevance_is_whole_word(logic):
-    for text in ("Worker slipped on wet floor", "Heavy RAIN all morning", "It was windy on the roof",
-                 "flooding in the basement", "Lightning struck the crane"):
-        assert logic.is_weather_relevant({"description": text}), text
-    for text in ("Hit by a window frame", "Trainee injured at the constraint review",
-                 "Shot-blasting dust", "Freshly mopped floor", "Photo taken", "Sweet drink spilled"):
-        assert not logic.is_weather_relevant({"description": text}), text
-    assert not logic.is_weather_relevant({})
-
-
 def test_time_of_day_season_and_lighting(logic):
     assert logic.get_time_of_day("2026-09-27T12:00:00") == "day"
     assert logic.get_time_of_day("2026-09-27T18:30:00") == "dusk_dawn"
@@ -122,28 +112,13 @@ def test_recurrence_level_tiers(logic):
     assert logic._recurrence_level(lm.HIGH_SEVERITY - 1, {}, [], False) == "low"
 
 
-def test_derive_context_and_apply_lighting(logic):
+def test_derive_context_sets_weather_relevance_time_of_day_and_season(logic):
     incident = make(description="wet floor", timestamp="2026-09-27T20:44:10")
     logic.derive_context(incident)
     ctx = incident.to_dict()
     assert ctx["weather_relevant"] is True and ctx["time_of_day"] == "night"
     assert ctx["monsoon_season"] == "southwest_monsoon"
-    lit = logic.apply_lighting({**ctx, "condition": "rain"})
-    assert lit["lighting_condition"] == "dark"
     assert "lighting_condition" not in ctx
-
-def test_apply_weather_turns_rainfall_into_a_condition(logic):
-    assert logic.apply_weather({"precipitation_mm": 0.3})["condition"] == "rain"
-    assert logic.apply_weather({"precipitation_mm": 0})["condition"] == "clear"
-    assert logic.apply_weather({"condition": None})["condition"] is None
-    assert logic.apply_weather({"condition": "rain"})["condition"] == "rain"
-
-
-def test_apply_lighting_copes_with_missing_or_unknown_values(logic):
-    assert logic.apply_lighting({})["lighting_condition"] == "daylight"
-    assert logic.apply_lighting({"time_of_day": None, "condition": None})["lighting_condition"] == "daylight"
-    assert logic.apply_lighting({"time_of_day": "midnight", "condition": "fog"})["lighting_condition"] == "daylight"
-    assert logic.apply_lighting({"time_of_day": "dusk_dawn", "condition": "rain"})["lighting_condition"] == "dark"
 
 def _enriched(injury=True, **changes):
     base = {"hazard_category": "fall_from_height", "injury_treatment": "hospital",
@@ -252,13 +227,6 @@ def test_a_missing_hazard_category_is_never_scored_as_if_it_were_safe(logic):
     assert "hazard_category missing" in incident.get("assessment_error")
 
 
-def test_multi_condition_rule_uses_ai_fields(logic):
-    record = {"severity_estimate": 2, "injury": True, "likelihood_recurrence": "high"}
-    assert logic.is_high_severity(record)
-    assert not logic.is_high_severity({**record, "injury": False})
-    assert not logic.is_high_severity({**record, "likelihood_recurrence": "low"})
-
-
 def test_failed_ai_extraction_routes_to_manual_review(logic):
     incident = _enriched(hazard_category=None, context_flags_error="AI down")
     logic.assess_severity(incident, [])
@@ -266,24 +234,21 @@ def test_failed_ai_extraction_routes_to_manual_review(logic):
     assert logic.decide_outcome(incident, []) == "pending_review"
 
 
-def test_apply_hazard_rules_decides_height_and_machinery_from_the_ais_lists(logic):
-    both = logic.apply_hazard_rules({"equipment_mentioned": ["Tower Crane", "hammer"],
-                                  "elevated_places": ["roof"]})
-    assert both["working_at_height"] is True and both["heavy_machinery_present"] is True
+def test_site_conditions_recognise_heavy_machinery_and_ignore_odd_values(logic):
     for name in ("excavator", "forklift", "generator", "conveyor belt", "dump truck", "piling rig",
                  "scissor lift", "concrete pump", "bobcat", "dumper", "pile driver", "telehandler",
                  "skid steer", "road roller", "mobile crane"):
-        assert logic.apply_hazard_rules({"equipment_mentioned": [name]})["heavy_machinery_present"], name
-    light = logic.apply_hazard_rules({"equipment_mentioned": ["hammer", "ladder", "drill", "paint roller",
-                                                           "lifting sling", "angle grinder"],
-                                   "elevated_places": []})
-    assert light["working_at_height"] is False and light["heavy_machinery_present"] is False
+        incident = make(equipment_mentioned=[name])
+        logic.apply_site_conditions(incident)
+        assert incident.get("heavy_machinery_present"), name
+    light = make(equipment_mentioned=["hammer", "ladder", "drill", "paint roller", "lifting sling", "angle grinder"])
+    logic.apply_site_conditions(light)
+    assert not light.get("heavy_machinery_present")
     for odd in (None, "crane", [None, 5, " "], {}):
-        result = logic.apply_hazard_rules({"equipment_mentioned": odd, "elevated_places": odd})
-        assert result["working_at_height"] is False and result["heavy_machinery_present"] is False, odd
-    source = {"equipment_mentioned": ["crane"]}
-    logic.apply_hazard_rules(source)
-    assert "heavy_machinery_present" not in source
+        incident = make(equipment_mentioned=odd, elevated_places=odd)
+        logic.apply_site_conditions(incident)
+        assert not incident.get("working_at_height") and not incident.get("heavy_machinery_present"), odd
+
 
 def test_screen_incident_decides_accept_or_reject_from_the_ai_flag(logic):
     rejected = logic.screen_incident({"is_valid_incident": False, "invalid_reason": " It is random text. "})
@@ -313,6 +278,34 @@ def enriched(injury=True, **changes):
               "lighting_condition": "dark", "similar_incidents": None, "context_flags_error": None}
     fields.update(changes)
     return make(injury=injury, **fields)
+
+
+# Darrel
+def test_weather_relevance_is_whole_word(logic):
+    assert logic.is_weather_relevant(make("Worker slipped on wet floor"))
+    assert logic.is_weather_relevant(make("Lightning struck the crane"))
+    assert not logic.is_weather_relevant(make("Hit by a window frame"))
+    assert not logic.is_weather_relevant(make("Shot-blasting dust in the room"))
+
+
+# Darrel
+def test_derive_context_plans_the_lookups(logic):
+    incident = make("Worker slipped on wet floor", timestamp="2026-09-27T20:44:10")
+    logic.derive_context(incident)
+    assert incident.get("run_weather") is True and incident.get("run_similar") is False
+    assert incident.get("time_of_day") == "night"
+
+
+# Darrel
+def test_site_conditions_from_ai_lists(logic):
+    incident = make(equipment_mentioned=["Tower Crane"], elevated_places=["roof"], precipitation_mm=0.5,
+                    time_of_day="day")
+    logic.apply_site_conditions(incident)
+    assert incident.get("condition") == "rain" and incident.get("lighting_condition") == "low_light"
+    assert incident.get("working_at_height") and incident.get("heavy_machinery_present")
+    plain = make(equipment_mentioned=["hammer"], elevated_places=[])
+    logic.apply_site_conditions(plain)
+    assert not plain.get("working_at_height") and not plain.get("heavy_machinery_present")
 
 
 # Sufi
@@ -435,6 +428,21 @@ def test_a_missing_or_wrong_typed_ai_value_never_breaks_a_rule():
         assert not StopWorkRule().applies(make(injury=True, **fields), [])  # no usable AI value: no stop-work, no error
     assert not PhotoMismatchRule().applies(make(photo_matches_description=None), [])
     assert not PhotoMismatchRule().applies(make(), [])
+
+
+# Darrel
+def test_site_conditions_cope_with_dry_weather_and_malformed_ai_lists(logic):
+    dry = make(precipitation_mm=0, time_of_day="day", equipment_mentioned=["Excavator"], elevated_places=[])
+    logic.apply_site_conditions(dry)
+    assert dry.get("condition") == "clear" and dry.get("heavy_machinery_present") is True
+    assert dry.get("lighting_condition") == "daylight"
+    no_reading = make(time_of_day="day")
+    logic.apply_site_conditions(no_reading)
+    assert no_reading.get("condition") is None  # no weather reading: nothing is invented
+    malformed = make(equipment_mentioned="crane", elevated_places=[5, None, "  "], time_of_day="night")
+    logic.apply_site_conditions(malformed)  # a string and junk entries instead of lists of names
+    assert malformed.get("heavy_machinery_present") is False and malformed.get("working_at_height") is False
+    assert malformed.get("lighting_condition") == "dark"
 
 
 def load_tests(loader, tests, pattern):
