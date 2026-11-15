@@ -7,7 +7,7 @@ const CHART_HEIGHT = 190;
 const INNER_RADIUS = 62;
 const OUTER_RADIUS = 82;
 // The label has to fit inside the hole, so it is narrower than the inner diameter.
-const LABEL_WIDTH = INNER_RADIUS * 2 - 28;
+const LABEL_WIDTH = INNER_RADIUS * 2 - 36;
 
 const tooltipStyle = { background: "#1a2321", border: "1px solid #2a3633", borderRadius: 8, fontSize: 12 };
 

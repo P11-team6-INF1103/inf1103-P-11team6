@@ -60,6 +60,7 @@ export default function App() {
     try {
       await api.deleteIncident(incident.id);
       setSelected(null);
+      setIncidents((current) => current.filter((i) => i.id !== incident.id)); // drop the row now; the reload below renumbers
       await loadIncidents();
     } catch (err) {
       setLoadError(err.message);
@@ -71,6 +72,7 @@ export default function App() {
     incidents, meta,
     onOpen: (incident) => setSelected({ incident, mode: "report" }),
     onEdit: (incident) => setSelected({ incident, mode: "edit" }),
+    onDelete: handleDelete,
   };
 
   return (
@@ -78,7 +80,7 @@ export default function App() {
       <div className="topbar">
         <button className="icon-btn" aria-label="Open menu" onClick={() => setMenuOpen(true)}><Menu size={20} /></button>
         <div className="brand-logo"><span /></div>
-        <strong>SiteSafe</strong>
+        <strong>Workplace</strong>
       </div>
       <Sidebar page={page} onNavigate={(id) => { setPage(id); setMenuOpen(false); window.scrollTo(0, 0); }} serverStatus={serverStatus}
                open={menuOpen} onClose={() => setMenuOpen(false)} />

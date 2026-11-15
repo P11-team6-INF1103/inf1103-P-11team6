@@ -1,11 +1,14 @@
 // Sufi
 
-import { Camera, Pencil } from "lucide-react";
+import { useState } from "react";
+import { Camera, Pencil, Trash2 } from "lucide-react";
 import { formatDate } from "../labels.js";
 import { OutcomePill, PriorityPill, SeverityPill, StatusPill } from "./Pills.jsx";
 
 // onAction(incident) may return a button for an extra last column.
-export default function IncidentTable({ incidents, meta, onOpen, onEdit, onAction }) {
+// onDelete(incident) adds a Delete button per row; the first click turns it into Confirm? and a second click deletes. // Lennart
+export default function IncidentTable({ incidents, meta, onOpen, onEdit, onAction, onDelete }) {
+  const [confirmingId, setConfirmingId] = useState(null);
   if (incidents.length === 0) {
     return <div className="empty">No incidents to show.</div>;
   }
@@ -14,7 +17,7 @@ export default function IncidentTable({ incidents, meta, onOpen, onEdit, onActio
       <table className="incident-table">
         <thead>
           <tr>
-            <th>#</th><th>When</th><th>Location</th><th>Hazard</th><th>Sev</th><th>Priority</th><th>Status</th><th>Action</th><th>What happened</th>{onEdit && <th></th>}{onAction && <th></th>}
+            <th>#</th><th>When</th><th>Location</th><th>Hazard</th><th>Sev</th><th>Priority</th><th>Status</th><th>Action</th><th>What happened</th>{onEdit && <th></th>}{onAction && <th></th>}{onDelete && <th></th>}
           </tr>
         </thead>
         <tbody>
@@ -38,6 +41,18 @@ export default function IncidentTable({ incidents, meta, onOpen, onEdit, onActio
                 <td className="c-btn">
                   <button className="btn small" onClick={(e) => { e.stopPropagation(); onEdit(incident); }}>
                     <Pencil size={13} /> Edit
+                  </button>
+                </td>
+              )}
+              {onDelete && (
+                <td className="c-btn">
+                  <button className="btn small danger" onClick={(e) => {
+                    e.stopPropagation();
+                    if (confirmingId !== incident.id) { setConfirmingId(incident.id); return; }
+                    setConfirmingId(null);
+                    onDelete(incident);
+                  }} onBlur={() => setConfirmingId(null)}>
+                    <Trash2 size={13} /> {confirmingId === incident.id ? "Confirm?" : "Delete"}
                   </button>
                 </td>
               )}
