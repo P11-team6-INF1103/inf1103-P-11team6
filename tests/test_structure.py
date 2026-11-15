@@ -12,8 +12,7 @@ SKIPPED_FOLDERS = {".venv", "node_modules", ".git", "__pycache__", ".pytest_cach
 # that splits it into one class per file (see "One class per file" in Task_Allocation_Part2.pdf). When the list is
 # empty, delete it and the xfail handling below.
 PENDING_SPLIT = {
-    "ai_clients.py": "Ren Xiang: split into ai_clients/ (response_cache, json_reply, gemini_client)",
-    "tests/fakes.py": "Ren Xiang: move the fakes into tests/doubles/",
+
 }
 
 
