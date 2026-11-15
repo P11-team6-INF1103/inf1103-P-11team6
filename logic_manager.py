@@ -95,8 +95,7 @@ class LogicManager:
         base = {"day": 0, "dusk_dawn": 1, "night": 2}.get(time_of_day, 0)
         if condition == "rain":
             base += 1
-        base = min(base, len(levels) - 1)
-        return levels[base]
+        return levels[min(base, len(levels) - 1)]
 
 
     # Turns precipitation_mm into condition ('rain' or 'clear'); returns a new dict.
