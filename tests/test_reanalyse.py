@@ -7,7 +7,10 @@ from logic_manager import LogicManager
 from logic_rules.constants import OUTCOME_ACTIONS, SEVERITY_LEVELS
 from main import IncidentTriageApp
 from models.incident import Incident
-from tests.fakes import HAZARD_REPLY, FakeGemini, FakeSearch, FakeWeather
+from tests.doubles.fake_gemini import FakeGemini
+from tests.doubles.fake_search import FakeSearch
+from tests.doubles.fake_weather import FakeWeather
+from tests.fakes import HAZARD_REPLY
 
 LOW_RISK = {**HAZARD_REPLY, "hazard_category": "other", "injury_treatment": "none",
             "elevated_places": [], "ppe_status": "worn"}
