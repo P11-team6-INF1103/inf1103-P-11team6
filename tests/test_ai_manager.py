@@ -3,8 +3,10 @@ import os
 import pytest
 
 from ai_clients.gemini_client import GeminiClient
+from ai_clients.groq_search_client import GroqSearchClient
 from ai_clients.json_reply import JsonReply
 from ai_clients.response_cache import ResponseCache
+from ai_clients.weather_client import WeatherClient
 from ai_steps.hazard_flag_step import HazardFlagStep
 from models.incident import Incident
 from models.incident_photo import IncidentPhoto
@@ -160,3 +162,13 @@ def test_photo_is_sent_to_gemini_as_an_image_part():
 #     elapsed = time.perf_counter() - start
 #     assert elapsed < 1.0  # four 0.4 s steps one after another would take 1.6 s
 #     assert incident.get("photo_analysed") and incident.get("similar_incidents_checked")
+
+
+# Darrel
+def test_groq_and_weather_fail_safely_offline(monkeypatch):
+    with pytest.raises(RuntimeError, match="GROQ_API_KEY"):
+        GroqSearchClient(ResponseCache()).search_json("p", {})
+    monkeypatch.setenv("GROQ_API_KEY", "test")
+    with pytest.raises(RuntimeError, match="Groq web search failed"):
+        GroqSearchClient(ResponseCache()).search_json("p", {})
+    assert WeatherClient(ResponseCache()).get_weather("2026-10-20T09:00:00") is None
