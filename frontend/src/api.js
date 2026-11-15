@@ -9,6 +9,12 @@ async function request(path, options = {}) {
   try {
     response = await fetch(API_URL + path, options);
   } catch {
+    // A request blocked at the network edge (for example text that looks like an SQL attack) fails the same way
+    // as a sleeping server, so check whether the server answers before choosing the message.
+    const serverUp = await fetch(API_URL + "/api/health").then((r) => r.ok).catch(() => false);
+    if (serverUp) {
+      throw new Error("The request was blocked. Remove unusual characters such as quotes, semicolons, -- or code-like text and try again.");
+    }
     throw new Error("Cannot reach the server. If it is on Render's free plan it may take a minute to wake up.");
   }
   const body = await response.json().catch(() => ({}));
