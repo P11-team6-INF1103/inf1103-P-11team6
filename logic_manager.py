@@ -104,16 +104,6 @@ class LogicManager:
         return levels[base]
 
 
-    # Turns precipitation_mm into condition ('rain' or 'clear'); returns a new dict.
-    @staticmethod
-    def apply_weather(enriched: dict) -> dict:
-        result = dict(enriched)
-        precipitation_mm = enriched.get("precipitation_mm")
-        if isinstance(precipitation_mm, (int, float)):
-            result["condition"] = "rain" if precipitation_mm > 0 else "clear"
-        return result
-
-
     # Adds weather relevance, lookup plan, time of day, and monsoon season to the incident.
     def derive_context(self, incident: Incident) -> None:
         relevant = self.is_weather_relevant(incident)
@@ -126,33 +116,12 @@ class LogicManager:
         })
 
 
-#    # Adds lighting_condition from the time of day and the weather; returns a new dict.
-    def apply_lighting(self, enriched: dict) -> dict:
-        lit = dict(enriched)
-        lit["lighting_condition"] = self.classify_lighting_condition(
-            enriched.get("time_of_day", "day"), enriched.get("condition")
-        )
-        return lit
-
-
     # The non-empty strings in a list, stripped and lower-cased; anything else is ignored.
     @staticmethod
     def _text_list(value: object) -> list[str]:
         if not isinstance(value, list):
             return []
         return [item.strip().lower() for item in value if isinstance(item, str) and item.strip()]
-
-
-#    # Adds working_at_height and heavy_machinery_present from the AI's elevated-place and equipment lists; returns a new dict.
-    def apply_hazard_rules(self, enriched: dict) -> dict:
-        result = dict(enriched)
-        equipment = self._text_list(enriched.get("equipment_mentioned"))
-        places = self._text_list(enriched.get("elevated_places"))
-        result["working_at_height"] = bool(places)
-        result["heavy_machinery_present"] = any(
-            word in name for name in equipment for word in self._HEAVY_MACHINERY_WORDS
-        )
-        return result
 
 
     # Daniel
@@ -235,16 +204,6 @@ class LogicManager:
             "severity_reasons": reasons + more_reasons,
             "assessment_error": None,
         })
-
-
-    # Darrel
-    # Rule 1: severity 4 or more, or an injury with high recurrence likelihood.
-    @staticmethod
-    def is_high_severity(record: dict) -> bool:
-        severity = record.get("severity_estimate", 0)
-        injury = record.get("injury", False)
-        recurrence = record.get("likelihood_recurrence", "unknown")
-        return severity >= HIGH_SEVERITY or (injury and recurrence == "high")
 
 
     # Sufi
