@@ -1,0 +1,23 @@
+# Starts the whole app locally: API on http://localhost:8000, dashboard on http://localhost:5173.
+# Run: docker compose up --build   (or press Start on the project in Docker Desktop)
+services:
+  backend:
+    build: .
+    command: gunicorn --workers 1 --threads 4 --timeout 180 --bind 0.0.0.0:8000 "web_api:create_app()"
+    env_file: .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data   # keeps saved incidents between restarts
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules   # keep the container's node_modules, not the Mac's
+    depends_on:
+      - backend
