@@ -139,6 +139,22 @@ class LogicManager:
         return [item.strip().lower() for item in value if isinstance(item, str) and item.strip()]
 
 
+    # Darrel
+    # Turns rainfall into a condition, then sets lighting, working at height and heavy machinery.
+    def apply_site_conditions(self, incident: Incident) -> None:
+        rain = incident.get("precipitation_mm")
+        if isinstance(rain, (int, float)):
+            incident.update({"condition": "rain" if rain > 0 else "clear"})
+        equipment = self._text_list(incident.get("equipment_mentioned"))
+        incident.update({
+            "lighting_condition": self.classify_lighting_condition(
+                incident.get("time_of_day", "day"), incident.get("condition")),
+            "working_at_height": bool(self._text_list(incident.get("elevated_places"))),
+            "heavy_machinery_present": any(
+                word in name for name in equipment for word in self._HEAVY_MACHINERY_WORDS),
+        })
+
+
 #    # Adds working_at_height and heavy_machinery_present from the AI's elevated-place and equipment lists; returns a new dict.
     def apply_hazard_rules(self, enriched: dict) -> dict:
         result = dict(enriched)
