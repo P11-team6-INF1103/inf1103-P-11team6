@@ -6,7 +6,7 @@ import { formatDate } from "../labels.js";
 import { OutcomePill, PriorityPill, SeverityPill, StatusPill } from "./Pills.jsx";
 
 // onAction(incident) may return a button for an extra last column.
-// onDelete(incident) adds a Delete button per row; the first click asks for a second click to confirm. // Lennart
+// onDelete(incident) adds a Delete button per row; the first click turns it into Confirm? and a second click deletes. // Lennart
 export default function IncidentTable({ incidents, meta, onOpen, onEdit, onAction, onDelete }) {
   const [confirmingId, setConfirmingId] = useState(null);
   if (incidents.length === 0) {
@@ -52,7 +52,7 @@ export default function IncidentTable({ incidents, meta, onOpen, onEdit, onActio
                     setConfirmingId(null);
                     onDelete(incident);
                   }} onBlur={() => setConfirmingId(null)}>
-                    <Trash2 size={13} /> {confirmingId === incident.id ? "Click again to delete" : "Delete"}
+                    <Trash2 size={13} /> {confirmingId === incident.id ? "Confirm?" : "Delete"}
                   </button>
                 </td>
               )}
