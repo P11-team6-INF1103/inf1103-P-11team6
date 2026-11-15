@@ -172,3 +172,11 @@ def test_groq_and_weather_fail_safely_offline(monkeypatch):
     with pytest.raises(RuntimeError, match="Groq web search failed"):
         GroqSearchClient(ResponseCache()).search_json("p", {})
     assert WeatherClient(ResponseCache()).get_weather("2026-10-20T09:00:00") is None
+
+
+# Darrel
+def test_weather_validation():
+    assert WeatherClient.is_valid({"temperature_c": 30, "humidity_pct": 80, "precipitation_mm": 0})
+    assert not WeatherClient.is_valid({"temperature_c": 99, "humidity_pct": 80, "precipitation_mm": 0})
+    assert not WeatherClient.is_valid({"temperature_c": 30, "humidity_pct": 80, "precipitation_mm": -1})
+    assert not WeatherClient.is_valid(None)
