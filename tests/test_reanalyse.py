@@ -1,3 +1,4 @@
+# Lennart
 from ai_clients.response_cache import ResponseCache
 from ai_manager import AIManager
 from ai_steps.hazard_flag_step import HazardFlagStep
@@ -7,7 +8,11 @@ from logic_manager import LogicManager
 from logic_rules.constants import OUTCOME_ACTIONS, SEVERITY_LEVELS
 from main import IncidentTriageApp
 from models.incident import Incident
-from tests.fakes import HAZARD_REPLY, FakeGemini, FakeSearch, FakeWeather
+from tests.doubles.fake_gemini import FakeGemini
+from tests.doubles.fake_search import FakeSearch
+from tests.doubles.fake_weather import FakeWeather
+from tests.fakes import HAZARD_REPLY
+from web_api import WebApi
 
 LOW_RISK = {**HAZARD_REPLY, "hazard_category": "other", "injury_treatment": "none",
             "elevated_places": [], "ppe_status": "worn"}
@@ -125,4 +130,34 @@ def test_edit_menu_offers_reanalyse_and_shows_the_old_and_new_insight(tmp_path, 
     app.edit_saved_incident()
     out = capsys.readouterr().out
     assert "Re-analyse: ask the AI again" in out and "WHAT CHANGED" in out and "LOG ONLY -> STOP WORK" in out
-    assert app.records[0].version == 2
+    assert "(re-analysed)" in out and app.records[0].version == 2
+
+
+def make_client(tmp_path, gemini=None):
+    app = build(tmp_path, gemini)
+    return WebApi(app, ["http://localhost:5173"], 50).flask.test_client()
+
+
+def test_reanalyse_route_returns_the_new_version_with_the_old_one_in_history(tmp_path):
+    gemini = FakeGemini(replies={HAZARD: LOW_RISK})
+    client = make_client(tmp_path, gemini)
+    gemini.replies[HAZARD] = HAZARD_REPLY
+    response = client.post("/api/incidents/1/reanalyse")
+    body = response.get_json()
+    assert response.status_code == 200 and body["status"] == "updated" and body["version"] == 2
+    assert body["reanalysed"] is True and body["outcome"] == "stop_work_review"
+    assert body["history"][-1]["outcome"] == "log_only" and client.get("/api/incidents").get_json()[0]["version"] == 2
+
+
+def test_reanalyse_route_answers_unknown_incident_ai_failure_and_too_many_requests(tmp_path):
+    gemini = FakeGemini()
+    client = make_client(tmp_path, gemini)
+    assert client.post("/api/incidents/9/reanalyse").status_code == 404
+    gemini.error = RuntimeError("down")
+    response = client.post("/api/incidents/1/reanalyse")
+    assert response.status_code == 502 and response.get_json()["kept_version"] == 1
+    gemini.error = None
+    app = build(tmp_path / "limited", gemini)
+    limited = WebApi(app, ["http://localhost:5173"], 1).flask.test_client()
+    assert limited.post("/api/incidents/1/reanalyse").status_code == 200
+    assert limited.post("/api/incidents/1/reanalyse").status_code == 429
