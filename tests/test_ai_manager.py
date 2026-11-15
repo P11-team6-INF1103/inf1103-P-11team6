@@ -8,9 +8,13 @@ from ai_clients.json_reply import JsonReply
 from ai_clients.response_cache import ResponseCache
 from ai_clients.weather_client import WeatherClient
 from ai_steps.hazard_flag_step import HazardFlagStep
+from ai_steps.photo_analysis_step import PhotoAnalysisStep
+from ai_steps.similar_incident_step import SimilarIncidentStep
 from ai_steps.web_search_step import WebSearchStep
+from logic_rules.constants import OUTCOME_ACTIONS
 from models.incident import Incident
 from models.incident_photo import IncidentPhoto
+from tests.doubles.fake_gemini import FakeGemini
 from tests.doubles.fake_search import FakeSearch
 from tests.fakes import HAZARD_REPLY
 
@@ -164,6 +168,32 @@ def test_photo_is_sent_to_gemini_as_an_image_part():
 #     elapsed = time.perf_counter() - start
 #     assert elapsed < 1.0  # four 0.4 s steps one after another would take 1.6 s
 #     assert incident.get("photo_analysed") and incident.get("similar_incidents_checked")
+
+
+# Sufi
+def test_photo_step_only_runs_with_a_photo_and_passes_it_on():
+    gemini = FakeGemini()
+    step = PhotoAnalysisStep(gemini)
+    assert step.safe_run(make(photo=False), []) == {"photo_analysed": False, "photo_error": None}
+    assert gemini.calls == []
+    fields = step.safe_run(make(photo=True), [])
+    assert fields["photo_analysed"] is True and fields["photo_ppe_status"] == "not_worn"
+    assert isinstance(gemini.calls[0]["photo"], IncidentPhoto)
+
+
+def test_photo_step_turns_a_bad_reply_into_photo_error():
+    gemini = FakeGemini(replies={id(PhotoAnalysisStep.SCHEMA): {"photo_summary": "missing fields"}})
+    fields = PhotoAnalysisStep(gemini).safe_run(make(photo=True), [])
+    assert fields["photo_analysed"] is False and "Photo analysis failed" in fields["photo_error"]
+
+
+def test_similar_step_ignores_made_up_ids_and_copies_saved_facts():
+    past = make(outcome="stop_work_review", hazard_type="fall_from_height")
+    gemini = FakeGemini(replies={id(SimilarIncidentStep.SCHEMA): [
+        {"id": 0, "resolution_notes": "Work stopped."}, {"id": 7, "resolution_notes": "invented"}]})
+    fields = SimilarIncidentStep(gemini, OUTCOME_ACTIONS).safe_run(make(run_similar=True), [past])
+    assert len(fields["similar_incidents"]) == 1
+    assert fields["similar_incidents"][0]["outcome"] == "stop_work_review"
 
 
 # Darrel
