@@ -60,6 +60,7 @@ export default function App() {
     try {
       await api.deleteIncident(incident.id);
       setSelected(null);
+      setIncidents((current) => current.filter((i) => i.id !== incident.id)); // drop the row now; the reload below renumbers
       await loadIncidents();
     } catch (err) {
       setLoadError(err.message);
