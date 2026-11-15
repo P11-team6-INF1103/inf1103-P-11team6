@@ -40,6 +40,19 @@ def test_process_incident_saves_and_returns_a_record_with_an_outcome(monkeypatch
     assert main.data_manager.load_records() == [final_record]
 
 
+def test_process_incident_uses_context_defaults_when_timestamp_is_omitted(monkeypatch):
+    _use_canned_ai(monkeypatch)
+    incident = _incident()
+    del incident["timestamp"]
+
+    result = main.process_incident(incident, [], interactive=False)
+
+    assert result["time_of_day"] == "day"
+    assert result["monsoon_season"] == "inter_monsoon"
+    assert "timestamp" not in result
+    assert main.data_manager.load_records() == [result]
+
+
 def _ai_rejects(monkeypatch, reason="It is random text."):
     monkeypatch.setattr(
         main, "enrich_record",
@@ -52,15 +65,19 @@ def test_enrich_record_stops_early_when_incident_is_invalid(monkeypatch):
              "elevated_places": [], "height_estimate_m": None, "ppe_status": "unspecified",
              "is_valid_incident": False, "invalid_reason": "not an incident", "context_flags_error": None}
 
-    def boom(*args, **kwargs):
+    optional_calls = []
+
+    def record_call(*args, **kwargs):
+        optional_calls.append((args, kwargs))
         raise AssertionError("should not be called for an invalid incident")
 
     monkeypatch.setattr(main.ai_manager, "extract_hazard_context_flags", lambda description: flags)
     for name in ("get_weather", "find_similar_incidents", "search_web_for_similar_incidents"):
-        monkeypatch.setattr(main.ai_manager, name, boom)
+        monkeypatch.setattr(main.ai_manager, name, record_call)
     incident = dict(_incident(description="asdf qwerty banana"), run_weather=True, run_similar=False)
     result = main.enrich_record(incident, [])
     assert result["is_valid_incident"] is False and result["invalid_reason"] == "not an incident"
+    assert optional_calls == []
 
 
 def test_enrich_record_runs_weather_or_similar_incidents_never_both(monkeypatch):
