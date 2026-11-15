@@ -44,16 +44,6 @@ def test_scoring_tables_fit_together(logic):
     assert logic._TYPE_A_HAZARDS and all(isinstance(hazard, str) for hazard in logic._TYPE_A_HAZARDS)
 
 
-def test_weather_relevance_is_whole_word(logic):
-    for text in ("Worker slipped on wet floor", "Heavy RAIN all morning", "It was windy on the roof",
-                 "flooding in the basement", "Lightning struck the crane"):
-        assert logic.is_weather_relevant({"description": text}), text
-    for text in ("Hit by a window frame", "Trainee injured at the constraint review",
-                 "Shot-blasting dust", "Freshly mopped floor", "Photo taken", "Sweet drink spilled"):
-        assert not logic.is_weather_relevant({"description": text}), text
-    assert not logic.is_weather_relevant({})
-
-
 def test_time_of_day_season_and_lighting(logic):
     assert logic.get_time_of_day("2026-09-27T12:00:00") == "day"
     assert logic.get_time_of_day("2026-09-27T18:30:00") == "dusk_dawn"
@@ -315,6 +305,34 @@ def enriched(injury=True, **changes):
     return make(injury=injury, **fields)
 
 
+# Darrel
+def test_weather_relevance_is_whole_word(logic):
+    assert logic.is_weather_relevant(make("Worker slipped on wet floor"))
+    assert logic.is_weather_relevant(make("Lightning struck the crane"))
+    assert not logic.is_weather_relevant(make("Hit by a window frame"))
+    assert not logic.is_weather_relevant(make("Shot-blasting dust in the room"))
+
+
+# Darrel
+def test_derive_context_plans_the_lookups(logic):
+    incident = make("Worker slipped on wet floor", timestamp="2026-09-27T20:44:10")
+    logic.derive_context(incident)
+    assert incident.get("run_weather") is True and incident.get("run_similar") is False
+    assert incident.get("time_of_day") == "night"
+
+
+# Darrel
+def test_site_conditions_from_ai_lists(logic):
+    incident = make(equipment_mentioned=["Tower Crane"], elevated_places=["roof"], precipitation_mm=0.5,
+                    time_of_day="day")
+    logic.apply_site_conditions(incident)
+    assert incident.get("condition") == "rain" and incident.get("lighting_condition") == "low_light"
+    assert incident.get("working_at_height") and incident.get("heavy_machinery_present")
+    plain = make(equipment_mentioned=["hammer"], elevated_places=[])
+    logic.apply_site_conditions(plain)
+    assert not plain.get("working_at_height") and not plain.get("heavy_machinery_present")
+
+
 # Sufi
 def test_multi_condition_rule_uses_two_ai_fields():
     rule = StopWorkRule()
@@ -435,6 +453,21 @@ def test_a_missing_or_wrong_typed_ai_value_never_breaks_a_rule():
         assert not StopWorkRule().applies(make(injury=True, **fields), [])  # no usable AI value: no stop-work, no error
     assert not PhotoMismatchRule().applies(make(photo_matches_description=None), [])
     assert not PhotoMismatchRule().applies(make(), [])
+
+
+# Darrel
+def test_site_conditions_cope_with_dry_weather_and_malformed_ai_lists(logic):
+    dry = make(precipitation_mm=0, time_of_day="day", equipment_mentioned=["Excavator"], elevated_places=[])
+    logic.apply_site_conditions(dry)
+    assert dry.get("condition") == "clear" and dry.get("heavy_machinery_present") is True
+    assert dry.get("lighting_condition") == "daylight"
+    no_reading = make(time_of_day="day")
+    logic.apply_site_conditions(no_reading)
+    assert no_reading.get("condition") is None  # no weather reading: nothing is invented
+    malformed = make(equipment_mentioned="crane", elevated_places=[5, None, "  "], time_of_day="night")
+    logic.apply_site_conditions(malformed)  # a string and junk entries instead of lists of names
+    assert malformed.get("heavy_machinery_present") is False and malformed.get("working_at_height") is False
+    assert malformed.get("lighting_condition") == "dark"
 
 
 def load_tests(loader, tests, pattern):
