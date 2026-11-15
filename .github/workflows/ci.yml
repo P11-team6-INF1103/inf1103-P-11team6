@@ -70,4 +70,4 @@ jobs:
           grep -q "saved in local files" batch-output.txt
           grep -q "INCIDENT SUMMARY" batch-output.txt
           grep -q "Total incidents: 3" batch-output.txt
-          rep -q "With a photo: 1" batch-output.txt
+          grep -q "With a photo: 1" batch-output.txt
