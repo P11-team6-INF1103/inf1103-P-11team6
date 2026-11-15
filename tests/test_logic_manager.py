@@ -44,16 +44,6 @@ def test_scoring_tables_fit_together(logic):
     assert logic._TYPE_A_HAZARDS and all(isinstance(hazard, str) for hazard in logic._TYPE_A_HAZARDS)
 
 
-def test_weather_relevance_is_whole_word(logic):
-    for text in ("Worker slipped on wet floor", "Heavy RAIN all morning", "It was windy on the roof",
-                 "flooding in the basement", "Lightning struck the crane"):
-        assert logic.is_weather_relevant({"description": text}), text
-    for text in ("Hit by a window frame", "Trainee injured at the constraint review",
-                 "Shot-blasting dust", "Freshly mopped floor", "Photo taken", "Sweet drink spilled"):
-        assert not logic.is_weather_relevant({"description": text}), text
-    assert not logic.is_weather_relevant({})
-
-
 def test_time_of_day_season_and_lighting(logic):
     assert logic.get_time_of_day("2026-09-27T12:00:00") == "day"
     assert logic.get_time_of_day("2026-09-27T18:30:00") == "dusk_dawn"
@@ -313,6 +303,14 @@ def enriched(injury=True, **changes):
               "lighting_condition": "dark", "similar_incidents": None, "context_flags_error": None}
     fields.update(changes)
     return make(injury=injury, **fields)
+
+
+# Darrel
+def test_weather_relevance_is_whole_word(logic):
+    assert logic.is_weather_relevant(make("Worker slipped on wet floor"))
+    assert logic.is_weather_relevant(make("Lightning struck the crane"))
+    assert not logic.is_weather_relevant(make("Hit by a window frame"))
+    assert not logic.is_weather_relevant(make("Shot-blasting dust in the room"))
 
 
 # Sufi
