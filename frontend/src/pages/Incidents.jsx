@@ -7,7 +7,7 @@ import IncidentTable from "../components/IncidentTable.jsx";
 import { needsReview } from "../labels.js";
 
 // Web version of the terminal summary: every incident, filterable, manual reviews and most severe first.
-export default function Incidents({ incidents, meta, search, onOpen, onEdit }) {
+export default function Incidents({ incidents, meta, search, onOpen, onEdit, onDelete }) {
   const [outcome, setOutcome] = useState("");
   const [hazard, setHazard] = useState("");
   const [photoOnly, setPhotoOnly] = useState(false);
@@ -42,7 +42,7 @@ export default function Incidents({ incidents, meta, search, onOpen, onEdit }) {
         </button>
         <a className="btn" href={api.exportUrl("csv")} title="Download every incident as a spreadsheet file"><Download size={14} /> Export CSV</a>
       </div>
-      <IncidentTable incidents={shown} meta={meta} onOpen={onOpen} onEdit={onEdit} />
+      <IncidentTable incidents={shown} meta={meta} onOpen={onOpen} onEdit={onEdit} onDelete={onDelete} />
     </div>
   );
 }
