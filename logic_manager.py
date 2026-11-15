@@ -40,6 +40,7 @@ class LogicManager:
     _POOR_LIGHT_LEVELS = ("dark", "low_light")
 
 
+    # Darrel
     _HEAVY_MACHINERY_WORDS = (
         "crane", "excavator", "forklift", "generator", "conveyor", "bulldozer",
         "backhoe", "digger", "loader", "grader", "compactor", "road roller",
