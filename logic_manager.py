@@ -22,8 +22,8 @@ from models.incident import Incident
 
 
 class LogicManager:
-    # Whole-word match only: "window" must not count as "wind", "constraint" as
-    # "rain", or "shot" as "hot".
+    # Darrel
+    # Whole-word match only: "window" must not count as "wind", or "shot" as "hot".
     _WEATHER_WORDS = re.compile(
         r"\b(rain|rains|raining|rainy|rained|wet|storm|storms|stormy|wind|winds|windy|"
         r"flood|floods|flooded|flooding|lightning|thunder|thunderstorm|thunderstorms|"
@@ -40,6 +40,7 @@ class LogicManager:
     _POOR_LIGHT_LEVELS = ("dark", "low_light")
 
 
+    # Darrel
     _HEAVY_MACHINERY_WORDS = (
         "crane", "excavator", "forklift", "generator", "conveyor", "bulldozer",
         "backhoe", "digger", "loader", "grader", "compactor", "road roller",
@@ -82,14 +83,8 @@ class LogicManager:
 
     # Darrel
     # True if the description mentions weather, so the weather API should be called.
-    def is_weather_relevant(self, incident: Incident | dict) -> bool:
-        return bool(self._WEATHER_WORDS.search(str(incident.get("description") or "")))
-
-
-#    # Decides which optional lookups to run: weather when it matters, otherwise similar past incidents.
-#    def plan_enrichment(self, record: Incident | dict) -> dict:
-#        relevant = self.is_weather_relevant(record)
-#        return {"run_weather": relevant, "run_similar": not relevant}
+    def is_weather_relevant(self, incident: Incident) -> bool:
+        return bool(self._WEATHER_WORDS.search(str(incident.description or "")))
 
 
     # Darrel
@@ -100,8 +95,7 @@ class LogicManager:
         base = {"day": 0, "dusk_dawn": 1, "night": 2}.get(time_of_day, 0)
         if condition == "rain":
             base += 1
-        base = min(base, len(levels) - 1)
-        return levels[base]
+        return levels[min(base, len(levels) - 1)]
 
 
     # Turns precipitation_mm into condition ('rain' or 'clear'); returns a new dict.
@@ -114,7 +108,8 @@ class LogicManager:
         return result
 
 
-    # Adds weather relevance, lookup plan, time of day, and monsoon season to the incident.
+    # Darrel
+    # Adds what needs no API: weather relevance, which lookups to run, time of day and monsoon season.
     def derive_context(self, incident: Incident) -> None:
         relevant = self.is_weather_relevant(incident)
         incident.update({
@@ -135,12 +130,29 @@ class LogicManager:
         return lit
 
 
+    # Darrel
     # The non-empty strings in a list, stripped and lower-cased; anything else is ignored.
     @staticmethod
     def _text_list(value: object) -> list[str]:
         if not isinstance(value, list):
             return []
         return [item.strip().lower() for item in value if isinstance(item, str) and item.strip()]
+
+
+    # Darrel
+    # Turns rainfall into a condition, then sets lighting, working at height and heavy machinery.
+    def apply_site_conditions(self, incident: Incident) -> None:
+        rain = incident.get("precipitation_mm")
+        if isinstance(rain, (int, float)):
+            incident.update({"condition": "rain" if rain > 0 else "clear"})
+        equipment = self._text_list(incident.get("equipment_mentioned"))
+        incident.update({
+            "lighting_condition": self.classify_lighting_condition(
+                incident.get("time_of_day", "day"), incident.get("condition")),
+            "working_at_height": bool(self._text_list(incident.get("elevated_places"))),
+            "heavy_machinery_present": any(
+                word in name for name in equipment for word in self._HEAVY_MACHINERY_WORDS),
+        })
 
 
 #    # Adds working_at_height and heavy_machinery_present from the AI's elevated-place and equipment lists; returns a new dict.
