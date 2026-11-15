@@ -1,5 +1,6 @@
 // Ren Xiang
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Maximize2, Minus, Plus } from "lucide-react";
 import SiteMarks from "./SitePins.jsx";
 
 // Fill and outline for each kind of element, drawn bottom to top so small things are not hidden by big ones.
@@ -31,6 +32,67 @@ export default function SiteMap({
   const peak = Math.max(1, ...Object.values(heat));
   const elements = [...plan.elements].sort((a, b) => ORDER.indexOf(a.type) - ORDER.indexOf(b.type));
   if (editing && editId) elements.sort((a, b) => (a.id === editId) - (b.id === editId)); // the selected area is drawn on top
+  const pad = unit * 2;
+  const home = { x: -pad, y: -pad, w: W + pad * 2, h: D + pad * 2 };
+  // The visible window onto the plan, in plan metres. Dragging the background pans it, the wheel and the buttons zoom it.
+  const [view, setView] = useState(home);
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  useEffect(() => { setView({ x: -pad, y: -pad, w: W + pad * 2, h: D + pad * 2 }); }, [W, D, pad]);
+
+  // Keeps part of the plan on screen so it cannot be lost off the edge.
+  const clampView = (v) => ({
+    ...v,
+    x: Math.min(Math.max(v.x, -v.w * 0.8), W - v.w * 0.2),
+    y: Math.min(Math.max(v.y, -v.h * 0.8), D - v.h * 0.2),
+  });
+  // Zooms by factor around a point given as 0..1 across the visible window (0.5, 0.5 is the centre).
+  const zoomBy = (factor, fx = 0.5, fy = 0.5) => setView((v) => {
+    const w = Math.min(Math.max(v.w * factor, home.w / 12), home.w * 3);
+    const h = w * (home.h / home.w);
+    return clampView({ x: v.x + (v.w - w) * fx, y: v.y + (v.h - h) * fy, w, h });
+  });
+  const zoomRef = useRef(zoomBy);
+  zoomRef.current = zoomBy;
+
+  // The wheel is attached by hand because React's wheel handler cannot stop the page from scrolling.
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return undefined;
+    const onWheel = (e) => {
+      e.preventDefault();
+      const rect = svg.getBoundingClientRect();
+      zoomRef.current(Math.exp(e.deltaY * 0.0015), (e.clientX - rect.left) / rect.width, (e.clientY - rect.top) / rect.height);
+    };
+    svg.addEventListener("wheel", onWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", onWheel);
+  }, []);
+
+  // Dragging empty space (or any area when not editing) moves the view. A click without a drag still clears the selection.
+  function startPan(event) {
+    if (event.button !== undefined && event.button !== 0) return;
+    const svg = svgRef.current;
+    const scale = svg.getScreenCTM().a; // screen pixels per plan metre
+    const from = viewRef.current;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    let moved = false;
+    const move = (e) => {
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (!moved && Math.hypot(dx, dy) < 4) return;
+      moved = true;
+      setView(clampView({ ...from, x: from.x - dx / scale, y: from.y - dy / scale }));
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      if (!moved && editing) onSelectElement?.(null);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+  }
+
   const focused = focus ? elements.find((e) => focus.x >= e.x && focus.x <= e.x + e.w && focus.y >= e.y && focus.y <= e.y + e.d) : null;
 
   // Starts a drag: mode is "move" or the corner being pulled ("nw", "ne", "sw", "se"). The pointer is followed on the
@@ -80,7 +142,7 @@ export default function SiteMap({
 
   return (
     <div className={`site-stage site-map ${editing ? "editing" : ""}`} style={{ height }}>
-      <svg ref={svgRef} onPointerDown={() => editing && onSelectElement?.(null)} viewBox={`${-unit * 2} ${-unit * 2} ${W + unit * 4} ${D + unit * 4}`} preserveAspectRatio="xMidYMid meet"
+      <svg ref={svgRef} onPointerDown={startPan} viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`} preserveAspectRatio="xMidYMid meet"
            role="img" aria-label={`Map of ${plan.name}`} onMouseLeave={() => setTip(null)}>
         <defs>
           <filter id="site-blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation={unit * 3} /></filter>
@@ -125,10 +187,15 @@ export default function SiteMap({
         <SiteMarks elements={elements} pins={pins} heat={heat} heatOn={heatOn} peak={peak} unit={unit} selectedId={selectedId}
                    onPick={onPick} show={show} hide={() => setTip(null)} />
       </svg>
+      <div className="site-zoom" onPointerDown={(e) => e.stopPropagation()}>
+        <button type="button" aria-label="Zoom in" onClick={() => zoomBy(1 / 1.4)}><Plus size={16} /></button>
+        <button type="button" aria-label="Zoom out" onClick={() => zoomBy(1.4)}><Minus size={16} /></button>
+        <button type="button" aria-label="Fit the whole site" onClick={() => setView(home)}><Maximize2 size={14} /></button>
+      </div>
       {tip && <div className="site-tip" style={{ left: tip.x, top: tip.y }}>{tip.text}</div>}
       <div className="site-hint">{editing
-        ? "Click an area to select it · drag it to move · drag a corner to resize"
-        : `Top-down plan · hotspots glow red where incidents cluster${pins.length ? " · click a pin to open the incident" : ""}`}</div>
+        ? "Click an area to select it · drag it to move · drag a corner to resize · drag empty space to pan · scroll to zoom"
+        : `Top-down plan · drag to pan · scroll to zoom · hotspots glow red where incidents cluster${pins.length ? " · click a pin to open the incident" : ""}`}</div>
     </div>
   );
 }
