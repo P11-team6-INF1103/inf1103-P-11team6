@@ -83,14 +83,8 @@ class LogicManager:
 
     # Darrel
     # True if the description mentions weather, so the weather API should be called.
-    def is_weather_relevant(self, incident: Incident | dict) -> bool:
-        return bool(self._WEATHER_WORDS.search(str(incident.get("description") or "")))
-
-
-#    # Decides which optional lookups to run: weather when it matters, otherwise similar past incidents.
-#    def plan_enrichment(self, record: Incident | dict) -> dict:
-#        relevant = self.is_weather_relevant(record)
-#        return {"run_weather": relevant, "run_similar": not relevant}
+    def is_weather_relevant(self, incident: Incident) -> bool:
+        return bool(self._WEATHER_WORDS.search(str(incident.description or "")))
 
 
     # Darrel
