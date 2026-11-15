@@ -71,6 +71,7 @@ export default function App() {
     incidents, meta,
     onOpen: (incident) => setSelected({ incident, mode: "report" }),
     onEdit: (incident) => setSelected({ incident, mode: "edit" }),
+    onDelete: handleDelete,
   };
 
   return (
