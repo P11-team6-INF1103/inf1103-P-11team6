@@ -22,8 +22,8 @@ from models.incident import Incident
 
 
 class LogicManager:
-    # Whole-word match only: "window" must not count as "wind", "constraint" as
-    # "rain", or "shot" as "hot".
+    # Darrel
+    # Whole-word match only: "window" must not count as "wind", or "shot" as "hot".
     _WEATHER_WORDS = re.compile(
         r"\b(rain|rains|raining|rainy|rained|wet|storm|storms|stormy|wind|winds|windy|"
         r"flood|floods|flooded|flooding|lightning|thunder|thunderstorm|thunderstorms|"
