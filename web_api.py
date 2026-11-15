@@ -74,6 +74,7 @@ class WebApi:
             ("/api/incidents/<int:number>", "PATCH", self.edit_incident),
             ("/api/incidents/<int:number>", "DELETE", self.delete_incident),
             ("/api/incidents/<int:number>/revert", "POST", self.revert_incident),
+            ("/api/incidents/<int:number>/reanalyse", "POST", self.reanalyse_incident),
             ("/api/incidents/<int:number>/photo", "GET", self.get_photo),
             ("/api/site-plan", "GET", self.get_site_plan),
             ("/api/site-plan", "PUT", self.save_site_plan),
@@ -132,6 +133,20 @@ class WebApi:
         return Response(text, 200, {
             "Content-Type": f"{exporter.content_type}; charset=utf-8",
             "Content-Disposition": f'attachment; filename="{exporter.file_name()}"'})
+
+    # Runs the AI again on a saved incident with no change to its details and saves the result as a new version
+    # (the old one stays in the history). No body needed. 200 with the new version; 404 for an unknown number;
+    # 422 if the AI now rejects the text; 429 if there were too many AI runs; 502 if the AI could not assess it,
+    # in which case the old version stays current.
+    def reanalyse_incident(self, number: int) -> tuple:
+        if self._find(number) is None:
+            return jsonify({"errors": [f"No incident #{number}."]}), 404
+        client = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+        if self._limiter.too_many(client):
+            return jsonify({"errors": ["Too many incidents from this connection. Try again in a few minutes."]}), 429
+        with self._lock:
+            result = self._app.reanalyse_incident(number - 1)
+        return self._edit_response(result, number)
 
     # Labels and meanings, so the dashboard uses the same wording as the terminal app.
     def meta(self) -> tuple:
