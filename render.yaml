@@ -10,6 +10,8 @@ services:
     dockerfilePath: ./Dockerfile
     dockerCommand: gunicorn --workers 1 --threads 4 --timeout 180 "web_api:create_app()"
     healthCheckPath: /api/health
+    # Redeploy on every push to main so the live API never lags behind the dashboard.
+    autoDeploy: true
     envVars:
       - key: GEMINI_API_KEY
         sync: false

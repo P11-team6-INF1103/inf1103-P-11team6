@@ -33,6 +33,10 @@ async function request(path, options = {}) {
     // A request blocked at the network edge (for example text that looks like an SQL attack) fails the same way
     // as a sleeping server, so check whether the server answers before choosing the message.
     const serverUp = await fetch(API_URL + "/api/health").then((r) => r.ok).catch(() => false);
+    if (serverUp && path === "/api/login") {
+      // The server answers but has no working login route: it is most likely still running an older version.
+      throw new Error("The server is up but the login is not available on it yet. It may still be updating, so try again in a few minutes.");
+    }
     if (serverUp) {
       throw new Error("The request was blocked. Remove unusual characters such as quotes, semicolons, -- or code-like text and try again.");
     }
