@@ -37,11 +37,11 @@ def client(tmp_path):
     return make_client(tmp_path)
 
 
-def upload(client, form=FORM, photo_bytes=None, name="scene.png"):
+def upload(client, form=FORM, photo_bytes=None, name="scene.png", headers=None):
     data = dict(form)
     if photo_bytes is not None:
         data["photo"] = (io.BytesIO(photo_bytes), name)
-    return client.post("/api/incidents", data=data, content_type="multipart/form-data")
+    return client.post("/api/incidents", data=data, content_type="multipart/form-data", headers=headers)
 
 
 def sample_bytes():
@@ -169,3 +169,28 @@ def test_edit_photo_history_photo_and_revert(client):
     assert client.post("/api/incidents/1/revert", json={"version": 9}).status_code == 400
     assert client.post("/api/incidents/1/revert", json={"version": "x"}).status_code == 422
     assert client.post("/api/incidents/7/revert", json={"version": 1}).status_code == 404
+
+
+def test_rate_limit_ignores_a_faked_forwarded_for_value(tmp_path):
+    client = make_client(tmp_path, post_limit=1)
+    assert upload(client, headers={"X-Forwarded-For": "127.0.0.1"}).status_code == 201
+    # The client invents a new first address; the last one (added by the proxy) is unchanged, so it is still limited.
+    assert upload(client, headers={"X-Forwarded-For": "6.6.6.6, 127.0.0.1"}).status_code == 429
+
+
+def test_web_create_ignores_a_client_supplied_timestamp(client):
+    first = client.post("/api/incidents", json={**FORM, "injury": False, "timestamp": "2020-01-01T00:00:00"})
+    second = client.post("/api/incidents", json={**FORM, "injury": False, "timestamp": "2020-01-01T00:00:00"})
+    assert first.status_code == second.status_code == 201
+    assert first.get_json()["timestamp"] != "2020-01-01T00:00:00"
+    assert first.get_json()["timestamp"] != second.get_json()["timestamp"]
+
+
+def test_webp_needs_the_webp_marker_not_just_riff():
+    from models.incident_photo import IncidentPhoto
+    from models.photo_error import PhotoError
+    wav = b"RIFF" + b"\x24\x00\x00\x00" + b"WAVE" + b"0" * 20
+    with pytest.raises(PhotoError, match="not a real image"):
+        IncidentPhoto.from_bytes("sound.webp", wav)
+    webp = b"RIFF" + b"\x24\x00\x00\x00" + b"WEBP" + b"0" * 20
+    assert IncidentPhoto.from_bytes("pic.webp", webp).mime_type == "image/webp"

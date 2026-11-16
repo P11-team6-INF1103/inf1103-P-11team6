@@ -47,6 +47,8 @@ class IncidentPhoto:
             raise PhotoError("The photo is larger than 5 MB. Please use a smaller photo.")
         if not content.startswith(cls._SIGNATURES[mime_type]):
             raise PhotoError("The file is not a real image (it may be corrupt or renamed).")
+        if mime_type == "image/webp" and content[8:12] != b"WEBP":  # RIFF alone also matches WAV and AVI
+            raise PhotoError("The file is not a real image (it may be corrupt or renamed).")
         return cls(os.path.basename(file_name), mime_type, content)
 
     # Reads and checks a photo file; raises PhotoError with a plain-English reason if it cannot be used.
