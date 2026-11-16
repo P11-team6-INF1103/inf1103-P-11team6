@@ -5,8 +5,8 @@ import secrets
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.security import check_password_hash, generate_password_hash
 
-# Used when DASHBOARD_ACCOUNTS is not set, so the dashboard still has one supervisor account to demo with.
-_DEFAULT_ACCOUNTS = "supervisor:123"
+# Used when DASHBOARD_ACCOUNTS is not set: the demo supervisor and one account per developer on the team.
+_DEFAULT_ACCOUNTS = "supervisor:123,darrel:123,lennart:123,daniel:123,ren xiang:123,sufi:123"
 
 
 class SupervisorLogin:

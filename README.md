@@ -18,7 +18,9 @@ Part 2 refactors the Part 1 procedural code into classes, keeps the four manager
 - Also: the four evidence look-ups run at the same time in worker threads, and every passing push to `main`
   publishes the Docker image to GitHub Container Registry.
 
-- **Priority and resolving.** There are no accounts: anyone who opens the dashboard can set an incident's **priority**
+- **Login.** The dashboard opens on a login page; only whitelisted accounts can log in (there is no sign-up).
+  The **Profile** page shows the account you are logged in with and lets you upload a profile picture.
+- **Priority and resolving.** Once logged in, you can set an incident's **priority**
   (P1 Urgent to P4 Low; the rules suggest one from the severity until someone sets it by hand), mark it **resolved** with a
   note, reopen it, delete it and use the triage queue on the **Log and Incident** page.
 - **Search.** The search bar at the top of every page. On the **Overview** it shows ranked search results over every incident: words, `"exact phrases"` and `#12`, plus filters (severity, hazard, action,
@@ -79,7 +81,7 @@ npm install
 npm run dev -- --host 127.0.0.1
 ```
 
-Pages: **Overview** (stat cards, incidents-vs-severity chart, hazard donut, outcomes, recent incidents; type in the search
+Log in first (for example `darrel` / `123`, see [Login](#login)). Pages: **Overview** (stat cards, incidents-vs-severity chart, hazard donut, outcomes, recent incidents; type in the search
 bar at the top to see ranked search results here), **Log and Incident** (the log form with photo drag & drop and the AI report,
 with the triage queue of open incidents under it), **Incidents** (filter, click a row for the full report and photo, delete),
 **Summary report**, **Site map** (the 2D pin board, see below, with the locations: query by place and days, and the saved places
@@ -120,7 +122,11 @@ its disk is wiped on restart, so saved incidents are lost. Open the dashboard a 
 
 | Endpoint | What it does |
 |---|---|
-| `GET /api/health` | Server is up, number of incidents |
+| `GET /api/health` | Server is up, number of incidents (no login needed) |
+| `POST /api/login` | JSON `{"username": "...", "password": "..."}`. 200 with a `token` (lasts 8 hours), 401 wrong details, 429 after 10 wrong tries (no login needed) |
+| `GET /api/session` | The logged-in account's `username`, 401 if the token is missing or has run out |
+| `GET /api/profile` | The logged-in account's `username` and `has_photo` |
+| `GET /api/profile/photo` / `PUT /api/profile/photo` / `DELETE /api/profile/photo` | The account's profile picture / multipart `photo` file (.png, .jpg, .jpeg or .webp, 1 MB at most; 422 otherwise) / remove it |
 | `GET /api/meta` | Severity levels, outcome and hazard names (same wording as the terminal) |
 | `GET /api/incidents` | Every saved incident |
 | `POST /api/incidents` | Multipart form: `description`, `location`, `reporter_role`, `injury`, optional `photo` file. 201 saved, 422 invalid or rejected by the AI, 429 rate limit |
@@ -138,10 +144,20 @@ its disk is wiped on restart, so saved incidents are lost. Open the dashboard a 
 | `GET /api/reports/summary?days=7` | The trend and summary report, `days` 1 to 180; add `&format=csv` to download it as a spreadsheet |
 | `GET /api/locations`, `GET /api/locations/query?location=&days=` | Saved locations / incidents at one location in N days |
 
-### No accounts
+### Login
 
-There is no login: every endpoint is open to anyone who can reach the API. Keep the API address to the people who need it,
-and set `FRONTEND_ORIGINS` so only your dashboard can call it from a browser. Incident creation is still rate limited per connection.
+Every endpoint except `GET /api/health` and `POST /api/login` answers 401 unless the request carries a login token
+(`Authorization: Bearer <token>`; photo and download links send it as `?token=` because a link cannot send a header).
+The dashboard shows a login page first and keeps the token for 8 hours. There is no sign-up: the accounts are a fixed
+list (`SupervisorLogin`).
+
+- `DASHBOARD_ACCOUNTS` sets the accounts as `name:password,name2:password2`. Left empty, the demo accounts are
+  `supervisor`, `darrel`, `lennart`, `daniel`, `ren xiang` and `sufi`, all with password `123` (set real ones on Render).
+- `AUTH_SECRET` signs the tokens; Render generates it. Without it a random key is used, so logins end on a restart.
+- Passwords are kept only as hashes, and 10 wrong passwords from one connection are blocked for 10 minutes.
+
+Also set `FRONTEND_ORIGINS` so only your dashboard can call the API from a browser. Incident creation is still rate
+limited per connection.
 
 ## Run with Docker
 
@@ -219,7 +235,7 @@ the classes it uses live in a folder beside it. `tests/test_app.py` fails if any
 | `reports/` | `ReportSection` (interface), `OverviewSection`, `RankingSection`, `LocationRankingSection`, `HazardRankingSection`, `SeverityTrendSection`, `IncidentFacts` | One file per report section. A new section is a new file. |
 | `site_plan/` | `SitePlan`, `SiteElement`, `SitePlanError`, `ElementKind` | The validated site plan. `element_kinds.py` lists the ten kinds as objects. |
 | `web_api.py` | `WebApi` | REST layer for the React GUI. No business rules: reuses `InputValidator`, `IncidentTriageApp` and `ReportPrinter`. |
-| `web_support/` | `RateLimiter` | The per-client request budget. |
+| `web_support/` | `RateLimiter`, `SupervisorLogin`, `ProfileStore` | The per-client request budget; the whitelisted accounts, hashed passwords and signed login tokens; each account's profile picture (one database document per account). |
 | `search_engine.py`, `workflow.py`, `migrate_to_database.py` | `IncidentSearch`, `WorkflowStore`, `Migration` | One class each. |
 | `run_tests.py`, `test_runner/` | `CommandLine`; `Check`, `CommandCheck`, `PytestCheck`, `Runner`, `Plan`, `OwnershipMap`, `Result` | The offline test runner. |
 | `frontend/` | React components | The dashboard (Netlify). |
@@ -359,6 +375,17 @@ classDiagram
         +from_environment()$ WebApi
     }
     class RateLimiter
+    class ProfileStore {
+        +save_photo(username, photo) bool
+        +photo(username) tuple
+        +delete_photo(username) bool
+    }
+    class SupervisorLogin {
+        +from_environment()$ SupervisorLogin
+        +check(username, password) bool
+        +issue(username) str
+        +verify(token) str
+    }
     class WorkflowStore
     class IncidentSearch
     class TrendReport
@@ -396,6 +423,9 @@ classDiagram
     WorkflowStore --> Database
     WebApi --> IncidentTriageApp
     WebApi *-- RateLimiter
+    WebApi o-- SupervisorLogin
+    WebApi *-- ProfileStore
+    ProfileStore --> Database
     WebApi *-- WorkflowStore
     WebApi *-- IncidentSearch
     WebApi *-- TrendReport

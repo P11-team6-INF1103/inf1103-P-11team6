@@ -20,6 +20,7 @@ from logic_manager import LogicManager
 from logic_rules.constants import OUTCOME_ACTIONS, SEVERITY_LEVELS
 from main import IncidentTriageApp
 from models.incident import Incident
+from tests.api_helpers import log_in
 from tests.doubles.fake_gemini import FakeGemini
 from tests.doubles.fake_search import FakeSearch
 from tests.doubles.fake_weather import FakeWeather
@@ -185,7 +186,7 @@ def test_command_line_export_picks_the_format_from_the_file_ending(tmp_path, cap
 
 
 def test_web_route_downloads_csv_by_default_and_json_on_request(tmp_path):
-    client = WebApi(build(tmp_path), ["http://localhost:5173"], 50).flask.test_client()
+    client = log_in(WebApi(build(tmp_path), ["http://localhost:5173"], 50).flask.test_client())
     response = client.get("/api/incidents/export")
     assert response.status_code == 200 and response.mimetype == "text/csv"
     assert f'filename="incidents_{date.today().isoformat()}.csv"' in response.headers["Content-Disposition"]
@@ -197,6 +198,6 @@ def test_web_route_downloads_csv_by_default_and_json_on_request(tmp_path):
 
 
 def test_web_route_rejects_an_unknown_format(tmp_path):
-    client = WebApi(build(tmp_path), ["http://localhost:5173"], 50).flask.test_client()
+    client = log_in(WebApi(build(tmp_path), ["http://localhost:5173"], 50).flask.test_client())
     response = client.get("/api/incidents/export?format=xml")
     assert response.status_code == 422 and "Unknown export format" in response.get_json()["errors"][0]

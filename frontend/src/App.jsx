@@ -5,6 +5,7 @@ import { Menu } from "lucide-react";
 import { api } from "./api.js";
 import { DEFAULT_META } from "./labels.js";
 import Sidebar from "./components/Sidebar.jsx";
+import SupervisorLogin from "./components/SupervisorLogin.jsx";
 import Header from "./components/Header.jsx";
 import IncidentDrawer from "./components/IncidentDrawer.jsx";
 import Overview from "./pages/Overview.jsx";
@@ -12,6 +13,7 @@ import LogTriage from "./pages/LogTriage.jsx";
 import Incidents from "./pages/Incidents.jsx";
 import Guide from "./pages/Guide.jsx";
 import Reports from "./pages/Reports.jsx";
+import Profile from "./pages/Profile.jsx";
 
 // The site page is only downloaded when someone opens it.
 const SiteModel = lazy(() => import("./pages/SiteModel.jsx"));
@@ -23,6 +25,7 @@ const TITLES = {
   incidents: ["Incidents", "Every incident the AI and the rules have assessed"],
   site: ["Site map & locations", "Your site as a 2D pin board, and every place that keeps having incidents"],
   guide: ["Severity guide", "How incidents are scored and routed"],
+  profile: ["Profile", "The account you are logged in with"],
 };
 
 export default function App() {
@@ -34,6 +37,10 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null); // { incident, mode } for the drawer
   const [menuOpen, setMenuOpen] = useState(false); // the phone menu
+  // Darrel
+  // The logged-in account: undefined while a saved login is being checked, null to show the login page.
+  const [user, setUser] = useState(api.hasLogin() ? undefined : null);
+  const [loginNotice, setLoginNotice] = useState(null);
 
   async function loadIncidents() {
     try {
@@ -54,10 +61,37 @@ export default function App() {
     await loadIncidents();
   }
 
+  // Darrel
+  // Checks the saved login on start and whenever someone logs in or out, or the server says the login ran out.
   useEffect(() => {
+    function check() {
+      if (!api.hasLogin()) {
+        setUser(null);
+        return;
+      }
+      api.session().then((s) => setUser(s.username)).catch((err) => {
+        setLoginNotice(err.message);
+        setUser(null);
+      });
+    }
+    check();
+    window.addEventListener("supervisor-change", check);
+    return () => window.removeEventListener("supervisor-change", check);
+  }, []);
+
+  useEffect(() => {
+    if (!user) return; // every route needs a login, so load nothing until there is one
     api.meta().then(setMeta).catch(() => {});
     loadIncidents();
-  }, []);
+  }, [user]);
+
+  // Darrel
+  function handleLogout() {
+    setLoginNotice(null);
+    setPage("overview");
+    setSelected(null);
+    api.logout();
+  }
 
   function handleSearch(text) {
     setSearch(text);
@@ -73,6 +107,12 @@ export default function App() {
     } catch (err) {
       setLoadError(err.message);
     }
+  }
+
+  // Darrel
+  if (user === undefined) return <div className="login-page"><div className="empty">Checking your login...</div></div>;
+  if (!user) {
+    return <SupervisorLogin notice={loginNotice} onLogin={(name) => { setLoginNotice(null); setUser(name); }} />;
   }
 
   const [title, subtitle] = TITLES[page];
@@ -91,6 +131,7 @@ export default function App() {
         <strong>Workplace</strong>
       </div>
       <Sidebar page={page} onNavigate={(id) => { setPage(id); setMenuOpen(false); window.scrollTo(0, 0); }} serverStatus={serverStatus}
+               user={user} onLogout={handleLogout}
                open={menuOpen} onClose={() => setMenuOpen(false)} />
       {menuOpen && <div className="nav-backdrop" onClick={() => setMenuOpen(false)} />}
       <main className="main">
@@ -106,6 +147,7 @@ export default function App() {
         {page === "reports" && <Reports />}
         {page === "site" && <Suspense fallback={<div className="empty">Loading the site map...</div>}><SiteModel {...shared} /></Suspense>}
         {page === "guide" && <Guide meta={meta} />}
+        {page === "profile" && <Profile />}
       </main>
       {selected && (
         <IncidentDrawer key={selected.incident.id + selected.mode} incident={selected.incident} initialMode={selected.mode}

@@ -19,6 +19,7 @@ from search_engine import IncidentSearch
 from site_plan.site_plan import SitePlan
 from site_plan.site_plan_error import SitePlanError
 from trend_report import TrendReport
+from web_support.profile_store import ProfileStore
 from web_support.rate_limiter import RateLimiter
 from web_support.supervisor_login import SupervisorLogin
 from workflow import PRIORITY_LEVELS, WorkflowStore
@@ -35,15 +36,11 @@ class WebApi:
     # validation is InputValidator's, the pipeline is IncidentTriageApp's, wording is ReportPrinter's.
 
     # Darrel
-    # Routes that change or remove what is already saved: only a logged-in supervisor may call them.
-    # Reading the dashboard and logging a new incident stay open to everyone on site.
-    _SUPERVISOR_ONLY = {
-        ("PUT", "/api/incidents/<int:number>/priority"), ("POST", "/api/incidents/<int:number>/resolve"),
-        ("POST", "/api/incidents/<int:number>/reopen"), ("PATCH", "/api/incidents/<int:number>"),
-        ("DELETE", "/api/incidents/<int:number>"), ("POST", "/api/incidents/<int:number>/revert"),
-        ("POST", "/api/incidents/<int:number>/reanalyse"), ("PUT", "/api/site-plan"),
-        ("DELETE", "/api/site-plan"), ("POST", "/api/site-plan/read"),
-    }
+    # Every route needs a logged-in supervisor except these: the health check (Render pings it) and the login itself.
+    _OPEN_ROUTES = {"/api/health", "/api/login"}
+    # Opened as a link or an <img>, which cannot send a header, so these also accept the token as ?token=.
+    _LINK_ROUTES = {"/api/incidents/<int:number>/photo", "/api/incidents/export", "/api/reports/summary",
+                    "/api/profile/photo"}
 
     # Uses the app it is given (association) and creates its own Flask server and rate limiter (composition).
     # 'login' holds the whitelisted supervisor accounts; without one they come from the environment.
@@ -54,6 +51,7 @@ class WebApi:
         # Wrong passwords per connection, so nobody can keep guessing.
         self._login_limiter = RateLimiter(10)
         self._workflow = WorkflowStore(app.database)
+        self._profiles = ProfileStore(app.database)
         self._search = IncidentSearch(ReportPrinter.HAZARD_NAMES)
         self._summary = TrendReport.standard(ReportPrinter.HAZARD_NAMES)
         self._printer = ReportPrinter(SEVERITY_LEVELS, OUTCOME_ACTIONS)
@@ -100,27 +98,34 @@ class WebApi:
             ("/api/locations/query", "GET", self.query_location),
             ("/api/login", "POST", self.log_in),
             ("/api/session", "GET", self.session),
+            ("/api/profile", "GET", self.profile),
+            ("/api/profile/photo", "GET", self.get_profile_photo),
+            ("/api/profile/photo", "PUT", self.save_profile_photo),
+            ("/api/profile/photo", "DELETE", self.delete_profile_photo),
         ]
         for path, method, handler in routes:
-            if (method, path) in self._SUPERVISOR_ONLY:
-                handler = self._supervisor_only(handler)
             self.flask.add_url_rule(path, f"{method}_{path}", handler, methods=[method])
+        self.flask.before_request(self._require_login)
         self.flask.register_error_handler(413, self._too_large)
 
     # Darrel
-    # The supervisor named by the request's "Authorization: Bearer <token>" header, or None.
+    # The supervisor named by the request's "Authorization: Bearer <token>" header (or ?token= on a link route), or None.
     def _current_supervisor(self) -> str | None:
         scheme, _, token = request.headers.get("Authorization", "").partition(" ")
-        return self._login.verify(token.strip()) if scheme.lower() == "bearer" else None
+        if scheme.lower() != "bearer":
+            rule = request.url_rule.rule if request.url_rule else ""
+            token = request.args.get("token", "") if rule in self._LINK_ROUTES else ""
+        return self._login.verify(token.strip())
 
     # Darrel
-    # Wraps a route so it answers 401 unless a logged-in supervisor called it.
-    def _supervisor_only(self, handler):
-        def guarded(*args, **kwargs):
-            if self._current_supervisor() is None:
-                return jsonify({"errors": ["Log in as a supervisor to do this."]}), 401
-            return handler(*args, **kwargs)
-        return guarded
+    # Runs before every request: answers 401 unless a logged-in supervisor sent it. Browser CORS checks (OPTIONS),
+    # unknown URLs (left to answer 404) and the open routes go through.
+    def _require_login(self) -> tuple | None:
+        if request.method == "OPTIONS" or request.url_rule is None or request.url_rule.rule in self._OPEN_ROUTES:
+            return None
+        if self._current_supervisor() is None:
+            return jsonify({"errors": ["Log in to use the dashboard."]}), 401
+        return None
 
     # Darrel
     # Body: {"username": "...", "password": "..."}. 200 with a token, 401 wrong details, 429 too many wrong tries.
@@ -139,12 +144,47 @@ class WebApi:
                         "expires_in": SupervisorLogin.SESSION_SECONDS}), 200
 
     # Darrel
-    # Who is logged in, so the dashboard can keep a login across page reloads. 401 if the token is missing or expired.
+    # Who is logged in, so the dashboard can keep a login across page reloads (401 from _require_login if not).
     def session(self) -> tuple:
+        return jsonify({"username": self._current_supervisor()}), 200
+
+    # Darrel
+    # The logged-in account for the profile page: its name and whether it has a profile picture.
+    def profile(self) -> tuple:
         user = self._current_supervisor()
-        if user is None:
-            return jsonify({"errors": ["Not logged in."]}), 401
-        return jsonify({"username": user}), 200
+        return jsonify({"username": user, "has_photo": self._profiles.photo(user) is not None}), 200
+
+    # Darrel
+    # The logged-in account's profile picture, 404 if it has none.
+    def get_profile_photo(self) -> object:
+        stored = self._profiles.photo(self._current_supervisor())
+        if stored is None:
+            return jsonify({"errors": ["No profile picture yet."]}), 404
+        return send_file(io.BytesIO(stored[0]), mimetype=stored[1])
+
+    # Darrel
+    # Multipart 'photo' file (.png, .jpg, .jpeg or .webp, 1 MB at most) as the account's profile picture. 422 if unusable.
+    def save_profile_photo(self) -> tuple:
+        upload = request.files.get("photo")
+        if upload is None or not upload.filename:
+            return jsonify({"errors": ["Choose a picture (.png, .jpg, .jpeg or .webp)."]}), 422
+        content = upload.read()
+        if len(content) > ProfileStore.MAX_BYTES:
+            return jsonify({"errors": ["The picture is larger than 1 MB. Please use a smaller one."]}), 422
+        try:
+            photo = IncidentPhoto.from_bytes(upload.filename, content)
+        except PhotoError as error:
+            return jsonify({"errors": [str(error)]}), 422
+        if not self._profiles.save_photo(self._current_supervisor(), photo):
+            return jsonify({"errors": ["The picture could not be saved."]}), 500
+        return self.profile()
+
+    # Darrel
+    # Removes the logged-in account's profile picture.
+    def delete_profile_photo(self) -> tuple:
+        if not self._profiles.delete_photo(self._current_supervisor()):
+            return jsonify({"errors": ["The picture could not be removed."]}), 500
+        return self.profile()
 
     # One saved version (a dict from an incident's history) as the browser sees it: no server paths.
     @staticmethod
