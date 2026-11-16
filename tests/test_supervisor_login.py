@@ -1,7 +1,7 @@
 # Darrel
 import pytest
 
-from tests.api_helpers import FORM, log_in, make_client
+from tests.api_helpers import FORM, SUPERVISOR, log_in, make_client
 from web_support.supervisor_login import SupervisorLogin
 
 
@@ -72,3 +72,16 @@ def test_logged_in_supervisor_can_resolve_and_delete(tmp_path):
     assert client.get("/api/session").get_json() == {"username": "supervisor"}
     assert client.post("/api/incidents/1/resolve", json={"note": "Fixed"}).get_json()["resolved"] is True
     assert client.delete("/api/incidents/1").status_code == 200 and client.get("/api/incidents").get_json() == []
+
+
+def test_wrong_logins_are_refused_then_blocked(tmp_path):
+    client = anonymous_client(tmp_path)
+    assert client.get("/api/session").status_code == 401
+    assert client.post("/api/login", json={"username": "supervisor", "password": "nope"}).status_code == 401
+    assert client.post("/api/login", data="not json").status_code == 401
+    client.environ_base["HTTP_AUTHORIZATION"] = "Bearer forged.token.value"
+    assert client.delete("/api/incidents/1").status_code == 401
+    for _ in range(8):
+        client.post("/api/login", json={"username": "supervisor", "password": "guess"})
+    response = client.post("/api/login", json=SUPERVISOR)
+    assert response.status_code == 429 and "Too many wrong logins" in response.get_json()["errors"][0]
