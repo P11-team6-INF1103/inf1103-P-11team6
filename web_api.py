@@ -34,6 +34,17 @@ class WebApi:
     # The advanced feature (GUI): a REST layer for the React dashboard. It holds no business rules:
     # validation is InputValidator's, the pipeline is IncidentTriageApp's, wording is ReportPrinter's.
 
+    # Darrel
+    # Routes that change or remove what is already saved: only a logged-in supervisor may call them.
+    # Reading the dashboard and logging a new incident stay open to everyone on site.
+    _SUPERVISOR_ONLY = {
+        ("PUT", "/api/incidents/<int:number>/priority"), ("POST", "/api/incidents/<int:number>/resolve"),
+        ("POST", "/api/incidents/<int:number>/reopen"), ("PATCH", "/api/incidents/<int:number>"),
+        ("DELETE", "/api/incidents/<int:number>"), ("POST", "/api/incidents/<int:number>/revert"),
+        ("POST", "/api/incidents/<int:number>/reanalyse"), ("PUT", "/api/site-plan"),
+        ("DELETE", "/api/site-plan"), ("POST", "/api/site-plan/read"),
+    }
+
     # Uses the app it is given (association) and creates its own Flask server and rate limiter (composition).
     # 'login' holds the whitelisted supervisor accounts; without one they come from the environment.
     def __init__(self, app: "IncidentTriageApp", origins: list[str], post_limit: int = 10,
@@ -91,6 +102,8 @@ class WebApi:
             ("/api/session", "GET", self.session),
         ]
         for path, method, handler in routes:
+            if (method, path) in self._SUPERVISOR_ONLY:
+                handler = self._supervisor_only(handler)
             self.flask.add_url_rule(path, f"{method}_{path}", handler, methods=[method])
         self.flask.register_error_handler(413, self._too_large)
 
@@ -99,6 +112,15 @@ class WebApi:
     def _current_supervisor(self) -> str | None:
         scheme, _, token = request.headers.get("Authorization", "").partition(" ")
         return self._login.verify(token.strip()) if scheme.lower() == "bearer" else None
+
+    # Darrel
+    # Wraps a route so it answers 401 unless a logged-in supervisor called it.
+    def _supervisor_only(self, handler):
+        def guarded(*args, **kwargs):
+            if self._current_supervisor() is None:
+                return jsonify({"errors": ["Log in as a supervisor to do this."]}), 401
+            return handler(*args, **kwargs)
+        return guarded
 
     # Darrel
     # Body: {"username": "...", "password": "..."}. 200 with a token, 401 wrong details, 429 too many wrong tries.
