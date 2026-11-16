@@ -28,3 +28,11 @@ def test_only_whitelisted_names_with_their_password_log_in(login):
 def test_accounts_come_from_a_comma_separated_list():
     assert SupervisorLogin.parse_accounts("supervisor:123, boss:a:b ,broken,:nopass,empty:") == \
         {"supervisor": "123", "boss": "a:b"}
+
+
+def test_default_account_is_used_when_none_are_configured(monkeypatch):
+    monkeypatch.delenv("DASHBOARD_ACCOUNTS", raising=False)
+    assert SupervisorLogin.from_environment().check("supervisor", "123")
+    monkeypatch.setenv("DASHBOARD_ACCOUNTS", "lead:pass1")
+    configured = SupervisorLogin.from_environment()
+    assert configured.check("lead", "pass1") and not configured.check("supervisor", "123")
