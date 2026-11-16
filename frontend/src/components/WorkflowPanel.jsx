@@ -15,7 +15,8 @@ export default function WorkflowPanel({ incident, meta, onChanged }) {
     setBusy(true);
     setError(null);
     try {
-      onChanged(await action());
+      const saved = await action();
+      onChanged(saved);
       setNote("");
     } catch (err) {
       setError(err.message);

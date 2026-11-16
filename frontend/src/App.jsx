@@ -46,6 +46,14 @@ export default function App() {
     }
   }
 
+  // A saved change (resolve, reopen, priority) shows in every list at once; the reload then confirms it.
+  async function handleChanged(saved) {
+    if (saved && saved.id != null) {
+      setIncidents((current) => current.map((i) => (i.id === saved.id ? { ...i, ...saved } : i)));
+    }
+    await loadIncidents();
+  }
+
   useEffect(() => {
     api.meta().then(setMeta).catch(() => {});
     loadIncidents();
@@ -93,7 +101,7 @@ export default function App() {
           </div>
         )}
         {page === "overview" && <Overview {...shared} search={search} />}
-        {page === "log" && <LogTriage {...shared} onCreated={loadIncidents} />}
+        {page === "log" && <LogTriage {...shared} onCreated={handleChanged} />}
         {page === "incidents" && <Incidents {...shared} search={search} />}
         {page === "reports" && <Reports />}
         {page === "site" && <Suspense fallback={<div className="empty">Loading the site map...</div>}><SiteModel {...shared} /></Suspense>}
@@ -102,7 +110,7 @@ export default function App() {
       {selected && (
         <IncidentDrawer key={selected.incident.id + selected.mode} incident={selected.incident} initialMode={selected.mode}
                         meta={meta}
-                        onClose={() => setSelected(null)} onDelete={handleDelete} onChanged={loadIncidents} />
+                        onClose={() => setSelected(null)} onDelete={handleDelete} onChanged={handleChanged} />
       )}
     </div>
   );
