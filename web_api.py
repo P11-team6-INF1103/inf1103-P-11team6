@@ -243,6 +243,7 @@ class WebApi:
     # when the AI says it is not a safety incident, 201 with the saved incident otherwise.
     def create_incident(self) -> tuple:
         form, upload = self._read_form()
+        form.pop("timestamp", None)  # the timestamp is the incident key, so the server sets it (only batch files supply one)
         fields, problems = InputValidator.validate_fields(form)
         photo = None
         if upload is not None and upload.filename:

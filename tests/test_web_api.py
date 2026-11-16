@@ -176,3 +176,11 @@ def test_rate_limit_ignores_a_faked_forwarded_for_value(tmp_path):
     assert upload(client, headers={"X-Forwarded-For": "127.0.0.1"}).status_code == 201
     # The client invents a new first address; the last one (added by the proxy) is unchanged, so it is still limited.
     assert upload(client, headers={"X-Forwarded-For": "6.6.6.6, 127.0.0.1"}).status_code == 429
+
+
+def test_web_create_ignores_a_client_supplied_timestamp(client):
+    first = client.post("/api/incidents", json={**FORM, "injury": False, "timestamp": "2020-01-01T00:00:00"})
+    second = client.post("/api/incidents", json={**FORM, "injury": False, "timestamp": "2020-01-01T00:00:00"})
+    assert first.status_code == second.status_code == 201
+    assert first.get_json()["timestamp"] != "2020-01-01T00:00:00"
+    assert first.get_json()["timestamp"] != second.get_json()["timestamp"]
