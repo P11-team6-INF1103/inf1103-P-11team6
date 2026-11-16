@@ -74,6 +74,16 @@ def test_every_route_needs_a_login_except_health_and_login(tmp_path):
     assert preflight.status_code == 200 and "authorization" in preflight.headers["Access-Control-Allow-Headers"]
 
 
+def test_links_and_photos_may_carry_the_token_in_the_address(tmp_path):
+    client = anonymous_client(tmp_path)
+    token = client.post("/api/login", json=SUPERVISOR).get_json()["token"]
+    assert client.get(f"/api/incidents/export?token={token}").status_code == 200
+    assert client.get(f"/api/reports/summary?format=csv&token={token}").status_code == 200
+    assert client.get(f"/api/incidents/1/photo?token={token}").status_code == 404  # let in: this incident has no photo
+    assert client.get(f"/api/incidents?token={token}").status_code == 401  # other routes need the header
+    assert client.get("/api/incidents/export?token=forged").status_code == 401
+
+
 def test_logged_in_supervisor_can_resolve_and_delete(tmp_path):
     client = log_in(anonymous_client(tmp_path))
     assert client.get("/api/session").get_json() == {"username": "supervisor"}
