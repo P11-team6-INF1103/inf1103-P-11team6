@@ -123,7 +123,7 @@ export default function IncidentDrawer({ incident: summary, initialMode = "repor
               </div>
             )}
             <WorkflowPanel incident={incident} meta={meta}
-                           onChanged={(saved) => { setIncident({ ...incident, ...saved }); onChanged(); }} />
+                           onChanged={(saved) => { setIncident({ ...incident, ...saved }); onChanged(saved); }} />
             <IncidentReport incident={incident} meta={meta} />
           </>
         )}

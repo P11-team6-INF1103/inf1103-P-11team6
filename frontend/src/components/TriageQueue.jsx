@@ -29,9 +29,9 @@ export default function TriageQueue({ incidents, meta, onOpen, onChanged }) {
 
   async function resolve(incident) {
     try {
-      await api.resolveIncident(incident.id, "");
+      const saved = await api.resolveIncident(incident.id, "");
       setError(null);
-      onChanged();
+      onChanged(saved);
     } catch (err) {
       setError(err.message);
     }

@@ -132,7 +132,7 @@ class WebApi:
     def log_in(self) -> tuple:
         body = request.get_json(silent=True)
         body = body if isinstance(body, dict) else {}
-        client = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+        client = self._client_address()
         if self._login_limiter.is_blocked(client):
             return jsonify({"errors": ["Too many wrong logins from this connection. Try again in a few minutes."]}), 429
         username, password = body.get("username"), body.get("password")
@@ -212,6 +212,11 @@ class WebApi:
         records = self._app.records
         return records[number - 1] if 1 <= number <= len(records) else None
 
+    # The caller's address. Takes the LAST X-Forwarded-For value: the one our own proxy (Render) added, which a client cannot fake.
+    @staticmethod
+    def _client_address() -> str:
+        return request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[-1].strip()
+
     @staticmethod
     def _too_large(_error: Exception) -> tuple:
         return jsonify({"errors": ["The photo is larger than 5 MB. Please use a smaller photo."]}), 413
@@ -236,7 +241,7 @@ class WebApi:
     def reanalyse_incident(self, number: int) -> tuple:
         if self._find(number) is None:
             return jsonify({"errors": [f"No incident #{number}."]}), 404
-        client = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+        client = self._client_address()
         if self._limiter.too_many(client):
             return jsonify({"errors": ["Too many incidents from this connection. Try again in a few minutes."]}), 429
         with self._lock:
@@ -278,6 +283,7 @@ class WebApi:
     # when the AI says it is not a safety incident, 201 with the saved incident otherwise.
     def create_incident(self) -> tuple:
         form, upload = self._read_form()
+        form.pop("timestamp", None)  # the timestamp is the incident key, so the server sets it (only batch files supply one)
         fields, problems = InputValidator.validate_fields(form)
         photo = None
         if upload is not None and upload.filename:
@@ -287,7 +293,7 @@ class WebApi:
                 problems.append(f"photo ({error})")
         if problems:
             return jsonify({"errors": problems}), 422
-        client = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+        client = self._client_address()
         if self._limiter.too_many(client):
             return jsonify({"errors": ["Too many incidents from this connection. Try again in a few minutes."]}), 429
         incident = Incident(**fields, photo=photo)
@@ -327,7 +333,7 @@ class WebApi:
             return self._edit_response(result, number)
         if not self._app.describe_changes(old, fields, photo):
             return jsonify({"status": "unchanged", **self._to_json(old, number, history=True)}), 200
-        client = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+        client = self._client_address()
         if self._limiter.too_many(client):
             return jsonify({"errors": ["Too many incidents from this connection. Try again in a few minutes."]}), 429
         with self._lock:
@@ -418,7 +424,7 @@ class WebApi:
                 problems.append(f"plan ({error})")
         if problems:
             return jsonify({"errors": problems}), 422
-        client = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+        client = self._client_address()
         if self._limiter.too_many(client):
             return jsonify({"errors": ["Too many requests from this connection. Try again in a few minutes."]}), 429
         name = InputValidator.sanitise(request.form.get("site_name", ""))
