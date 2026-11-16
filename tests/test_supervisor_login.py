@@ -1,7 +1,7 @@
 # Darrel
 import pytest
 
-from tests.api_helpers import FORM, make_client
+from tests.api_helpers import FORM, log_in, make_client
 from web_support.supervisor_login import SupervisorLogin
 
 
@@ -65,3 +65,10 @@ def test_changes_need_a_login_but_reading_and_reporting_do_not(tmp_path):
     assert client.get("/api/incidents").get_json()[0]["resolved"] is False
     assert client.post("/api/incidents", data=FORM).status_code == 201
     assert client.get("/api/incidents/1").status_code == 200 and client.get("/api/reports/summary").status_code == 200
+
+
+def test_logged_in_supervisor_can_resolve_and_delete(tmp_path):
+    client = log_in(anonymous_client(tmp_path))
+    assert client.get("/api/session").get_json() == {"username": "supervisor"}
+    assert client.post("/api/incidents/1/resolve", json={"note": "Fixed"}).get_json()["resolved"] is True
+    assert client.delete("/api/incidents/1").status_code == 200 and client.get("/api/incidents").get_json() == []
