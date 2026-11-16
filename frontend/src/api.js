@@ -18,6 +18,10 @@ function setToken(value) {
   window.dispatchEvent(new Event("supervisor-change"));
 }
 
+// Darrel
+// Photos and downloads open as links, which cannot send the login header, so the token goes in the address.
+const withToken = (url) => `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
+
 const json = (method, body) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
 async function request(path, options = {}) {
@@ -60,7 +64,7 @@ export const api = {
   reanalyseIncident: (id) => request(`/api/incidents/${id}/reanalyse`, { method: "POST" }),
   deleteIncident: (id) => request(`/api/incidents/${id}`, { method: "DELETE" }),
   // version is optional: leave it out for the current photo
-  photoUrl: (id, version) => `${API_URL}/api/incidents/${id}/photo${version ? `?version=${version}` : ""}`,
+  photoUrl: (id, version) => withToken(`${API_URL}/api/incidents/${id}/photo${version ? `?version=${version}` : ""}`),
   // params: q, severity_min, hazard, outcome, location, priority, status, date_from, date_to, has_photo
   search: (params) => request(`/api/incidents/search?${new URLSearchParams(
     Object.entries(params).filter(([, v]) => v !== "" && v !== false && v != null)).toString()}`),
@@ -70,8 +74,8 @@ export const api = {
   // The trend and summary report for the last `days` days; the CSV link downloads the same report.
   summary: (days) => request(`/api/reports/summary?days=${days}`),
   // Every saved incident as a file for reference; format is "csv" or "json"
-  exportUrl: (format) => `${API_URL}/api/incidents/export?format=${format}`,
-  summaryCsvUrl: (days) => `${API_URL}/api/reports/summary?days=${days}&format=csv`,
+  exportUrl: (format) => withToken(`${API_URL}/api/incidents/export?format=${format}`),
+  summaryCsvUrl: (days) => withToken(`${API_URL}/api/reports/summary?days=${days}&format=csv`),
   queryLocation: (location, days) =>
     request(`/api/locations/query?location=${encodeURIComponent(location)}&days=${days}`),
   // The site map: the saved plan, a draft read from a plan image (nothing saved yet), save, delete, downloads.
@@ -84,7 +88,7 @@ export const api = {
   deleteSitePlan: () => request("/api/site-plan", { method: "DELETE" }),
   // name is json, blank, sample or guide
   // Darrel
-  // Supervisor login: only whitelisted accounts exist. Resolving, prioritising, editing and deleting need it.
+  // Login: only whitelisted accounts exist, and every page of the dashboard needs it.
   login: async (username, password) => {
     const body = await request("/api/login", json("POST", { username, password }));
     setToken(body.token);
