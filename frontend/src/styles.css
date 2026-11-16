@@ -375,6 +375,9 @@ a.btn:visited { color: var(--text); }
   .card-title .toggle { width: 100%; }
   .btn-row .btn { flex: 1 1 auto; }
 
+  /* Small buttons stay easy to tap on a phone */
+  .btn.small { min-height: 40px; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+
   /* Incidents become cards instead of a wide table */
   .incident-table, .incident-table tbody { display: block; }
   .incident-table thead { display: none; }
