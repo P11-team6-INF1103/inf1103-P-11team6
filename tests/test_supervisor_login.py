@@ -23,3 +23,8 @@ def test_only_whitelisted_names_with_their_password_log_in(login):
     assert login.check("manager", "s3cret")
     assert not login.check("supervisor", "1234") and not login.check("supervisor", "")
     assert not login.check("intruder", "123") and not login.check(None, "123") and not login.check("supervisor", 123)
+
+
+def test_accounts_come_from_a_comma_separated_list():
+    assert SupervisorLogin.parse_accounts("supervisor:123, boss:a:b ,broken,:nopass,empty:") == \
+        {"supervisor": "123", "boss": "a:b"}
