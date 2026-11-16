@@ -184,3 +184,13 @@ def test_web_create_ignores_a_client_supplied_timestamp(client):
     assert first.status_code == second.status_code == 201
     assert first.get_json()["timestamp"] != "2020-01-01T00:00:00"
     assert first.get_json()["timestamp"] != second.get_json()["timestamp"]
+
+
+def test_webp_needs_the_webp_marker_not_just_riff():
+    from models.incident_photo import IncidentPhoto
+    from models.photo_error import PhotoError
+    wav = b"RIFF" + b"\x24\x00\x00\x00" + b"WAVE" + b"0" * 20
+    with pytest.raises(PhotoError, match="not a real image"):
+        IncidentPhoto.from_bytes("sound.webp", wav)
+    webp = b"RIFF" + b"\x24\x00\x00\x00" + b"WEBP" + b"0" * 20
+    assert IncidentPhoto.from_bytes("pic.webp", webp).mime_type == "image/webp"
