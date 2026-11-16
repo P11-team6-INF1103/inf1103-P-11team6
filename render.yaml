@@ -20,6 +20,12 @@ services:
       # The Neon connection string. With it, incidents survive restarts on the free plan.
       - key: DATABASE_URL
         sync: false
+      # Darrel
+      # The whitelisted supervisor accounts (name:password,name2:password2) and the key that signs their logins.
+      - key: DASHBOARD_ACCOUNTS
+        sync: false
+      - key: AUTH_SECRET
+        generateValue: true
     # Free plan: the disk is wiped when the server restarts or sleeps (after 15 idle minutes),
     # so saved incidents disappear. To keep them, use a paid plan with a persistent disk:
     # disk:
