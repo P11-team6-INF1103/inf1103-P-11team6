@@ -19,6 +19,7 @@ from search_engine import IncidentSearch
 from site_plan.site_plan import SitePlan
 from site_plan.site_plan_error import SitePlanError
 from trend_report import TrendReport
+from web_support.profile_store import ProfileStore
 from web_support.rate_limiter import RateLimiter
 from web_support.supervisor_login import SupervisorLogin
 from workflow import PRIORITY_LEVELS, WorkflowStore
@@ -49,6 +50,7 @@ class WebApi:
         # Wrong passwords per connection, so nobody can keep guessing.
         self._login_limiter = RateLimiter(10)
         self._workflow = WorkflowStore(app.database)
+        self._profiles = ProfileStore(app.database)
         self._search = IncidentSearch(ReportPrinter.HAZARD_NAMES)
         self._summary = TrendReport.standard(ReportPrinter.HAZARD_NAMES)
         self._printer = ReportPrinter(SEVERITY_LEVELS, OUTCOME_ACTIONS)
@@ -95,6 +97,7 @@ class WebApi:
             ("/api/locations/query", "GET", self.query_location),
             ("/api/login", "POST", self.log_in),
             ("/api/session", "GET", self.session),
+            ("/api/profile", "GET", self.profile),
         ]
         for path, method, handler in routes:
             self.flask.add_url_rule(path, f"{method}_{path}", handler, methods=[method])
@@ -140,6 +143,12 @@ class WebApi:
     # Who is logged in, so the dashboard can keep a login across page reloads (401 from _require_login if not).
     def session(self) -> tuple:
         return jsonify({"username": self._current_supervisor()}), 200
+
+    # Darrel
+    # The logged-in account for the profile page: its name and whether it has a profile picture.
+    def profile(self) -> tuple:
+        user = self._current_supervisor()
+        return jsonify({"username": user, "has_photo": self._profiles.photo(user) is not None}), 200
 
     # One saved version (a dict from an incident's history) as the browser sees it: no server paths.
     @staticmethod
