@@ -18,7 +18,7 @@ const SiteModel = lazy(() => import("./pages/SiteModel.jsx"));
 
 const TITLES = {
   overview: ["Welcome back", "Here's what's happening on your sites today"],
-  log: ["Log & triage", "Log what happened, then work through the open incidents, most urgent first"],
+  log: ["Log and Incident", "Log what happened, then work through the open incidents, most urgent first"],
   reports: ["Summary report", "How this period compares with the last: trends, busiest places and hazards"],
   incidents: ["Incidents", "Every incident the AI and the rules have assessed"],
   site: ["Site map & locations", "Your site as a 2D pin board, and every place that keeps having incidents"],

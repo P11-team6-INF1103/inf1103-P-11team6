@@ -3,7 +3,7 @@ import { LayoutDashboard, ClipboardPlus, List, Map, BookOpen, FileBarChart, X } 
 
 const NAVIGATION = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
-  { id: "log", label: "Log & triage", icon: ClipboardPlus },
+  { id: "log", label: "Log and Incident", icon: ClipboardPlus },
   { id: "incidents", label: "Incidents", icon: List },
   { id: "reports", label: "Summary report", icon: FileBarChart },
   { id: "site", label: "Site map", icon: Map },
