@@ -38,6 +38,14 @@ def test_default_account_is_used_when_none_are_configured(monkeypatch):
     assert configured.check("lead", "pass1") and not configured.check("supervisor", "123")
 
 
+def test_each_developer_has_a_default_account(monkeypatch):
+    monkeypatch.delenv("DASHBOARD_ACCOUNTS", raising=False)
+    login = SupervisorLogin.from_environment()
+    for name in ("darrel", "lennart", "daniel", "renxiang", "sufi", "Darrel"):
+        assert login.check(name, "123"), name
+    assert not login.check("darrel", "wrong") and not login.check("guest", "123")
+
+
 def test_tokens_are_signed_and_tied_to_a_whitelisted_account(login):
     token = login.issue("Supervisor")
     assert login.verify(token) == "supervisor"
