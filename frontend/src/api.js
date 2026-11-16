@@ -2,12 +2,29 @@
 // All calls to the Flask backend (web_api.py) live here.
 const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
 
+// Darrel
+// The supervisor's login token, kept across page reloads and sent with every request. Listeners hear
+// "supervisor-change" whenever someone logs in or out, or the server says the login has run out.
+const TOKEN_KEY = "supervisorToken";
+let token = "";
+try { token = localStorage.getItem(TOKEN_KEY) || ""; } catch { token = ""; }
+
+function setToken(value) {
+  token = value || "";
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch { /* private window: the login lasts until the page is closed */ }
+  window.dispatchEvent(new Event("supervisor-change"));
+}
+
 const json = (method, body) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
 async function request(path, options = {}) {
   let response;
   try {
-    response = await fetch(API_URL + path, options);
+    const headers = { ...(options.headers || {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+    response = await fetch(API_URL + path, { ...options, headers });
   } catch {
     // A request blocked at the network edge (for example text that looks like an SQL attack) fails the same way
     // as a sleeping server, so check whether the server answers before choosing the message.
@@ -18,6 +35,7 @@ async function request(path, options = {}) {
     throw new Error("Cannot reach the server. If it is on Render's free plan it may take a minute to wake up.");
   }
   const body = await response.json().catch(() => ({}));
+  if (response.status === 401 && token && path !== "/api/login") setToken(""); // the login ran out
   if (!response.ok) {
     const error = new Error(body.rejected ? `Rejected: ${body.rejected}` : (body.errors || ["Request failed"]).join(" · "));
     error.body = body;
