@@ -44,3 +44,9 @@ def test_tokens_are_signed_and_tied_to_a_whitelisted_account(login):
     assert login.verify(token + "x") is None and login.verify("") is None and login.verify(None) is None
     assert SupervisorLogin({"supervisor": "123"}, "other-secret").verify(token) is None
     assert SupervisorLogin({"manager": "s3cret"}, "test-secret").verify(token) is None  # account removed
+
+
+def test_tokens_run_out(login, monkeypatch):
+    token = login.issue("supervisor")
+    monkeypatch.setattr(SupervisorLogin, "SESSION_SECONDS", -1)
+    assert login.verify(token) is None
