@@ -35,6 +35,10 @@ class WebApi:
     # validation is InputValidator's, the pipeline is IncidentTriageApp's, wording is ReportPrinter's.
 
     # Darrel
+    # Opened as a link or an <img>, which cannot send a header, so these also accept the token as ?token=.
+    _LINK_ROUTES = {"/api/incidents/<int:number>/photo", "/api/incidents/export", "/api/reports/summary"}
+
+    # Darrel
     # Routes that change or remove what is already saved: only a logged-in supervisor may call them.
     # Reading the dashboard and logging a new incident stay open to everyone on site.
     _SUPERVISOR_ONLY = {
@@ -108,10 +112,13 @@ class WebApi:
         self.flask.register_error_handler(413, self._too_large)
 
     # Darrel
-    # The supervisor named by the request's "Authorization: Bearer <token>" header, or None.
+    # The supervisor named by the request's "Authorization: Bearer <token>" header (or ?token= on a link route), or None.
     def _current_supervisor(self) -> str | None:
         scheme, _, token = request.headers.get("Authorization", "").partition(" ")
-        return self._login.verify(token.strip()) if scheme.lower() == "bearer" else None
+        if scheme.lower() != "bearer":
+            rule = request.url_rule.rule if request.url_rule else ""
+            token = request.args.get("token", "") if rule in self._LINK_ROUTES else ""
+        return self._login.verify(token.strip())
 
     # Darrel
     # Wraps a route so it answers 401 unless a logged-in supervisor called it.
