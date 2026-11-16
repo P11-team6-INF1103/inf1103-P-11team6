@@ -100,6 +100,7 @@ class WebApi:
             ("/api/session", "GET", self.session),
             ("/api/profile", "GET", self.profile),
             ("/api/profile/photo", "GET", self.get_profile_photo),
+            ("/api/profile/photo", "PUT", self.save_profile_photo),
         ]
         for path, method, handler in routes:
             self.flask.add_url_rule(path, f"{method}_{path}", handler, methods=[method])
@@ -159,6 +160,23 @@ class WebApi:
         if stored is None:
             return jsonify({"errors": ["No profile picture yet."]}), 404
         return send_file(io.BytesIO(stored[0]), mimetype=stored[1])
+
+    # Darrel
+    # Multipart 'photo' file (.png, .jpg, .jpeg or .webp, 1 MB at most) as the account's profile picture. 422 if unusable.
+    def save_profile_photo(self) -> tuple:
+        upload = request.files.get("photo")
+        if upload is None or not upload.filename:
+            return jsonify({"errors": ["Choose a picture (.png, .jpg, .jpeg or .webp)."]}), 422
+        content = upload.read()
+        if len(content) > ProfileStore.MAX_BYTES:
+            return jsonify({"errors": ["The picture is larger than 1 MB. Please use a smaller one."]}), 422
+        try:
+            photo = IncidentPhoto.from_bytes(upload.filename, content)
+        except PhotoError as error:
+            return jsonify({"errors": [str(error)]}), 422
+        if not self._profiles.save_photo(self._current_supervisor(), photo):
+            return jsonify({"errors": ["The picture could not be saved."]}), 500
+        return self.profile()
 
     # One saved version (a dict from an incident's history) as the browser sees it: no server paths.
     @staticmethod
