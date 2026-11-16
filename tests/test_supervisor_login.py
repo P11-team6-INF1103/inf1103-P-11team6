@@ -41,7 +41,7 @@ def test_default_account_is_used_when_none_are_configured(monkeypatch):
 def test_each_developer_has_a_default_account(monkeypatch):
     monkeypatch.delenv("DASHBOARD_ACCOUNTS", raising=False)
     login = SupervisorLogin.from_environment()
-    for name in ("darrel", "lennart", "daniel", "renxiang", "sufi", "Darrel"):
+    for name in ("darrel", "lennart", "daniel", "ren xiang", "Ren Xiang", "sufi", "Darrel"):
         assert login.check(name, "123"), name
     assert not login.check("darrel", "wrong") and not login.check("guest", "123")
 

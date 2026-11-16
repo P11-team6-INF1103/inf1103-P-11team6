@@ -149,7 +149,7 @@ The dashboard shows a login page first and keeps the token for 8 hours. There is
 list (`SupervisorLogin`).
 
 - `DASHBOARD_ACCOUNTS` sets the accounts as `name:password,name2:password2`. Left empty, the demo accounts are
-  `supervisor`, `darrel`, `lennart`, `daniel`, `renxiang` and `sufi`, all with password `123` (set real ones on Render).
+  `supervisor`, `darrel`, `lennart`, `daniel`, `ren xiang` and `sufi`, all with password `123` (set real ones on Render).
 - `AUTH_SECRET` signs the tokens; Render generates it. Without it a random key is used, so logins end on a restart.
 - Passwords are kept only as hashes, and 10 wrong passwords from one connection are blocked for 10 minutes.
 
