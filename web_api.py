@@ -20,6 +20,7 @@ from site_plan.site_plan import SitePlan
 from site_plan.site_plan_error import SitePlanError
 from trend_report import TrendReport
 from web_support.rate_limiter import RateLimiter
+from web_support.supervisor_login import SupervisorLogin
 from workflow import PRIORITY_LEVELS, WorkflowStore
 
 if TYPE_CHECKING:
@@ -33,10 +34,25 @@ class WebApi:
     # The advanced feature (GUI): a REST layer for the React dashboard. It holds no business rules:
     # validation is InputValidator's, the pipeline is IncidentTriageApp's, wording is ReportPrinter's.
 
+    # Darrel
+    # Routes that change or remove what is already saved: only a logged-in supervisor may call them.
+    # Reading the dashboard and logging a new incident stay open to everyone on site.
+    _SUPERVISOR_ONLY = {
+        ("PUT", "/api/incidents/<int:number>/priority"), ("POST", "/api/incidents/<int:number>/resolve"),
+        ("POST", "/api/incidents/<int:number>/reopen"), ("PATCH", "/api/incidents/<int:number>"),
+        ("DELETE", "/api/incidents/<int:number>"), ("POST", "/api/incidents/<int:number>/revert"),
+        ("POST", "/api/incidents/<int:number>/reanalyse"), ("PUT", "/api/site-plan"),
+        ("DELETE", "/api/site-plan"), ("POST", "/api/site-plan/read"),
+    }
+
     # Uses the app it is given (association) and creates its own Flask server and rate limiter (composition).
-    # There are no accounts: anyone who can open the dashboard can use every route.
-    def __init__(self, app: "IncidentTriageApp", origins: list[str], post_limit: int = 10) -> None:
+    # 'login' holds the whitelisted supervisor accounts; without one they come from the environment.
+    def __init__(self, app: "IncidentTriageApp", origins: list[str], post_limit: int = 10,
+                 login: SupervisorLogin | None = None) -> None:
         self._app = app
+        self._login = login or SupervisorLogin.from_environment()
+        # Wrong passwords per connection, so nobody can keep guessing.
+        self._login_limiter = RateLimiter(10)
         self._workflow = WorkflowStore(app.database)
         self._search = IncidentSearch(ReportPrinter.HAZARD_NAMES)
         self._summary = TrendReport.standard(ReportPrinter.HAZARD_NAMES)
@@ -82,10 +98,53 @@ class WebApi:
             ("/api/site-plan/read", "POST", self.read_site_plan),
             ("/api/locations", "GET", self.list_locations),
             ("/api/locations/query", "GET", self.query_location),
+            ("/api/login", "POST", self.log_in),
+            ("/api/session", "GET", self.session),
         ]
         for path, method, handler in routes:
+            if (method, path) in self._SUPERVISOR_ONLY:
+                handler = self._supervisor_only(handler)
             self.flask.add_url_rule(path, f"{method}_{path}", handler, methods=[method])
         self.flask.register_error_handler(413, self._too_large)
+
+    # Darrel
+    # The supervisor named by the request's "Authorization: Bearer <token>" header, or None.
+    def _current_supervisor(self) -> str | None:
+        scheme, _, token = request.headers.get("Authorization", "").partition(" ")
+        return self._login.verify(token.strip()) if scheme.lower() == "bearer" else None
+
+    # Darrel
+    # Wraps a route so it answers 401 unless a logged-in supervisor called it.
+    def _supervisor_only(self, handler):
+        def guarded(*args, **kwargs):
+            if self._current_supervisor() is None:
+                return jsonify({"errors": ["Log in as a supervisor to do this."]}), 401
+            return handler(*args, **kwargs)
+        return guarded
+
+    # Darrel
+    # Body: {"username": "...", "password": "..."}. 200 with a token, 401 wrong details, 429 too many wrong tries.
+    def log_in(self) -> tuple:
+        body = request.get_json(silent=True)
+        body = body if isinstance(body, dict) else {}
+        client = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+        if self._login_limiter.is_blocked(client):
+            return jsonify({"errors": ["Too many wrong logins from this connection. Try again in a few minutes."]}), 429
+        username, password = body.get("username"), body.get("password")
+        if not self._login.check(username, password):
+            self._login_limiter.too_many(client)
+            return jsonify({"errors": ["Wrong username or password."]}), 401
+        name = username.strip().lower()
+        return jsonify({"token": self._login.issue(name), "username": name,
+                        "expires_in": SupervisorLogin.SESSION_SECONDS}), 200
+
+    # Darrel
+    # Who is logged in, so the dashboard can keep a login across page reloads. 401 if the token is missing or expired.
+    def session(self) -> tuple:
+        user = self._current_supervisor()
+        if user is None:
+            return jsonify({"errors": ["Not logged in."]}), 401
+        return jsonify({"username": user}), 200
 
     # One saved version (a dict from an incident's history) as the browser sees it: no server paths.
     @staticmethod

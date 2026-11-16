@@ -21,3 +21,10 @@ class RateLimiter:
                 return True
             self._recent[client] = recent + [now]
             return False
+
+    # Darrel
+    # True if this client has used up its budget, without counting this call (used for wrong logins).
+    def is_blocked(self, client: str) -> bool:
+        now = time.time()
+        with self._lock:
+            return len([t for t in self._recent.get(client, []) if now - t < self._window]) >= self._limit
