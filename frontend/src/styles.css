@@ -375,6 +375,9 @@ a.btn:visited { color: var(--text); }
   .card-title .toggle { width: 100%; }
   .btn-row .btn { flex: 1 1 auto; }
 
+  /* Small buttons stay easy to tap on a phone */
+  .btn.small { min-height: 40px; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+
   /* Incidents become cards instead of a wide table */
   .incident-table, .incident-table tbody { display: block; }
   .incident-table thead { display: none; }
@@ -396,7 +399,8 @@ a.btn:visited { color: var(--text); }
   .incident-table .c-when { order: 7; }
   .incident-table .c-haz { order: 8; }
   .incident-table .c-act { order: 9; width: 100%; }
-  .incident-table .c-btn { order: 10; margin-left: auto; }
+  .incident-table .c-btn { order: 10; flex: 1 1 calc(50% - 4px); }
+  .incident-table .c-btn .btn { width: 100%; justify-content: center; }
 
   /* Incident panel fills the screen */
   .drawer { width: 100%; padding: 14px; padding-bottom: calc(14px + env(safe-area-inset-bottom)); border-left: 0; }
