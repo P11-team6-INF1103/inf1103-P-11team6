@@ -101,6 +101,7 @@ class WebApi:
             ("/api/profile", "GET", self.profile),
             ("/api/profile/photo", "GET", self.get_profile_photo),
             ("/api/profile/photo", "PUT", self.save_profile_photo),
+            ("/api/profile/photo", "DELETE", self.delete_profile_photo),
         ]
         for path, method, handler in routes:
             self.flask.add_url_rule(path, f"{method}_{path}", handler, methods=[method])
@@ -176,6 +177,13 @@ class WebApi:
             return jsonify({"errors": [str(error)]}), 422
         if not self._profiles.save_photo(self._current_supervisor(), photo):
             return jsonify({"errors": ["The picture could not be saved."]}), 500
+        return self.profile()
+
+    # Darrel
+    # Removes the logged-in account's profile picture.
+    def delete_profile_photo(self) -> tuple:
+        if not self._profiles.delete_photo(self._current_supervisor()):
+            return jsonify({"errors": ["The picture could not be removed."]}), 500
         return self.profile()
 
     # One saved version (a dict from an incident's history) as the browser sees it: no server paths.
