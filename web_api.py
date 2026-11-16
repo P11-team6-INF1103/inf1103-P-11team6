@@ -88,10 +88,17 @@ class WebApi:
             ("/api/locations", "GET", self.list_locations),
             ("/api/locations/query", "GET", self.query_location),
             ("/api/login", "POST", self.log_in),
+            ("/api/session", "GET", self.session),
         ]
         for path, method, handler in routes:
             self.flask.add_url_rule(path, f"{method}_{path}", handler, methods=[method])
         self.flask.register_error_handler(413, self._too_large)
+
+    # Darrel
+    # The supervisor named by the request's "Authorization: Bearer <token>" header, or None.
+    def _current_supervisor(self) -> str | None:
+        scheme, _, token = request.headers.get("Authorization", "").partition(" ")
+        return self._login.verify(token.strip()) if scheme.lower() == "bearer" else None
 
     # Darrel
     # Body: {"username": "...", "password": "..."}. 200 with a token, 401 wrong details, 429 too many wrong tries.
@@ -108,6 +115,14 @@ class WebApi:
         name = username.strip().lower()
         return jsonify({"token": self._login.issue(name), "username": name,
                         "expires_in": SupervisorLogin.SESSION_SECONDS}), 200
+
+    # Darrel
+    # Who is logged in, so the dashboard can keep a login across page reloads. 401 if the token is missing or expired.
+    def session(self) -> tuple:
+        user = self._current_supervisor()
+        if user is None:
+            return jsonify({"errors": ["Not logged in."]}), 401
+        return jsonify({"username": user}), 200
 
     # One saved version (a dict from an incident's history) as the browser sees it: no server paths.
     @staticmethod
