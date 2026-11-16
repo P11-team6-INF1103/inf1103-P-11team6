@@ -13,6 +13,7 @@ import LogTriage from "./pages/LogTriage.jsx";
 import Incidents from "./pages/Incidents.jsx";
 import Guide from "./pages/Guide.jsx";
 import Reports from "./pages/Reports.jsx";
+import Profile from "./pages/Profile.jsx";
 
 // The site page is only downloaded when someone opens it.
 const SiteModel = lazy(() => import("./pages/SiteModel.jsx"));
@@ -24,6 +25,7 @@ const TITLES = {
   incidents: ["Incidents", "Every incident the AI and the rules have assessed"],
   site: ["Site map & locations", "Your site as a 2D pin board, and every place that keeps having incidents"],
   guide: ["Severity guide", "How incidents are scored and routed"],
+  profile: ["Profile", "The account you are logged in with"],
 };
 
 export default function App() {
@@ -137,6 +139,7 @@ export default function App() {
         {page === "reports" && <Reports />}
         {page === "site" && <Suspense fallback={<div className="empty">Loading the site map...</div>}><SiteModel {...shared} /></Suspense>}
         {page === "guide" && <Guide meta={meta} />}
+        {page === "profile" && <Profile />}
       </main>
       {selected && (
         <IncidentDrawer key={selected.incident.id + selected.mode} incident={selected.incident} initialMode={selected.mode}
