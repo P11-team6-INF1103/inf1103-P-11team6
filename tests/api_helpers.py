@@ -14,10 +14,19 @@ from web_api import WebApi
 
 FORM = {"description": "Scaffold plank fell from level 4 near a worker", "location": "Site B",
         "reporter_role": "safety_officer", "injury": "true"}
+# The account WebApi whitelists when DASHBOARD_ACCOUNTS is not set.
+SUPERVISOR = {"username": "supervisor", "password": "123"}
+
+
+# Logs the test client in as the supervisor, so routes that change saved incidents can be called.
+def log_in(client):
+    token = client.post("/api/login", json=SUPERVISOR).get_json()["token"]
+    client.environ_base["HTTP_AUTHORIZATION"] = f"Bearer {token}"
+    return client
 
 
 def make_client(tmp_path):
     ai = AIManager(FakeGemini(), FakeSearch(), FakeWeather(None), OUTCOME_ACTIONS)
     app = IncidentTriageApp(IOManager(SEVERITY_LEVELS, OUTCOME_ACTIONS), ai,
                             LogicManager(LogicManager.default_rules()), DataManager(str(tmp_path)), ResponseCache())
-    return WebApi(app, ["http://localhost:5173"], 50).flask.test_client()
+    return log_in(WebApi(app, ["http://localhost:5173"], 50).flask.test_client())
