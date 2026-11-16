@@ -5,6 +5,7 @@ import { Menu } from "lucide-react";
 import { api } from "./api.js";
 import { DEFAULT_META } from "./labels.js";
 import Sidebar from "./components/Sidebar.jsx";
+import SupervisorLogin from "./components/SupervisorLogin.jsx";
 import Header from "./components/Header.jsx";
 import IncidentDrawer from "./components/IncidentDrawer.jsx";
 import Overview from "./pages/Overview.jsx";
@@ -34,6 +35,10 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null); // { incident, mode } for the drawer
   const [menuOpen, setMenuOpen] = useState(false); // the phone menu
+  // Darrel
+  // The logged-in account: undefined while a saved login is being checked, null to show the login page.
+  const [user, setUser] = useState(api.hasLogin() ? undefined : null);
+  const [loginNotice, setLoginNotice] = useState(null);
 
   async function loadIncidents() {
     try {
@@ -46,10 +51,37 @@ export default function App() {
     }
   }
 
+  // Darrel
+  // Checks the saved login on start and whenever someone logs in or out, or the server says the login ran out.
   useEffect(() => {
+    function check() {
+      if (!api.hasLogin()) {
+        setUser(null);
+        return;
+      }
+      api.session().then((s) => setUser(s.username)).catch((err) => {
+        setLoginNotice(err.message);
+        setUser(null);
+      });
+    }
+    check();
+    window.addEventListener("supervisor-change", check);
+    return () => window.removeEventListener("supervisor-change", check);
+  }, []);
+
+  useEffect(() => {
+    if (!user) return; // every route needs a login, so load nothing until there is one
     api.meta().then(setMeta).catch(() => {});
     loadIncidents();
-  }, []);
+  }, [user]);
+
+  // Darrel
+  function handleLogout() {
+    setLoginNotice(null);
+    setPage("overview");
+    setSelected(null);
+    api.logout();
+  }
 
   function handleSearch(text) {
     setSearch(text);
@@ -65,6 +97,12 @@ export default function App() {
     } catch (err) {
       setLoadError(err.message);
     }
+  }
+
+  // Darrel
+  if (user === undefined) return <div className="login-page"><div className="empty">Checking your login...</div></div>;
+  if (!user) {
+    return <SupervisorLogin notice={loginNotice} onLogin={(name) => { setLoginNotice(null); setUser(name); }} />;
   }
 
   const [title, subtitle] = TITLES[page];
@@ -83,6 +121,7 @@ export default function App() {
         <strong>Workplace</strong>
       </div>
       <Sidebar page={page} onNavigate={(id) => { setPage(id); setMenuOpen(false); window.scrollTo(0, 0); }} serverStatus={serverStatus}
+               user={user} onLogout={handleLogout}
                open={menuOpen} onClose={() => setMenuOpen(false)} />
       {menuOpen && <div className="nav-backdrop" onClick={() => setMenuOpen(false)} />}
       <main className="main">
