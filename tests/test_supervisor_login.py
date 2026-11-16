@@ -36,3 +36,11 @@ def test_default_account_is_used_when_none_are_configured(monkeypatch):
     monkeypatch.setenv("DASHBOARD_ACCOUNTS", "lead:pass1")
     configured = SupervisorLogin.from_environment()
     assert configured.check("lead", "pass1") and not configured.check("supervisor", "123")
+
+
+def test_tokens_are_signed_and_tied_to_a_whitelisted_account(login):
+    token = login.issue("Supervisor")
+    assert login.verify(token) == "supervisor"
+    assert login.verify(token + "x") is None and login.verify("") is None and login.verify(None) is None
+    assert SupervisorLogin({"supervisor": "123"}, "other-secret").verify(token) is None
+    assert SupervisorLogin({"manager": "s3cret"}, "test-secret").verify(token) is None  # account removed
