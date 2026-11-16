@@ -87,9 +87,7 @@ class IncidentTriageApp:
     def delete_site_plan(self) -> bool:
         return self._data.delete_site_plan()
 
-    # Chooses where everything is kept. DATABASE_URL (a Postgres URL or a SQLite file path) means a database; without
-    # it, or if the database cannot be opened, the app keeps working with local files in the data folder.
-    # Returns the data manager and a message for the user when it is not using the database they asked for.
+    # Uses DATABASE_URL (Postgres or SQLite) if it opens, else local files in data/. Also returns a notice when it fell back.
     @staticmethod
     def open_storage(url: str | None) -> tuple[DataManager, str | None]:
         if not url:
@@ -123,7 +121,7 @@ class IncidentTriageApp:
             return app.run_export(arguments.export)
         return app.run_batch(arguments.batch) if arguments.batch else (app.run() or 0)
 
-    # Tells the user where data is kept if that is not the database they asked for, warns about a corrupt incidents file.
+    # Shows the storage notice and any corrupt-file warning, then loads the saved incidents.
     def start_up(self) -> None:
         if self._notice:
             self._io.display_message(self._notice)
@@ -197,9 +195,8 @@ class IncidentTriageApp:
             self._io.display_message("Warning: could not save the AI reply cache.")
         return EditResult("updated", self._records[index], old)
 
-    # Edits the incident at a 0-based position and runs the AI and scoring again. 'fields' holds the new
-    # description, location, reporter_role and injury (any left out stay as they are); 'photo' is a new
-    # IncidentPhoto, None to remove the photo, or KEEP_PHOTO. Nothing is changed unless the new version succeeds.
+    # Edits the incident (0-based index) and re-runs the AI and scoring. 'photo' is a new IncidentPhoto, None to
+    # remove it, or KEEP_PHOTO. The old version stays unless the new one succeeds.
     def edit_incident(self, index: int, fields: dict, photo: object = KEEP_PHOTO) -> EditResult:
         if not 0 <= index < len(self._records):
             return EditResult("failed", message="There is no such incident.")
@@ -208,18 +205,14 @@ class IncidentTriageApp:
             return EditResult("unchanged", old, old, "Nothing was changed, so the AI was not run again.")
         return self._save_new_version(index, fields, photo)
 
-    # Runs the AI and scoring again on the incident as it is saved, with no change to its details, and saves the
-    # result as the newest version (the old one is kept). Unlike an edit it never skips the AI and it ignores the
-    # saved AI replies, so the AI really answers again. Use it after a wording-only edit (which keeps the old
-    # analysis), after a failed AI step, or to ask for a fresh opinion. Nothing is changed unless it succeeds.
+    # Re-runs the AI on the incident as saved, ignoring cached replies, and saves a new version (the old one is kept).
     def reanalyse_incident(self, index: int) -> EditResult:
         if not 0 <= index < len(self._records):
             return EditResult("failed", message="There is no such incident.")
         with self._cache.refresh():
             return self._save_new_version(index, {}, KEEP_PHOTO, reanalysed=True)
 
-    # Builds the new version of the incident at a 0-based position from 'fields' and 'photo', analyses it, and saves it
-    # as the newest version. 'reanalysed' marks a version made by reanalyse_incident, for the history list.
+    # Builds, analyses and saves the new version of an incident; 'reanalysed' marks it in the history list.
     def _save_new_version(self, index: int, fields: dict, photo: object, reanalysed: bool = False) -> EditResult:
         old = self._records[index]
         kept = self._data.load_photo(old) if photo == KEEP_PHOTO else photo
@@ -242,8 +235,7 @@ class IncidentTriageApp:
             return EditResult("failed", previous=old, message=new.get("assessment_error"))
         return self._replace(index, new, old)
 
-    # Saves new wording for the description, location or reporter role as the newest version without running the AI:
-    # the earlier analysis is kept as it was. Injury and photo changes need the AI, so they are refused here.
+    # Saves new wording as the newest version without the AI (the analysis is kept); injury changes need the AI.
     def edit_incident_text(self, index: int, fields: dict) -> EditResult:
         if not 0 <= index < len(self._records):
             return EditResult("failed", message="There is no such incident.")
@@ -284,14 +276,12 @@ class IncidentTriageApp:
             if not self._io.ask_try_again():
                 return
 
-    # All saved incidents as text in one format ("csv" or "json"), with the exporter that wrote it (it knows the file
-    # ending and content type). Reads the saved incidents again first. Raises ValueError for an unknown format.
+    # All saved incidents as csv or json text, with the exporter used. Raises ValueError for an unknown format.
     def export_text(self, format_name: str) -> tuple[IncidentExporter, str]:
         exporter = ExporterFactory.create(format_name)
         return exporter, exporter.export(self.reload_records())
 
-    # Writes every saved incident to 'path' (the format is named by the file ending, or by 'format_name') and returns
-    # how many were written. Raises ValueError for an unknown format and OSError if the file cannot be written.
+    # Writes every incident to 'path' (format from the file ending or 'format_name'); returns the count.
     def export_to_file(self, path: str, format_name: str | None = None) -> int:
         exporter = ExporterFactory.create(format_name) if format_name else ExporterFactory.for_path(path)
         text = exporter.export(self.reload_records())

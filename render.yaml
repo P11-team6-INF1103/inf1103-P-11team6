@@ -4,7 +4,7 @@
 # gunicorn listens on $PORT automatically (Render sets it).
 services:
   - type: web
-    name: incident-triage-api
+    name: workplace-logging
     runtime: docker
     plan: free
     dockerfilePath: ./Dockerfile

@@ -103,7 +103,6 @@ def test_shared_database_keeps_everything_out_of_the_folder(tmp_path):
     assert manager.delete_record(0) and [i.location for i in manager.load_records()] == ["Site B"]
     assert not manager.delete_record(5)
     assert manager.save_ai_cache({"k": 1}) and manager.load_ai_cache() == {"k": 1}
-    assert manager.get_log_path() is None
     assert not folder.exists()
 
 

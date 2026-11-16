@@ -29,7 +29,6 @@ class LogicManager:
     _ESCALATED_OUTCOMES = ("stop_work_review", "systemic_escalation")
     _POOR_LIGHT_LEVELS = ("dark", "low_light")
 
-
     # Darrel
     _HEAVY_MACHINERY_WORDS = (
         "crane", "excavator", "forklift", "generator", "conveyor", "bulldozer",
@@ -39,7 +38,6 @@ class LogicManager:
         "cement mixer", "piling", "pile driver", "drill rig", "hoist",
         "scissor lift", "boom lift", "mewp", "elevating work platform",
     )
-
 
     # Daniel
     # 'day', 'dusk_dawn' or 'night' from the timestamp hour; an unreadable timestamp counts as 'day'.
@@ -55,7 +53,6 @@ class LogicManager:
             return "dusk_dawn"
         return "night"
 
-
     # Daniel
     # Singapore's monsoon season for the incident date; an unreadable timestamp gives 'inter_monsoon'.
     @staticmethod
@@ -70,12 +67,10 @@ class LogicManager:
             return "southwest_monsoon"
         return "inter_monsoon"
 
-
     # Darrel
     # True if the description mentions weather, so the weather API should be called.
     def is_weather_relevant(self, incident: Incident) -> bool:
         return bool(self._WEATHER_WORDS.search(str(incident.description or "")))
-
 
     # Darrel
     # 'daylight', 'low_light' or 'dark': one step darker than the time of day when it is raining.
@@ -86,7 +81,6 @@ class LogicManager:
         if condition == "rain":
             base += 1
         return levels[min(base, len(levels) - 1)]
-
 
     # Darrel
     # Adds what needs no API: weather relevance, which lookups to run, time of day and monsoon season.
@@ -100,7 +94,6 @@ class LogicManager:
             "monsoon_season": self.get_monsoon_season(incident.timestamp),
         })
 
-
     # Darrel
     # The non-empty strings in a list, stripped and lower-cased; anything else is ignored.
     @staticmethod
@@ -108,7 +101,6 @@ class LogicManager:
         if not isinstance(value, list):
             return []
         return [item.strip().lower() for item in value if isinstance(item, str) and item.strip()]
-
 
     # Darrel
     # Turns rainfall into a condition, then sets lighting, working at height and heavy machinery.
@@ -202,7 +194,6 @@ class LogicManager:
             "assessment_error": None,
         })
 
-
     # Sufi
     # The Part 1 rules plus the Part 2 photo rule, in the order they are checked.
     @staticmethod
@@ -214,7 +205,6 @@ class LogicManager:
     def __init__(self, rules: list[OutcomeRule]) -> None:
         self._rules = list(rules)
 
-
     # Sufi
     # Rejects an incident only when the AI said it is not a real safety incident; accepts it if the AI is down.
     @staticmethod
@@ -223,7 +213,6 @@ class LogicManager:
             return True, None
         reason = str(incident.get("invalid_reason") or "").strip()
         return False, reason or "it does not describe a workplace safety incident"
-
 
     # Sufi
     # New in Part 2: fills gaps in the description with what the AI saw in the photo, and lists each change.
@@ -242,7 +231,6 @@ class LogicManager:
             incident.update({"heavy_machinery_present": True})
             notes.append("The photo shows heavy machinery")
         incident.update({"photo_evidence_used": notes})
-
 
     # Sufi
     # Picks the outcome in order: pending_review, stop_work_review, systemic_escalation, log_only.

@@ -1,9 +1,8 @@
 # Sufi
 
 class ElementKind:
-    # One kind of thing that can appear on a site plan (building, crane, gate...). The kinds differ only by data, so
-    # they are objects of this one class, not ten subclasses. The AI prompt, the validator and the site map all work
-    # from the kind's key, so a new kind is one new line in ELEMENT_KINDS (open/closed) and no code changes.
+    # One kind of thing on a site plan. The kinds differ only by data, so a new kind is one new line in
+    # ELEMENT_KINDS (open/closed), not a new class.
     def __init__(self, key: str, label: str, hint: str, min_size_m: float = 1.0) -> None:
         self.key = key
         self.label = label

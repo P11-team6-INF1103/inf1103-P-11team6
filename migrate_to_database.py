@@ -1,7 +1,5 @@
 # Lennart
-# One-off: copies the local files (data/incidents.json, data/site_plan.json and the priorities in data/app.db)
-# into the database named by DATABASE_URL (Postgres, e.g. Neon). Safe to run twice: it only adds what is missing.
-#   python migrate_to_database.py
+# One-off: copies the local data files into the database named by DATABASE_URL. Safe to run twice.
 import argparse
 import os
 import sqlite3

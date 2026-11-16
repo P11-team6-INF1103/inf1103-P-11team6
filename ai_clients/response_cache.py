@@ -10,17 +10,14 @@ from ai_clients.similarity_matcher import SimilarityMatcher
 
 logger = logging.getLogger(__name__)
 
-# The key under which the saved descriptions are kept inside the exported dict (old saved caches do not have it).
+# Where the saved descriptions sit inside the exported dict.
 _SIMILAR_KEY = "__similar__"
 
 class ResponseCache:
-    # Validated AI and weather replies already received, keyed by a hash of the request.
-    # The same incident then gets the same answer on every run, and a re-run costs no API quota.
-    # The lock keeps it safe when the evidence steps run in parallel threads.
+    # Saved AI and weather replies keyed by a hash of the request, so a repeat costs no API quota. Thread-safe.
 
 # Lennart
-    # A reply is also found by wording: a request that differs from a saved one only by capital letters,
-    # punctuation, filler words or a spelling slip reuses the saved reply (see SimilarityMatcher).
+    # A reply is also found by wording: near-identical requests reuse it (see SimilarityMatcher).
     def __init__(self, saved: dict | None = None, matcher: SimilarityMatcher | None = None) -> None:
         saved = dict(saved) if isinstance(saved, dict) else {}
         index = saved.pop(_SIMILAR_KEY, None)

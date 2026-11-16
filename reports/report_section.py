@@ -4,8 +4,8 @@ from datetime import date
 
 
 class ReportSection(ABC):
-    # Interface for one block of the summary (an overview, a ranking, a trend). TrendReport asks every section it
-    # holds to build itself from the same two lists, so a new kind of block is a new subclass and nothing else changes.
+    # Interface for one block of the summary. TrendReport builds every section the same way, so a new block is a
+    # new subclass (open/closed).
 
     # Short name used as the key in the result and as the heading in the CSV.
     @property

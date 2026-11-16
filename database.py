@@ -6,9 +6,8 @@ from contextlib import contextmanager
 from db.database_unavailable import DatabaseUnavailable
 from db.postgres_connection import PostgresConnection
 
-# Each incident's workflow (priority, resolved) and, when the database is
-# shared (Postgres), the incidents themselves. A workflow row points at an incident by its timestamp.
-# The two dialects differ only in how an auto-numbered id is written.
+# Tables: each incident's workflow (priority, resolved), plus the incidents themselves on a shared database.
+# A workflow row points at an incident by its timestamp. The two dialects differ only in the auto-numbered id.
 _COMMON = """
 CREATE TABLE IF NOT EXISTS incident_workflow (
     incident_key    TEXT PRIMARY KEY,
