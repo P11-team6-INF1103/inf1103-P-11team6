@@ -39,7 +39,8 @@ class WebApi:
     # Every route needs a logged-in supervisor except these: the health check (Render pings it) and the login itself.
     _OPEN_ROUTES = {"/api/health", "/api/login"}
     # Opened as a link or an <img>, which cannot send a header, so these also accept the token as ?token=.
-    _LINK_ROUTES = {"/api/incidents/<int:number>/photo", "/api/incidents/export", "/api/reports/summary"}
+    _LINK_ROUTES = {"/api/incidents/<int:number>/photo", "/api/incidents/export", "/api/reports/summary",
+                    "/api/profile/photo"}
 
     # Uses the app it is given (association) and creates its own Flask server and rate limiter (composition).
     # 'login' holds the whitelisted supervisor accounts; without one they come from the environment.
@@ -98,6 +99,7 @@ class WebApi:
             ("/api/login", "POST", self.log_in),
             ("/api/session", "GET", self.session),
             ("/api/profile", "GET", self.profile),
+            ("/api/profile/photo", "GET", self.get_profile_photo),
         ]
         for path, method, handler in routes:
             self.flask.add_url_rule(path, f"{method}_{path}", handler, methods=[method])
@@ -149,6 +151,14 @@ class WebApi:
     def profile(self) -> tuple:
         user = self._current_supervisor()
         return jsonify({"username": user, "has_photo": self._profiles.photo(user) is not None}), 200
+
+    # Darrel
+    # The logged-in account's profile picture, 404 if it has none.
+    def get_profile_photo(self) -> object:
+        stored = self._profiles.photo(self._current_supervisor())
+        if stored is None:
+            return jsonify({"errors": ["No profile picture yet."]}), 404
+        return send_file(io.BytesIO(stored[0]), mimetype=stored[1])
 
     # One saved version (a dict from an incident's history) as the browser sees it: no server paths.
     @staticmethod
