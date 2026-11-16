@@ -35,3 +35,14 @@ def test_bad_pictures_are_refused_with_reasons(tmp_path):
     too_big = upload(client, b"x" * (ProfileStore.MAX_BYTES + 1))
     assert too_big.status_code == 422 and "larger than 1 MB" in too_big.get_json()["errors"][0]
     assert client.get("/api/profile").get_json()["has_photo"] is False
+
+
+def test_each_account_has_its_own_picture_and_it_needs_a_login(tmp_path):
+    client = make_client(tmp_path)
+    upload(client, sample_bytes())
+    token = client.post("/api/login", json={"username": "darrel", "password": "123"}).get_json()["token"]
+    client.environ_base["HTTP_AUTHORIZATION"] = f"Bearer {token}"
+    assert client.get("/api/profile").get_json() == {"username": "darrel", "has_photo": False}
+    assert client.get(f"/api/profile/photo?token={token}").status_code == 404
+    client.environ_base.pop("HTTP_AUTHORIZATION")
+    assert client.get("/api/profile").status_code == 401 and upload(client, sample_bytes()).status_code == 401
