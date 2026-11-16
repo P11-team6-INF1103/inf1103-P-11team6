@@ -442,3 +442,12 @@ a.btn:visited { color: var(--text); }
 .report-notes li { margin: 4px 0; }
 .toggle .btn { white-space: nowrap; }
 .toggle a.btn { color: var(--text); text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+
+/* Darrel: the supervisor login dialog */
+.login-backdrop {
+  position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 16px;
+  background: rgba(0, 0, 0, 0.55);
+}
+.login-card { width: min(360px, 100%); background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 18px; }
+.login-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.login-card .btn.primary { width: 100%; }

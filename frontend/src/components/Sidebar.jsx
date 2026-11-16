@@ -1,5 +1,6 @@
 // Darrel
 import { LayoutDashboard, ClipboardPlus, List, Map, BookOpen, FileBarChart, X } from "lucide-react";
+import SupervisorLogin from "./SupervisorLogin.jsx";
 
 const NAVIGATION = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
@@ -35,6 +36,7 @@ export default function Sidebar({ page, onNavigate, serverStatus, open, onClose 
       </button>
 
       <div className="nav-spacer" />
+      <SupervisorLogin />
       <div className="server-status">
         <span className={`dot ${serverStatus}`} />
         <span className="nav-text">{serverStatus === "ok" ? "Server online" : serverStatus === "down" ? "Server offline" : "Connecting..."}</span>
