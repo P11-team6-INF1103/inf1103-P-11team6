@@ -1,5 +1,5 @@
 // Darrel
-import { LayoutDashboard, ClipboardPlus, List, Map, BookOpen, FileBarChart, LogOut, X } from "lucide-react";
+import { LayoutDashboard, ClipboardPlus, List, Map, BookOpen, FileBarChart, LogOut, UserRound, X } from "lucide-react";
 
 const NAVIGATION = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
@@ -36,6 +36,9 @@ export default function Sidebar({ page, onNavigate, serverStatus, open, onClose,
       </button>
 
       <div className="nav-spacer" />
+      <button title="Profile" className={`nav-item ${page === "profile" ? "active" : ""}`} onClick={() => onNavigate("profile")}>
+        <UserRound size={17} /> <span className="nav-text">Profile</span>
+      </button>
       <button className="nav-item" title={`Logged in as ${user}. Log out`} onClick={onLogout}>
         <LogOut size={17} /> <span className="nav-text">Log out ({user})</span>
       </button>
