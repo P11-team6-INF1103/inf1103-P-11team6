@@ -97,4 +97,11 @@ export const api = {
   session: () => request("/api/session"),
   logout: () => setToken(""),
   hasLogin: () => Boolean(token),
+  // Darrel
+  // The profile page: the logged-in account and its picture. version makes the browser fetch a new picture.
+  profile: () => request("/api/profile"),
+  profilePhotoUrl: (version) => withToken(`${API_URL}/api/profile/photo?v=${version}`),
+  // form is a FormData with one 'photo' file
+  uploadProfilePhoto: (form) => request("/api/profile/photo", { method: "PUT", body: form }),
+  deleteProfilePhoto: () => request("/api/profile/photo", { method: "DELETE" }),
 };
