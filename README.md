@@ -20,7 +20,7 @@ Part 2 refactors the Part 1 procedural code into classes, keeps the four manager
 
 - **Priority and resolving.** There are no accounts: anyone who opens the dashboard can set an incident's **priority**
   (P1 Urgent to P4 Low; the rules suggest one from the severity until someone sets it by hand), mark it **resolved** with a
-  note, reopen it, delete it and use the triage queue on the **Log & triage** page.
+  note, reopen it, delete it and use the triage queue on the **Log and Incident** page.
 - **Search.** The search bar at the top of every page. On the **Overview** it shows ranked search results over every incident: words, `"exact phrases"` and `#12`, plus filters (severity, hazard, action,
   priority, open/resolved, dates, photo). Implemented in `search_engine.py`.
 - **Trend and summary report (new feature).** Pick a period (7 to 90 days) and see it against the period before:
@@ -80,7 +80,7 @@ npm run dev -- --host 127.0.0.1
 ```
 
 Pages: **Overview** (stat cards, incidents-vs-severity chart, hazard donut, outcomes, recent incidents; type in the search
-bar at the top to see ranked search results here), **Log & triage** (the log form with photo drag & drop and the AI report,
+bar at the top to see ranked search results here), **Log and Incident** (the log form with photo drag & drop and the AI report,
 with the triage queue of open incidents under it), **Incidents** (filter, click a row for the full report and photo, delete),
 **Summary report**, **Site map** (the 2D pin board, see below, with the locations: query by place and days, and the saved places
 under the map), **Severity guide**.

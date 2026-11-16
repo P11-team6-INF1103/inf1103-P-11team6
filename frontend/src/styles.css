@@ -307,7 +307,8 @@ a.btn:visited { color: var(--text); }
   .btn.small { min-height: 38px; }
   .nav-item { min-height: 46px; }
   .input, select.input, textarea.input, .search input { min-height: 44px; font-size: 16px; }
-  
+}
+
 /* Tablet: the sidebar shrinks to an icon rail */
 @media (min-width: 761px) and (max-width: 1100px) {
   .layout { gap: 14px; padding: 14px; }
@@ -356,7 +357,13 @@ a.btn:visited { color: var(--text); }
   .search { flex: 1; width: auto; min-width: 0; }
   .card { padding: 14px; }
 
-  .stats { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  /* Four stat cards as a 2 x 2 grid, with the little bar chart tucked away */
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .stats .card.stat { padding: 12px; gap: 6px; min-width: 0; }
+  .stat-top { font-size: 12px; gap: 6px; align-items: flex-start; }
+  .stat-value { font-size: 24px; }
+  .stat-bottom > div[style] { display: none; }
+  .trend { font-size: 11px; }
   .stats.compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .stats.compact .stat-value { font-size: 22px; }
   .row, .site-setup { grid-template-columns: minmax(0, 1fr); }
@@ -399,12 +406,21 @@ a.btn:visited { color: var(--text); }
   .review-row, .compare-row { grid-template-columns: 84px minmax(0, 1fr); gap: 8px; }
   .report h2 { font-size: 18px; }
 
+  /* Form and list headers: title on its own line, buttons below it */
+  .card-title { flex-direction: column; align-items: stretch; }
+  .undo-bar { display: flex; gap: 8px; }
+  .undo-bar .btn { flex: 1; justify-content: center; }
+  .alert { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+  .alert .btn { align-self: flex-start; }
+  .recharts-wrapper { max-width: 100%; }
+  .grid-main > .card { min-width: 0; overflow: hidden; }
+
   .site-stage { min-height: 260px; }
   .site-hint { display: none; }
   .site-controls { flex-wrap: wrap; }
 }
-@media (max-width: 380px) {
-  .stats.compact { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 340px) {
+  .stats, .stats.compact { grid-template-columns: minmax(0, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }

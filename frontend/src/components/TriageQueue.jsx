@@ -1,5 +1,5 @@
 // Darrel
-// The open incidents ordered by priority, then severity, then age, with quick resolve. Sits under the log form on the Log & triage page.
+// The open incidents ordered by priority, then severity, then age, with quick resolve. Sits under the log form on the Log and Incident page.
 import { useState } from "react";
 import { AlertTriangle, CheckCheck, CheckCircle2, ClipboardList } from "lucide-react";
 import { api } from "../api.js";
