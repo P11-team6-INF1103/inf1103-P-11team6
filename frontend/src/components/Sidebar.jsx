@@ -1,6 +1,5 @@
 // Darrel
-import { LayoutDashboard, ClipboardPlus, List, Map, BookOpen, FileBarChart, X } from "lucide-react";
-import SupervisorLogin from "./SupervisorLogin.jsx";
+import { LayoutDashboard, ClipboardPlus, List, Map, BookOpen, FileBarChart, LogOut, X } from "lucide-react";
 
 const NAVIGATION = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
@@ -11,7 +10,8 @@ const NAVIGATION = [
 ];
 
 // open and onClose only matter on phones, where the sidebar slides in over the page.
-export default function Sidebar({ page, onNavigate, serverStatus, open, onClose }) {
+// user is the logged-in account; onLogout ends the login and goes back to the login page.
+export default function Sidebar({ page, onNavigate, serverStatus, open, onClose, user, onLogout }) {
   return (
     <aside className={`sidebar ${open ? "open" : ""}`} aria-label="Main navigation">
       <div className="brand">
@@ -36,7 +36,9 @@ export default function Sidebar({ page, onNavigate, serverStatus, open, onClose 
       </button>
 
       <div className="nav-spacer" />
-      <SupervisorLogin />
+      <button className="nav-item" title={`Logged in as ${user}. Log out`} onClick={onLogout}>
+        <LogOut size={17} /> <span className="nav-text">Log out ({user})</span>
+      </button>
       <div className="server-status">
         <span className={`dot ${serverStatus}`} />
         <span className="nav-text">{serverStatus === "ok" ? "Server online" : serverStatus === "down" ? "Server offline" : "Connecting..."}</span>
