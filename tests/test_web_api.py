@@ -12,6 +12,7 @@ from io_manager import IOManager
 from logic_manager import LogicManager
 from logic_rules.constants import OUTCOME_ACTIONS, SEVERITY_LEVELS
 from main import IncidentTriageApp
+from tests.api_helpers import log_in
 from tests.doubles.fake_gemini import FakeGemini
 from tests.doubles.fake_search import FakeSearch
 from tests.doubles.fake_weather import FakeWeather
@@ -28,7 +29,7 @@ def make_client(tmp_path, gemini=None, post_limit=10):
     ai = AIManager(gemini or FakeGemini(), FakeSearch(), FakeWeather(None), OUTCOME_ACTIONS)
     app = IncidentTriageApp(IOManager(SEVERITY_LEVELS, OUTCOME_ACTIONS), ai,
                             LogicManager(LogicManager.default_rules()), DataManager(str(tmp_path)), ResponseCache())
-    return WebApi(app, ["http://localhost:5173"], post_limit).flask.test_client()
+    return log_in(WebApi(app, ["http://localhost:5173"], post_limit).flask.test_client())
 
 
 @pytest.fixture
