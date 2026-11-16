@@ -83,4 +83,14 @@ export const api = {
   }),
   deleteSitePlan: () => request("/api/site-plan", { method: "DELETE" }),
   // name is json, blank, sample or guide
+  // Darrel
+  // Supervisor login: only whitelisted accounts exist. Resolving, prioritising, editing and deleting need it.
+  login: async (username, password) => {
+    const body = await request("/api/login", json("POST", { username, password }));
+    setToken(body.token);
+    return body;
+  },
+  session: () => request("/api/session"),
+  logout: () => setToken(""),
+  hasLogin: () => Boolean(token),
 };
