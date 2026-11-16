@@ -35,19 +35,10 @@ class WebApi:
     # validation is InputValidator's, the pipeline is IncidentTriageApp's, wording is ReportPrinter's.
 
     # Darrel
+    # Every route needs a logged-in supervisor except these: the health check (Render pings it) and the login itself.
+    _OPEN_ROUTES = {"/api/health", "/api/login"}
     # Opened as a link or an <img>, which cannot send a header, so these also accept the token as ?token=.
     _LINK_ROUTES = {"/api/incidents/<int:number>/photo", "/api/incidents/export", "/api/reports/summary"}
-
-    # Darrel
-    # Routes that change or remove what is already saved: only a logged-in supervisor may call them.
-    # Reading the dashboard and logging a new incident stay open to everyone on site.
-    _SUPERVISOR_ONLY = {
-        ("PUT", "/api/incidents/<int:number>/priority"), ("POST", "/api/incidents/<int:number>/resolve"),
-        ("POST", "/api/incidents/<int:number>/reopen"), ("PATCH", "/api/incidents/<int:number>"),
-        ("DELETE", "/api/incidents/<int:number>"), ("POST", "/api/incidents/<int:number>/revert"),
-        ("POST", "/api/incidents/<int:number>/reanalyse"), ("PUT", "/api/site-plan"),
-        ("DELETE", "/api/site-plan"), ("POST", "/api/site-plan/read"),
-    }
 
     # Uses the app it is given (association) and creates its own Flask server and rate limiter (composition).
     # 'login' holds the whitelisted supervisor accounts; without one they come from the environment.
@@ -106,9 +97,8 @@ class WebApi:
             ("/api/session", "GET", self.session),
         ]
         for path, method, handler in routes:
-            if (method, path) in self._SUPERVISOR_ONLY:
-                handler = self._supervisor_only(handler)
             self.flask.add_url_rule(path, f"{method}_{path}", handler, methods=[method])
+        self.flask.before_request(self._require_login)
         self.flask.register_error_handler(413, self._too_large)
 
     # Darrel
@@ -121,13 +111,14 @@ class WebApi:
         return self._login.verify(token.strip())
 
     # Darrel
-    # Wraps a route so it answers 401 unless a logged-in supervisor called it.
-    def _supervisor_only(self, handler):
-        def guarded(*args, **kwargs):
-            if self._current_supervisor() is None:
-                return jsonify({"errors": ["Log in as a supervisor to do this."]}), 401
-            return handler(*args, **kwargs)
-        return guarded
+    # Runs before every request: answers 401 unless a logged-in supervisor sent it. Browser CORS checks (OPTIONS),
+    # unknown URLs (left to answer 404) and the open routes go through.
+    def _require_login(self) -> tuple | None:
+        if request.method == "OPTIONS" or request.url_rule is None or request.url_rule.rule in self._OPEN_ROUTES:
+            return None
+        if self._current_supervisor() is None:
+            return jsonify({"errors": ["Log in to use the dashboard."]}), 401
+        return None
 
     # Darrel
     # Body: {"username": "...", "password": "..."}. 200 with a token, 401 wrong details, 429 too many wrong tries.
@@ -146,12 +137,9 @@ class WebApi:
                         "expires_in": SupervisorLogin.SESSION_SECONDS}), 200
 
     # Darrel
-    # Who is logged in, so the dashboard can keep a login across page reloads. 401 if the token is missing or expired.
+    # Who is logged in, so the dashboard can keep a login across page reloads (401 from _require_login if not).
     def session(self) -> tuple:
-        user = self._current_supervisor()
-        if user is None:
-            return jsonify({"errors": ["Not logged in."]}), 401
-        return jsonify({"username": user}), 200
+        return jsonify({"username": self._current_supervisor()}), 200
 
     # One saved version (a dict from an incident's history) as the browser sees it: no server paths.
     @staticmethod

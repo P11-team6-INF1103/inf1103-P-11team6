@@ -52,19 +52,26 @@ def test_tokens_run_out(login, monkeypatch):
     assert login.verify(token) is None
 
 
-def test_changes_need_a_login_but_reading_and_reporting_do_not(tmp_path):
+def test_every_route_needs_a_login_except_health_and_login(tmp_path):
     client = anonymous_client(tmp_path)
-    blocked = [client.delete("/api/incidents/1"), client.post("/api/incidents/1/resolve", json={}),
-               client.post("/api/incidents/1/reopen"), client.put("/api/incidents/1/priority", json={"priority": 1}),
+    blocked = [client.get("/api/incidents"), client.get("/api/incidents/1"), client.get("/api/meta"),
+               client.get("/api/incidents/1/photo"), client.get("/api/incidents/export"),
+               client.get("/api/reports/summary"), client.get("/api/incidents/search?q=plank"),
+               client.get("/api/locations"), client.get("/api/site-plan"), client.get("/api/session"),
+               client.post("/api/incidents", data=FORM), client.delete("/api/incidents/1"),
+               client.post("/api/incidents/1/resolve", json={}), client.post("/api/incidents/1/reopen"),
+               client.put("/api/incidents/1/priority", json={"priority": 1}),
                client.patch("/api/incidents/1", data={"location": "Site C"}),
                client.post("/api/incidents/1/revert", json={"version": 1}),
                client.post("/api/incidents/1/reanalyse"), client.put("/api/site-plan", json={}),
                client.delete("/api/site-plan"), client.post("/api/site-plan/read")]
     assert [r.status_code for r in blocked] == [401] * len(blocked)
-    assert blocked[0].get_json()["errors"] == ["Log in as a supervisor to do this."]
-    assert client.get("/api/incidents").get_json()[0]["resolved"] is False
-    assert client.post("/api/incidents", data=FORM).status_code == 201
-    assert client.get("/api/incidents/1").status_code == 200 and client.get("/api/reports/summary").status_code == 200
+    assert blocked[0].get_json()["errors"] == ["Log in to use the dashboard."]
+    assert client.get("/api/health").status_code == 200 and client.get("/api/no-such-page").status_code == 404
+    preflight = client.options("/api/incidents", headers={"Origin": "http://localhost:5173",
+                                                          "Access-Control-Request-Method": "GET",
+                                                          "Access-Control-Request-Headers": "authorization"})
+    assert preflight.status_code == 200 and "authorization" in preflight.headers["Access-Control-Allow-Headers"]
 
 
 def test_logged_in_supervisor_can_resolve_and_delete(tmp_path):
