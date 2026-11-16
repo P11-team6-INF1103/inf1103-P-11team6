@@ -412,8 +412,6 @@ a.btn:visited { color: var(--text); }
   .undo-bar .btn { flex: 1; justify-content: center; }
   .alert { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
   .alert .btn { align-self: flex-start; }
-  .recharts-wrapper { max-width: 100%; }
-  .grid-main > .card { min-width: 0; overflow: hidden; }
 
   .site-stage { min-height: 260px; }
   .site-hint { display: none; }
