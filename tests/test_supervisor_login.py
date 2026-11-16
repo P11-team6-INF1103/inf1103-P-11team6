@@ -50,3 +50,18 @@ def test_tokens_run_out(login, monkeypatch):
     token = login.issue("supervisor")
     monkeypatch.setattr(SupervisorLogin, "SESSION_SECONDS", -1)
     assert login.verify(token) is None
+
+
+def test_changes_need_a_login_but_reading_and_reporting_do_not(tmp_path):
+    client = anonymous_client(tmp_path)
+    blocked = [client.delete("/api/incidents/1"), client.post("/api/incidents/1/resolve", json={}),
+               client.post("/api/incidents/1/reopen"), client.put("/api/incidents/1/priority", json={"priority": 1}),
+               client.patch("/api/incidents/1", data={"location": "Site C"}),
+               client.post("/api/incidents/1/revert", json={"version": 1}),
+               client.post("/api/incidents/1/reanalyse"), client.put("/api/site-plan", json={}),
+               client.delete("/api/site-plan"), client.post("/api/site-plan/read")]
+    assert [r.status_code for r in blocked] == [401] * len(blocked)
+    assert blocked[0].get_json()["errors"] == ["Log in as a supervisor to do this."]
+    assert client.get("/api/incidents").get_json()[0]["resolved"] is False
+    assert client.post("/api/incidents", data=FORM).status_code == 201
+    assert client.get("/api/incidents/1").status_code == 200 and client.get("/api/reports/summary").status_code == 200
