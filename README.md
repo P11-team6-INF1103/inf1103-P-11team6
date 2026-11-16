@@ -19,6 +19,7 @@ Part 2 refactors the Part 1 procedural code into classes, keeps the four manager
   publishes the Docker image to GitHub Container Registry.
 
 - **Login.** The dashboard opens on a login page; only whitelisted accounts can log in (there is no sign-up).
+  The **Profile** page shows the account you are logged in with and lets you upload a profile picture.
 - **Priority and resolving.** Once logged in, you can set an incident's **priority**
   (P1 Urgent to P4 Low; the rules suggest one from the severity until someone sets it by hand), mark it **resolved** with a
   note, reopen it, delete it and use the triage queue on the **Log and Incident** page.
@@ -124,6 +125,8 @@ its disk is wiped on restart, so saved incidents are lost. Open the dashboard a 
 | `GET /api/health` | Server is up, number of incidents (no login needed) |
 | `POST /api/login` | JSON `{"username": "...", "password": "..."}`. 200 with a `token` (lasts 8 hours), 401 wrong details, 429 after 10 wrong tries (no login needed) |
 | `GET /api/session` | The logged-in account's `username`, 401 if the token is missing or has run out |
+| `GET /api/profile` | The logged-in account's `username` and `has_photo` |
+| `GET /api/profile/photo` / `PUT /api/profile/photo` / `DELETE /api/profile/photo` | The account's profile picture / multipart `photo` file (.png, .jpg, .jpeg or .webp, 1 MB at most; 422 otherwise) / remove it |
 | `GET /api/meta` | Severity levels, outcome and hazard names (same wording as the terminal) |
 | `GET /api/incidents` | Every saved incident |
 | `POST /api/incidents` | Multipart form: `description`, `location`, `reporter_role`, `injury`, optional `photo` file. 201 saved, 422 invalid or rejected by the AI, 429 rate limit |
@@ -232,7 +235,7 @@ the classes it uses live in a folder beside it. `tests/test_app.py` fails if any
 | `reports/` | `ReportSection` (interface), `OverviewSection`, `RankingSection`, `LocationRankingSection`, `HazardRankingSection`, `SeverityTrendSection`, `IncidentFacts` | One file per report section. A new section is a new file. |
 | `site_plan/` | `SitePlan`, `SiteElement`, `SitePlanError`, `ElementKind` | The validated site plan. `element_kinds.py` lists the ten kinds as objects. |
 | `web_api.py` | `WebApi` | REST layer for the React GUI. No business rules: reuses `InputValidator`, `IncidentTriageApp` and `ReportPrinter`. |
-| `web_support/` | `RateLimiter`, `SupervisorLogin` | The per-client request budget; the whitelisted accounts, hashed passwords and signed login tokens. |
+| `web_support/` | `RateLimiter`, `SupervisorLogin`, `ProfileStore` | The per-client request budget; the whitelisted accounts, hashed passwords and signed login tokens; each account's profile picture (one database document per account). |
 | `search_engine.py`, `workflow.py`, `migrate_to_database.py` | `IncidentSearch`, `WorkflowStore`, `Migration` | One class each. |
 | `run_tests.py`, `test_runner/` | `CommandLine`; `Check`, `CommandCheck`, `PytestCheck`, `Runner`, `Plan`, `OwnershipMap`, `Result` | The offline test runner. |
 | `frontend/` | React components | The dashboard (Netlify). |
@@ -372,6 +375,11 @@ classDiagram
         +from_environment()$ WebApi
     }
     class RateLimiter
+    class ProfileStore {
+        +save_photo(username, photo) bool
+        +photo(username) tuple
+        +delete_photo(username) bool
+    }
     class SupervisorLogin {
         +from_environment()$ SupervisorLogin
         +check(username, password) bool
@@ -416,6 +424,8 @@ classDiagram
     WebApi --> IncidentTriageApp
     WebApi *-- RateLimiter
     WebApi o-- SupervisorLogin
+    WebApi *-- ProfileStore
+    ProfileStore --> Database
     WebApi *-- WorkflowStore
     WebApi *-- IncidentSearch
     WebApi *-- TrendReport
