@@ -23,8 +23,7 @@ class DataManager:
     def default_folder() -> str:
         return os.environ.get("INCIDENT_DATA_DIR") or os.path.join(os.path.dirname(__file__), "data")
 
-    # Creates and owns the JSON files it manages (composition). Given a shared database (Postgres), the incidents,
-    # AI cache and site plan live in it instead of in files, so they survive a server restart.
+    # Owns the JSON files it manages (composition); with a shared database they live there instead.
     def __init__(self, folder: str | None = None, shared_database: Database | None = None) -> None:
         self._folder = folder or self.default_folder()
         self._shared = shared_database
@@ -52,16 +51,6 @@ class DataManager:
     @property
     def uses_database(self) -> bool:
         return self._shared is not None
-
-    # Path of app.log, or None if the data folder cannot be created (or there is no local data at all).
-    def get_log_path(self) -> str | None:
-        if self._shared:
-            return None
-        try:
-            os.makedirs(self._folder, exist_ok=True)
-        except OSError:
-            return None
-        return os.path.join(self._folder, "app.log")
 
     # Says what is wrong with the incidents file, or None if it is fine or missing.
     def check_records_file(self) -> str | None:

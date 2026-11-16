@@ -6,10 +6,8 @@ from ai_clients.constants import FILLER_WORDS, TYPO_MIN_LENGTH, TYPO_MIN_RATIO
 
 
 class SimilarityMatcher:
-    # Decides whether two incident descriptions say the same thing, so one saved AI reply can serve both.
-    # It is deliberately strict because the reply feeds a safety score: the descriptions must hold the same
-    # words in the same order. Capital letters, punctuation, filler words (a, the, was) and a small spelling
-    # slip in the middle of a long word are ignored. A different word, a different number or a missing "not" is a mismatch.
+    # Decides whether two descriptions say the same thing so one saved reply can serve both. Deliberately strict
+    # (the reply feeds a safety score): same words in the same order; only case, punctuation, filler and a small typo are ignored.
 
     # The meaningful words of a text in order: lower case, no punctuation, no filler, plural "s" removed.
     @staticmethod

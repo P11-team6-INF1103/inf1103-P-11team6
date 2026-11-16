@@ -7,9 +7,8 @@ from models.incident import Incident
 
 
 class IncidentExporter(ABC):
-    # Turns saved incidents into text for a file. This base class decides which facts are exported (one flat row per
-    # incident, the same for every format); a subclass only decides how the rows are written, so a new format
-    # (for example XML) is one new subclass and nothing else changes (open/closed).
+    # Turns saved incidents into text. The base class picks the facts (one flat row per incident); a subclass only
+    # writes them out, so a new format is one new subclass (open/closed).
 
     # The file ending without the dot, such as "csv".
     @property

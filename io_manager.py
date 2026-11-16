@@ -400,8 +400,7 @@ class IOManager:
         return number
 
 # Lennart
-    # Asks which export format and file name to use; 'defaults' maps each format name to its usual file name. Returns
-    # (format, path), or None to go back. An existing file is only replaced after a yes.
+    # Asks for an export format and file name ('defaults' maps format to usual file name); None to go back.
     def get_export_choice(self, defaults: dict[str, str]) -> tuple[str, str] | None:
         names = list(defaults)
         print("\nExport every saved incident to a file:")

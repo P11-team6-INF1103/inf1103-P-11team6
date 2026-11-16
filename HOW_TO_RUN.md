@@ -73,7 +73,7 @@ To use the hosted API instead of Terminal 1:
 
 ```bash
 cd frontend
-VITE_API_URL=https://incident-triage-api.onrender.com npm run dev -- --host 127.0.0.1
+VITE_API_URL=https://workplace-logging.onrender.com npm run dev -- --host 127.0.0.1
 ```
 
 The first load can take about a minute if Render is asleep.

@@ -94,9 +94,8 @@ class WebApi:
         data["has_photo"] = bool(data.pop("photo_saved_path", None))
         return data
 
-    # One incident as the browser sees it: its 1-based number, the plain-English problems, and no server paths.
-    # With history=True it also lists the older versions (oldest first).
-    # rows are the saved workflow rows (priority, resolved); leave them out to read them fresh.
+    # One incident as the browser sees it: 1-based number, plain-English problems, no server paths.
+    # history=True adds the older versions; 'rows' are the workflow rows (read fresh if omitted).
     def _to_json(self, incident: Incident, number: int, history: bool = False, rows: dict | None = None) -> dict:
         data = incident.to_dict()
         data.pop("history", None)
@@ -134,10 +133,7 @@ class WebApi:
             "Content-Type": f"{exporter.content_type}; charset=utf-8",
             "Content-Disposition": f'attachment; filename="{exporter.file_name()}"'})
 
-    # Runs the AI again on a saved incident with no change to its details and saves the result as a new version
-    # (the old one stays in the history). No body needed. 200 with the new version; 404 for an unknown number;
-    # 422 if the AI now rejects the text; 429 if there were too many AI runs; 502 if the AI could not assess it,
-    # in which case the old version stays current.
+    # Re-runs the AI on a saved incident and saves a new version. 200, 404 unknown, 422 rejected, 429 rate limit, 502 AI failed.
     def reanalyse_incident(self, number: int) -> tuple:
         if self._find(number) is None:
             return jsonify({"errors": [f"No incident #{number}."]}), 404
@@ -203,11 +199,8 @@ class WebApi:
             return jsonify({"rejected": incident.get("reject_reason")}), 422
         return jsonify(self._to_json(result, number, history=True)), 201
 
-    # Edits an incident and runs the AI again: send any of description, location, reporter_role, injury,
-    # a new 'photo' file, or remove_photo=true; fields left out keep their value. 200 with the new version
-    # (history[-1] is the version it replaced) or status 'unchanged'; rerun_ai=false saves only new wording
-    # (description, location, role) without the AI and keeps the earlier analysis; 422 for a bad form or an AI rejection;
-    # 502 if the AI could not assess it, in which case the old version stays current.
+    # Edits an incident and re-runs the AI. Fields left out keep their value; remove_photo=true drops the photo;
+    # rerun_ai=false saves new wording only. 200 updated/unchanged, 422 bad form or AI rejection, 502 AI failed.
     def edit_incident(self, number: int) -> tuple:
         old = self._find(number)
         if old is None:
@@ -291,15 +284,14 @@ class WebApi:
             return jsonify({"errors": ["No photo saved for this incident."]}), 404
         return send_file(path)
 
-        # Ren Xiang
+    # Ren Xiang
     # The saved site plan for the site map, or {"plan": null} if none has been saved.
     def get_site_plan(self) -> tuple:
         plan = self._app.site_plan()
         return jsonify({"plan": plan.to_dict() if plan else None}), 200
 
-    # Reads an uploaded plan image with the AI and returns a DRAFT plan to review (nothing is saved yet).
-    # Multipart form: 'plan' image file, 'site_width_m' (real width of the whole image in metres),
-    # optional 'image_aspect' (height / width, default 0.75) and 'site_name'.
+    # Reads a plan image with the AI into a draft plan (not saved). Form: 'plan' file, 'site_width_m',
+    # optional 'image_aspect' and 'site_name'.
     def read_site_plan(self) -> tuple:
         upload = request.files.get("plan")
         problems = []
@@ -353,7 +345,7 @@ class WebApi:
             if not self._app.delete_site_plan():
                 return jsonify({"errors": ["The site plan could not be removed."]}), 500
         return jsonify({"plan": None}), 200
-    
+
     # Daniel
     def list_locations(self) -> tuple:
         return jsonify([{"location": name, "count": count} for name, count in self._app.locations()]), 200
@@ -371,8 +363,7 @@ class WebApi:
         return jsonify([self._to_json(r, records.index(r) + 1, rows=rows) for r in found]), 200
 
     # Daniel
-    # Ranked search. Query string: q (words, "phrases", #number) and the filters severity_min, hazard, outcome,
-    # location, priority, status (open or resolved), date_from, date_to (YYYY-MM-DD), has_photo.
+    # Ranked search: q plus the filters severity_min, hazard, outcome, location, priority, status, date_from, date_to, has_photo.
     def search_incidents(self) -> tuple:
         args = request.args
         filters: dict = {key: args.get(key, "").strip() for key in ("hazard", "outcome", "location", "date_from", "date_to")}

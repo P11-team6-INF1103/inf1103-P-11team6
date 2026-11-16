@@ -59,7 +59,6 @@ class JsonFile(DocumentStore):
                 pass
             return False
 
-
     # Removes the file; returns False only if it exists and cannot be removed.
     def delete(self) -> bool:
         try:

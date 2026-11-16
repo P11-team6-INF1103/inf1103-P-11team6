@@ -3,9 +3,8 @@ import re
 
 
 class IncidentSearch:
-    # Ranked free-text search over incidents as the browser sees them (the dicts from WebApi._to_json).
-    # Every search word must match somewhere (AND); a word matches the start of any word in a field.
-    # "double quotes" search for an exact phrase, and #12 or 12 finds incident number 12.
+    # Ranked free-text search. Every word must match the start of a word in some field; "quotes" match a phrase;
+    # #12 finds incident 12.
 
     # How much a match in each field is worth.
     FIELD_WEIGHTS = {

@@ -3,8 +3,8 @@ from abc import ABC, abstractmethod
 
 
 class DocumentStore(ABC):
-    # Interface for one stored JSON document. DataManager only calls these three methods, so a file and a database
-    # row are interchangeable (Liskov) and a new kind of storage is a new subclass, not a change to DataManager (open/closed).
+    # Interface for one stored JSON document. A file and a database row are interchangeable (LSP), and a new
+    # storage is a new subclass (OCP).
 
     # The stored value (an empty list or dict if there is none) and a message if something was wrong; never raises.
     @abstractmethod

@@ -110,7 +110,7 @@ Tests: `tests/test_site_plan.py` (no live AI).
 
 1. **Render** (API): New > Blueprint, pick this repo. `render.yaml` builds the Dockerfile and runs
    `gunicorn "web_api:create_app()"`. Fill in `GEMINI_API_KEY`, `GROQ_API_KEY`, and `FRONTEND_ORIGINS`
-   (your Netlify address, e.g. `https://sitesafe.netlify.app`). Check `https://<service>.onrender.com/api/health`.
+   (your Netlify address, e.g. `https://workplaceloggingsystem.netlify.app`). Check `https://<service>.onrender.com/api/health`.
 2. **Netlify** (dashboard): Add new site > Import from GitHub, pick this repo. `netlify.toml` sets base `frontend`,
    build `npm run build`, publish `dist`. Add the environment variable `VITE_API_URL=https://<service>.onrender.com`
    and redeploy.
