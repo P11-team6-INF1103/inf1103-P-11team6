@@ -20,6 +20,7 @@ from site_plan.site_plan import SitePlan
 from site_plan.site_plan_error import SitePlanError
 from trend_report import TrendReport
 from web_support.rate_limiter import RateLimiter
+from web_support.supervisor_login import SupervisorLogin
 from workflow import PRIORITY_LEVELS, WorkflowStore
 
 if TYPE_CHECKING:
@@ -34,9 +35,13 @@ class WebApi:
     # validation is InputValidator's, the pipeline is IncidentTriageApp's, wording is ReportPrinter's.
 
     # Uses the app it is given (association) and creates its own Flask server and rate limiter (composition).
-    # There are no accounts: anyone who can open the dashboard can use every route.
-    def __init__(self, app: "IncidentTriageApp", origins: list[str], post_limit: int = 10) -> None:
+    # 'login' holds the whitelisted supervisor accounts; without one they come from the environment.
+    def __init__(self, app: "IncidentTriageApp", origins: list[str], post_limit: int = 10,
+                 login: SupervisorLogin | None = None) -> None:
         self._app = app
+        self._login = login or SupervisorLogin.from_environment()
+        # Wrong passwords per connection, so nobody can keep guessing.
+        self._login_limiter = RateLimiter(10)
         self._workflow = WorkflowStore(app.database)
         self._search = IncidentSearch(ReportPrinter.HAZARD_NAMES)
         self._summary = TrendReport.standard(ReportPrinter.HAZARD_NAMES)
@@ -82,10 +87,27 @@ class WebApi:
             ("/api/site-plan/read", "POST", self.read_site_plan),
             ("/api/locations", "GET", self.list_locations),
             ("/api/locations/query", "GET", self.query_location),
+            ("/api/login", "POST", self.log_in),
         ]
         for path, method, handler in routes:
             self.flask.add_url_rule(path, f"{method}_{path}", handler, methods=[method])
         self.flask.register_error_handler(413, self._too_large)
+
+    # Darrel
+    # Body: {"username": "...", "password": "..."}. 200 with a token, 401 wrong details, 429 too many wrong tries.
+    def log_in(self) -> tuple:
+        body = request.get_json(silent=True)
+        body = body if isinstance(body, dict) else {}
+        client = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+        if self._login_limiter.is_blocked(client):
+            return jsonify({"errors": ["Too many wrong logins from this connection. Try again in a few minutes."]}), 429
+        username, password = body.get("username"), body.get("password")
+        if not self._login.check(username, password):
+            self._login_limiter.too_many(client)
+            return jsonify({"errors": ["Wrong username or password."]}), 401
+        name = username.strip().lower()
+        return jsonify({"token": self._login.issue(name), "username": name,
+                        "expires_in": SupervisorLogin.SESSION_SECONDS}), 200
 
     # One saved version (a dict from an incident's history) as the browser sees it: no server paths.
     @staticmethod
