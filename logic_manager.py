@@ -15,7 +15,7 @@ class LogicManager:
     # Darrel
     # Whole-word match only: "window" must not count as "wind", or "shot" as "hot".
     _WEATHER_WORDS = re.compile(
-        r"\b(rain|rains|raining|rainy|rained|wet|storm|storms|stormy|wind|winds|windy|"
+        r"\b(rain|rains|raining|rainy|rained|storm|storms|stormy|wind|winds|windy|"
         r"flood|floods|flooded|flooding|lightning|thunder|thunderstorm|thunderstorms|"
         r"haze|hazy|hot|heat|humid|humidity)\b",
         re.IGNORECASE,
