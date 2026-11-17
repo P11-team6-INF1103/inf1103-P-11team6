@@ -1,13 +1,27 @@
 # Darrel
+import logging
+import re
+
 import pytest
 
+import web_support.supervisor_login as login_module
+from database import Database
 from tests.api_helpers import FORM, SUPERVISOR, log_in, make_client
+from web_support.account_store import AccountStore
 from web_support.supervisor_login import SupervisorLogin
 
 
+# Two accounts in a throwaway database, for the tests that only look at SupervisorLogin itself.
 @pytest.fixture
-def login():
-    return SupervisorLogin({"Supervisor": "123", "manager": "s3cret"}, "test-secret")
+def store(tmp_path):
+    accounts = AccountStore(Database(str(tmp_path / "accounts.db")))
+    accounts.seed({"Supervisor": "123", "manager": "s3cret"})
+    return accounts
+
+
+@pytest.fixture
+def login(store):
+    return SupervisorLogin(store, "test-secret")
 
 
 # A client that has not logged in yet, with one incident already saved.
@@ -30,28 +44,56 @@ def test_accounts_come_from_a_comma_separated_list():
         {"supervisor": "123", "boss": "a:b"}
 
 
-def test_default_account_is_used_when_none_are_configured(monkeypatch):
-    monkeypatch.delenv("DASHBOARD_ACCOUNTS", raising=False)
-    assert SupervisorLogin.from_environment().check("supervisor", "123")
+def test_accounts_from_the_environment_are_saved_as_hashes_in_the_database(tmp_path, monkeypatch):
+    monkeypatch.setenv("DASHBOARD_ACCOUNTS", "lead:pass1,second:pass2")
+    database = Database(str(tmp_path / "accounts.db"))
+    login = SupervisorLogin.from_environment(AccountStore(database))
+    assert login.check("lead", "pass1") and login.check("Second", "pass2") and not login.check("lead", "pass2")
+    with database.connect() as connection:
+        rows = connection.execute("SELECT name, data FROM documents WHERE name LIKE 'account:%'").fetchall()
+    assert sorted(row["name"] for row in rows) == ["account:lead", "account:second"]
+    assert all("pass1" not in row["data"] and "pass2" not in row["data"] for row in rows)
+
+
+def test_accounts_survive_a_restart_and_a_changed_password_replaces_the_old_one(tmp_path, monkeypatch):
+    database = Database(str(tmp_path / "accounts.db"))
     monkeypatch.setenv("DASHBOARD_ACCOUNTS", "lead:pass1")
-    configured = SupervisorLogin.from_environment()
-    assert configured.check("lead", "pass1") and not configured.check("supervisor", "123")
+    SupervisorLogin.from_environment(AccountStore(database))
+    monkeypatch.delenv("DASHBOARD_ACCOUNTS")
+    restarted = SupervisorLogin.from_environment(AccountStore(database))  # a new server, same database
+    assert restarted.check("lead", "pass1")
+    monkeypatch.setenv("DASHBOARD_ACCOUNTS", "lead:changed")
+    assert SupervisorLogin.from_environment(AccountStore(database)).check("lead", "changed")
+    assert not restarted.check("lead", "pass1")
 
 
-def test_each_developer_has_a_default_account(monkeypatch):
+def test_a_fresh_install_gets_one_random_password_shown_once_and_no_default(tmp_path, monkeypatch, caplog):
     monkeypatch.delenv("DASHBOARD_ACCOUNTS", raising=False)
-    login = SupervisorLogin.from_environment()
-    for name in ("darrel", "lennart", "daniel", "ren xiang", "Ren Xiang", "sufi", "Darrel"):
-        assert login.check(name, "123"), name
-    assert not login.check("darrel", "wrong") and not login.check("guest", "123")
+    store = AccountStore(Database(str(tmp_path / "accounts.db")))
+    with caplog.at_level(logging.WARNING, logger="web_support.supervisor_login"):
+        login = SupervisorLogin.from_environment(store)
+    shown = re.search(r"password (\S+) \(shown only now\)", caplog.text)
+    assert shown and login.check("supervisor", shown.group(1))
+    assert not login.check("supervisor", "123") and store.count() == 1
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="web_support.supervisor_login"):
+        SupervisorLogin.from_environment(store)  # accounts exist now: nothing is created or logged
+    assert caplog.text == "" and store.count() == 1
 
 
-def test_tokens_are_signed_and_tied_to_a_whitelisted_account(login):
+def test_the_source_holds_no_default_account_or_password():
+    assert not hasattr(login_module, "_DEFAULT_ACCOUNTS")
+    with open(login_module.__file__, encoding="utf-8") as source:
+        assert "123" not in source.read()
+
+
+def test_tokens_are_signed_and_tied_to_a_whitelisted_account(login, store):
     token = login.issue("Supervisor")
     assert login.verify(token) == "supervisor"
     assert login.verify(token + "x") is None and login.verify("") is None and login.verify(None) is None
-    assert SupervisorLogin({"supervisor": "123"}, "other-secret").verify(token) is None
-    assert SupervisorLogin({"manager": "s3cret"}, "test-secret").verify(token) is None  # account removed
+    assert SupervisorLogin(store, "other-secret").verify(token) is None
+    store.remove("supervisor")
+    assert login.verify(token) is None  # account removed
 
 
 def test_tokens_run_out(login, monkeypatch):

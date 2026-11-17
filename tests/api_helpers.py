@@ -14,7 +14,7 @@ from web_api import WebApi
 
 FORM = {"description": "Scaffold plank fell from level 4 near a worker", "location": "Site B",
         "reporter_role": "safety_officer", "injury": "true"}
-# The account WebApi whitelists when DASHBOARD_ACCOUNTS is not set.
+# A test account that tests/conftest.py puts in DASHBOARD_ACCOUNTS (it also adds darrel).
 SUPERVISOR = {"username": "supervisor", "password": "123"}
 
 

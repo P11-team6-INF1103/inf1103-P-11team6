@@ -11,6 +11,9 @@ def _offline(tmp_path, monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "")
     monkeypatch.setenv("DATABASE_URL", "")  # tests must never touch a real database
     monkeypatch.setenv("INCIDENT_DATA_DIR", str(tmp_path / "data"))
+    # The one account the web tests log in with. Real accounts are never in the source: they live in the database,
+    # filled from this variable.
+    monkeypatch.setenv("DASHBOARD_ACCOUNTS", "supervisor:123,darrel:123")
 
     def no_network(*args, **kwargs):
         raise requests.ConnectionError("network blocked in tests")
