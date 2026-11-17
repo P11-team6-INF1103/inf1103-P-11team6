@@ -84,6 +84,8 @@ class LogicManager:
 
     # Darrel
     # Adds what needs no API: weather relevance, which lookups to run, time of day and monsoon season.
+    # The lookup choice is the Part 1 rule, kept on purpose: an incident that mentions weather gets the weather
+    # lookup, any other incident gets the similar-incidents lookup.
     def derive_context(self, incident: Incident) -> None:
         relevant = self.is_weather_relevant(incident)
         incident.update({
