@@ -81,7 +81,7 @@ npm install
 npm run dev -- --host 127.0.0.1
 ```
 
-Log in first (for example `darrel` / `123`, see [Login](#login)). Pages: **Overview** (stat cards, incidents-vs-severity chart, hazard donut, outcomes, recent incidents; type in the search
+Log in first (see [Login](#login) for where the accounts come from). Pages: **Overview** (stat cards, incidents-vs-severity chart, hazard donut, outcomes, recent incidents; type in the search
 bar at the top to see ranked search results here), **Log and Incident** (the log form with photo drag & drop and the AI report,
 with the triage queue of open incidents under it), **Incidents** (filter, click a row for the full report and photo, delete),
 **Summary report**, **Site map** (the 2D pin board, see below, with the locations: query by place and days, and the saved places
@@ -151,10 +151,16 @@ Every endpoint except `GET /api/health` and `POST /api/login` answers 401 unless
 The dashboard shows a login page first and keeps the token for 8 hours. There is no sign-up: the accounts are a fixed
 list (`SupervisorLogin`).
 
-- `DASHBOARD_ACCOUNTS` sets the accounts as `name:password,name2:password2`. Left empty, the demo accounts are
-  `supervisor`, `darrel`, `lennart`, `daniel`, `ren xiang` and `sufi`, all with password `123` (set real ones on Render).
+- **Where the accounts live:** in the database, one row per account (`account:<name>` in the `documents` table), holding a
+  password **hash** only (`AccountStore`). No password is written in the source code, a file or the repository.
+- `DASHBOARD_ACCOUNTS` (`name:password,name2:password2`) is how you put accounts into the database: at every start-up each
+  pair is saved there, hashed, and a password you changed in the variable replaces the old one. Once saved, the accounts stay
+  in the database even if you remove the variable.
+- On a fresh install with no accounts and no `DASHBOARD_ACCOUNTS`, the server creates one account, `supervisor`, with a random
+  password and writes it to the log **once** (`docker logs <container>`, or the Render logs). Use it to log in, or set
+  `DASHBOARD_ACCOUNTS` and restart to choose your own.
 - `AUTH_SECRET` signs the tokens; Render generates it. Without it a random key is used, so logins end on a restart.
-- Passwords are kept only as hashes, and 10 wrong passwords from one connection are blocked for 10 minutes.
+- Passwords are never kept in plain text, and 10 wrong passwords from one connection are blocked for 10 minutes.
 
 Also set `FRONTEND_ORIGINS` so only your dashboard can call the API from a browser. Incident creation is still rate
 limited per connection.
@@ -170,6 +176,19 @@ docker run -it --env-file .env -v "$(pwd)/data:/app/data" -v "$(pwd)/photos:/app
 Put photos in the `photos/` folder and type `photos/<file name>` at the photo prompt.
 The `data` mount keeps saved incidents between runs. To use a database instead of local files, put `DATABASE_URL` in `.env`.
 Step-by-step instructions for every way of running it are in [HOW_TO_RUN.md](HOW_TO_RUN.md).
+
+## Who is who in the Git history
+
+Team members committed from several machines, so the same person can appear under more than one name in `git log`.
+`.mailmap` joins them; `git shortlog -sne` shows the merged names. GitHub's own commit list does not read `.mailmap`.
+
+| Team member | Student ID | Names and e-mails seen in the history |
+|---|---|---|
+| Lennart Chua | 2603230 | `Lennart Chua`, `lennart chua`, `lennartchua59` |
+| Lim You Meng Darrel | 2605750 | `DarrelLYM`, and `your_email@example.com` (a placeholder name; the e-mail on those commits is Darrel's) |
+| Yak Ren Xiang | 2604751 | `YakreCoder` (school and personal e-mail) |
+| Daniel Seng Chay Jay | 2601953 | `t0tally-pr0fessional` |
+| Sufi Rusyaidi Bin Kusni | 2605781 | `Sufi`, `m0z-Zy` |
 
 ## Run the tests
 
@@ -213,7 +232,7 @@ IOManager  ->  IncidentTriageApp  ->  AIManager  ->  LogicManager  ->  DataManag
 ```
 
 **One class per file.** The course rule is one class per `.py` file, so each manager file holds only its manager class and
-the classes it uses live in a folder beside it. `tests/test_app.py` fails if any Python file holds a second class.
+the classes it uses live in a folder beside it. `tests/test_structure.py` fails if any Python file holds a second class or a function outside a class.
 
 | File | Class in it | Job |
 |---|---|---|
@@ -235,7 +254,7 @@ the classes it uses live in a folder beside it. `tests/test_app.py` fails if any
 | `reports/` | `ReportSection` (interface), `OverviewSection`, `RankingSection`, `LocationRankingSection`, `HazardRankingSection`, `SeverityTrendSection`, `IncidentFacts` | One file per report section. A new section is a new file. |
 | `site_plan/` | `SitePlan`, `SiteElement`, `SitePlanError`, `ElementKind` | The validated site plan. `element_kinds.py` lists the ten kinds as objects. |
 | `web_api.py` | `WebApi` | REST layer for the React GUI. No business rules: reuses `InputValidator`, `IncidentTriageApp` and `ReportPrinter`. |
-| `web_support/` | `RateLimiter`, `SupervisorLogin`, `ProfileStore` | The per-client request budget; the whitelisted accounts, hashed passwords and signed login tokens; each account's profile picture (one database document per account). |
+| `web_support/` | `RateLimiter`, `AccountStore`, `SupervisorLogin`, `ProfileStore` | The per-client request budget; the login accounts (one database row each, password hash only); the login check and signed tokens; each account's profile picture (one database document per account). |
 | `search_engine.py`, `workflow.py`, `migrate_to_database.py` | `IncidentSearch`, `WorkflowStore`, `Migration` | One class each. |
 | `run_tests.py`, `test_runner/` | `CommandLine`; `Check`, `CommandCheck`, `PytestCheck`, `Runner`, `Plan`, `OwnershipMap`, `Result` | The offline test runner. |
 | `frontend/` | React components | The dashboard (Netlify). |
@@ -243,7 +262,8 @@ the classes it uses live in a folder beside it. `tests/test_app.py` fails if any
 ### Data flow for one incident
 
 1. `IOManager.get_incident_input()` validates the typed fields and the optional photo, and returns an `Incident`.
-2. `LogicManager.derive_context()` adds time of day, monsoon season and which look-ups to run.
+2. `LogicManager.derive_context()` adds time of day, monsoon season and which look-ups to run (the Part 1 rule, kept on
+   purpose: an incident that mentions weather gets the weather look-up, any other incident gets the similar-incidents look-up).
 3. `AIManager.extract_hazards()`: Gemini reads the description (hazard type, injury, PPE, equipment, height).
 4. `LogicManager.screen_incident()` rejects text the AI says is not a real incident.
 5. `AIManager.gather_evidence()` runs **in parallel**: photo analysis, weather, similar past incidents, web search.
@@ -380,8 +400,14 @@ classDiagram
         +photo(username) tuple
         +delete_photo(username) bool
     }
+    class AccountStore {
+        +add(name, password) bool
+        +seed(accounts) int
+        +exists(name) bool
+        +check(name, password) bool
+    }
     class SupervisorLogin {
-        +from_environment()$ SupervisorLogin
+        +from_environment(accounts)$ SupervisorLogin
         +check(username, password) bool
         +issue(username) str
         +verify(token) str
@@ -424,6 +450,8 @@ classDiagram
     WebApi --> IncidentTriageApp
     WebApi *-- RateLimiter
     WebApi o-- SupervisorLogin
+    SupervisorLogin o-- AccountStore
+    AccountStore --> Database
     WebApi *-- ProfileStore
     ProfileStore --> Database
     WebApi *-- WorkflowStore

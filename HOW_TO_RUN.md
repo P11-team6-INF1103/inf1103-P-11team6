@@ -66,7 +66,10 @@ npm run dev -- --host 127.0.0.1
 Open **http://127.0.0.1:5173** in Chrome. Use `127.0.0.1`, not `localhost`.
 
 - The dashboard starts empty. Go to **Log incident** to add one (takes 20-60 seconds).
-- There is no login: the dashboard opens straight away.
+- The dashboard opens on a login page. Accounts are kept in the database (password hash only). Put
+  `DASHBOARD_ACCOUNTS=name:password,name2:password2` in `.env` before starting Terminal 1 to create your own. If you set
+  nothing, Terminal 1 creates an account `supervisor` with a random password and prints it **once** in its log: copy it then.
+- The terminal app and the batch run (sections 1 and 2) have no login.
 - Press `Ctrl + C` in each terminal to stop.
 
 To use the hosted API instead of Terminal 1:

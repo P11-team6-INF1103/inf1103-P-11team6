@@ -19,6 +19,7 @@ from search_engine import IncidentSearch
 from site_plan.site_plan import SitePlan
 from site_plan.site_plan_error import SitePlanError
 from trend_report import TrendReport
+from web_support.account_store import AccountStore
 from web_support.profile_store import ProfileStore
 from web_support.rate_limiter import RateLimiter
 from web_support.supervisor_login import SupervisorLogin
@@ -43,11 +44,12 @@ class WebApi:
                     "/api/profile/photo"}
 
     # Uses the app it is given (association) and creates its own Flask server and rate limiter (composition).
-    # 'login' holds the whitelisted supervisor accounts; without one they come from the environment.
+    # 'login' holds the whitelisted supervisor accounts; without one they are read from the database (AccountStore),
+    # which DASHBOARD_ACCOUNTS fills.
     def __init__(self, app: "IncidentTriageApp", origins: list[str], post_limit: int = 10,
                  login: SupervisorLogin | None = None) -> None:
         self._app = app
-        self._login = login or SupervisorLogin.from_environment()
+        self._login = login or SupervisorLogin.from_environment(AccountStore(app.database))
         # Wrong passwords per connection, so nobody can keep guessing.
         self._login_limiter = RateLimiter(10)
         self._workflow = WorkflowStore(app.database)
