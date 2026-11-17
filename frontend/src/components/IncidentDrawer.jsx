@@ -46,7 +46,7 @@ export default function IncidentDrawer({ incident: summary, initialMode = "repor
   async function saveEdit(data) {
     let saved;
     try {
-      saved = await api.editIncident(incident.id, data);
+      saved = await api.editIncident(incident.id, data, incident.timestamp);
     } catch (err) {
       const kept = err.body?.kept_version;
       throw new Error(kept ? `${err.message} The old version (version ${kept}) was kept.` : err.message);
@@ -61,7 +61,7 @@ export default function IncidentDrawer({ incident: summary, initialMode = "repor
 
   async function revert(version) {
     try {
-      showChange(await api.revertIncident(incident.id, version));
+      showChange(await api.revertIncident(incident.id, version, incident.timestamp));
     } catch (err) {
       setNotice(err.message);
       setMode("report");
@@ -73,7 +73,7 @@ export default function IncidentDrawer({ incident: summary, initialMode = "repor
   async function reanalyse() {
     setBusy(true);
     try {
-      await api.reanalyseIncident(incident.id);
+      await api.reanalyseIncident(incident.id, incident.timestamp);
       onChanged();
     } catch (err) {
       const kept = err.body?.kept_version;

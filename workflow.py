@@ -44,7 +44,11 @@ class WorkflowStore:
     def set_priority(self, key: str, priority: int | None) -> None:
         self._upsert(key, priority=priority)
 
+    # Resolving an incident that is already resolved changes nothing, so a second click (or a second supervisor) cannot
+    # replace the first person's note and time.
     def resolve(self, key: str, note: str = "") -> None:
+        if self.all().get(key, {}).get("resolved"):
+            return
         self._upsert(key, resolved=1, resolved_at=datetime.now().isoformat(),
                      resolution_note=note or None)
 

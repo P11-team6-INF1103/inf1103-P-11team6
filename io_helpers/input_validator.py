@@ -77,20 +77,20 @@ class InputValidator:
         for key, check in (("description", cls.check_description), ("location", cls.check_location),
                            ("reporter_role", cls.check_role)):
             value = cls.sanitise(item[key]) if isinstance(item.get(key), str) else None
-            error = "missing" if value is None else check(value)
+            error = f"{key.replace('_', ' ').capitalize()} is missing." if value is None else check(value)
             if error:
-                bad.append(f"{key} ({error})")
+                bad.append(error)
             fields[key] = value
         injury = item.get("injury")
         if isinstance(injury, str) and injury.strip().lower() in ("yes", "y", "no", "n", "true", "false"):
             injury = injury.strip().lower() in ("yes", "y", "true")
         if not isinstance(injury, bool):
-            bad.append("injury (true/false)")
+            bad.append("Injury must be true or false.")
         fields["injury"] = injury
         timestamp = item.get("timestamp") or datetime.now().isoformat()
         try:
             datetime.fromisoformat(timestamp)
         except (TypeError, ValueError):
-            bad.append("timestamp (ISO format)")
+            bad.append("Timestamp must be in ISO format, e.g. 2026-10-31T09:00:00.")
         fields["timestamp"] = timestamp
         return fields, bad

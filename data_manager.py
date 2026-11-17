@@ -233,9 +233,10 @@ class DataManager:
         except (TypeError, ValueError):
             reference = datetime.now()
         cutoff = reference - timedelta(days=days)
+        wanted = self.location_key(location)
         matches = []
         for incident in self.load_records() if records is None else records:
-            if incident.location != location:
+            if self.location_key(incident.location) != wanted:
                 continue
             try:
                 when = datetime.fromisoformat(incident.timestamp)
@@ -246,11 +247,20 @@ class DataManager:
         matches.sort(key=lambda item: item.timestamp, reverse=True)
         return matches
 
-    # Saved locations with their incident counts, sorted by name.
+    # A location name with case and extra spaces ignored, so 'Site B', 'site b' and ' Site  B ' are one place.
+    @staticmethod
+    def location_key(location: object) -> str:
+        return " ".join(location.split()).casefold() if isinstance(location, str) else ""
+
+    # Saved locations with their incident counts, sorted by name. Spellings of one place are counted together and shown
+    # under the spelling used most often (the first one seen if tied).
     def list_locations(self, records: list[Incident] | None = None) -> list[tuple[str, int]]:
-        counts = {}
+        spellings: dict[str, dict[str, int]] = {}
         for incident in self.load_records() if records is None else records:
-            location = incident.location
-            if isinstance(location, str) and location.strip():
-                counts[location] = counts.get(location, 0) + 1
-        return sorted(counts.items(), key=lambda item: (item[0].lower(), item[0]))
+            key = self.location_key(incident.location)
+            if key:
+                name = " ".join(incident.location.split())
+                spellings.setdefault(key, {})
+                spellings[key][name] = spellings[key].get(name, 0) + 1
+        counts = [(max(names, key=names.get), sum(names.values())) for names in spellings.values()]
+        return sorted(counts, key=lambda item: (item[0].lower(), item[0]))

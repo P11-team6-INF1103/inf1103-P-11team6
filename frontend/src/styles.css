@@ -133,7 +133,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 table { width: 100%; border-collapse: collapse; }
 th { text-align: left; color: var(--muted); font-weight: 400; font-size: 12px; padding: 8px 10px; }
 td { padding: 11px 10px; border-top: 1px solid var(--border); white-space: nowrap; }
-td.wrap { white-space: normal; min-width: 220px; color: var(--muted); }
+td.wrap { white-space: normal; min-width: 180px; color: var(--muted); }
+/* Let the date and the action label wrap, so the Edit and Delete buttons stay inside the card on a laptop screen. */
+td.c-when { white-space: normal; min-width: 110px; }
+td.c-act .pill { white-space: normal; text-align: center; }
 tbody tr { cursor: pointer; }
 tbody tr:hover td { background: var(--card-hover); }
 .empty { color: var(--muted); text-align: center; padding: 30px; }

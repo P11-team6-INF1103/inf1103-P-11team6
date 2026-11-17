@@ -144,6 +144,15 @@ its disk is wiped on restart, so saved incidents are lost. Open the dashboard a 
 | `GET /api/reports/summary?days=7` | The trend and summary report, `days` 1 to 180; add `&format=csv` to download it as a spreadsheet |
 | `GET /api/locations`, `GET /api/locations/query?location=&days=` | Saved locations / incidents at one location in N days |
 
+### Changing an incident safely
+
+Incident numbers are positions in the list, so deleting one renumbers the rest. Every change (`PATCH`, `DELETE`, `revert`,
+`reanalyse`, `priority`, `resolve`, `reopen`) therefore accepts `?timestamp=<the incident's timestamp>`, which the dashboard
+always sends. If the incident now at that number has another timestamp, the server answers **409** and changes nothing, so a
+stale page or a second supervisor cannot delete or resolve a different incident. Scripts may leave the parameter out.
+Location names are matched ignoring case and extra spaces (`Site B` and `site b` are one place), resolving an incident that is
+already resolved keeps the first note, and unknown addresses answer in JSON.
+
 ### Login
 
 Every endpoint except `GET /api/health` and `POST /api/login` answers 401 unless the request carries a login token

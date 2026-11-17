@@ -61,6 +61,14 @@ export default function App() {
     await loadIncidents();
   }
 
+  // Shown after a few seconds of waiting, so a sleeping server does not look like a frozen page.
+  const [slowStart, setSlowStart] = useState(false);
+  useEffect(() => {
+    if (user !== undefined) return undefined;
+    const timer = setTimeout(() => setSlowStart(true), 5000);
+    return () => clearTimeout(timer);
+  }, [user]);
+
   // Darrel
   // Checks the saved login on start and whenever someone logs in or out, or the server says the login ran out.
   useEffect(() => {
@@ -100,7 +108,7 @@ export default function App() {
 
   async function handleDelete(incident) {
     try {
-      await api.deleteIncident(incident.id);
+      await api.deleteIncident(incident.id, incident.timestamp);
       setSelected(null);
       setIncidents((current) => current.filter((i) => i.id !== incident.id)); // drop the row now; the reload below renumbers
       await loadIncidents();
@@ -110,7 +118,16 @@ export default function App() {
   }
 
   // Darrel
-  if (user === undefined) return <div className="login-page"><div className="empty">Checking your login...</div></div>;
+  if (user === undefined) {
+    return (
+      <div className="login-page">
+        <div className="empty">
+          Checking your login...
+          {slowStart && <div>The server is on a free plan and may be waking up. This can take up to a minute.</div>}
+        </div>
+      </div>
+    );
+  }
   if (!user) {
     return <SupervisorLogin notice={loginNotice} onLogin={(name) => { setLoginNotice(null); setUser(name); }} />;
   }

@@ -38,8 +38,9 @@ def enriched(injury=True, **changes):
 
 # Darrel
 def test_weather_relevance_is_whole_word(logic):
-    assert logic.is_weather_relevant(make("Worker slipped on wet floor"))
+    assert logic.is_weather_relevant(make("Worker slipped on the path in heavy rain"))
     assert logic.is_weather_relevant(make("Lightning struck the crane"))
+    assert not logic.is_weather_relevant(make("Worker slipped on wet floor"))  # a wet floor is not weather
     assert not logic.is_weather_relevant(make("Hit by a window frame"))
     assert not logic.is_weather_relevant(make("Shot-blasting dust in the room"))
 
@@ -58,10 +59,13 @@ def test_time_of_day_season_and_lighting():
 
 # Darrel
 def test_derive_context_plans_the_lookups(logic):
-    incident = make("Worker slipped on wet floor", timestamp="2026-09-27T20:44:10")
+    incident = make("Worker slipped on the path in heavy rain", timestamp="2026-09-27T20:44:10")
     logic.derive_context(incident)
     assert incident.get("run_weather") is True and incident.get("run_similar") is False
     assert incident.get("time_of_day") == "night"
+    indoor = make("Worker slipped on wet floor", timestamp="2026-09-27T20:44:10")
+    logic.derive_context(indoor)
+    assert indoor.get("run_weather") is False and indoor.get("run_similar") is True
 
 
 # Darrel

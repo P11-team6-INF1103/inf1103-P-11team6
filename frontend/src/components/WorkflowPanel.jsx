@@ -47,13 +47,13 @@ export default function WorkflowPanel({ incident, meta, onChanged }) {
           <div className="field">
             <label>Priority {incident.priority_source === "auto" && "(suggested from the severity)"}</label>
             <select className="input" value={incident.priority_source === "manual" ? incident.priority : "auto"} disabled={busy}
-                    onChange={(e) => run(() => api.setPriority(incident.id, e.target.value === "auto" ? null : Number(e.target.value)))}>
+                    onChange={(e) => run(() => api.setPriority(incident.id, e.target.value === "auto" ? null : Number(e.target.value), incident.timestamp))}>
               <option value="auto">Automatic (P{incident.priority_source === "auto" ? incident.priority : "?"})</option>
               {Object.entries(levels).map(([level, name]) => <option key={level} value={level}>P{level} {name}</option>)}
             </select>
           </div>
           {incident.resolved ? (
-            <button className="btn" disabled={busy} onClick={() => run(() => api.reopenIncident(incident.id))}>
+            <button className="btn" disabled={busy} onClick={() => run(() => api.reopenIncident(incident.id, incident.timestamp))}>
               <RotateCcw size={14} /> Reopen
             </button>
           ) : (
@@ -63,7 +63,7 @@ export default function WorkflowPanel({ incident, meta, onChanged }) {
                 <input className="input" maxLength={500} value={note} placeholder="What was done to fix it?"
                        onChange={(e) => setNote(e.target.value)} />
               </div>
-              <button className="btn primary" disabled={busy} onClick={() => run(() => api.resolveIncident(incident.id, note))}>
+              <button className="btn primary" disabled={busy} onClick={() => run(() => api.resolveIncident(incident.id, note, incident.timestamp))}>
                 <CheckCircle2 size={14} /> Mark as resolved
               </button>
             </>
