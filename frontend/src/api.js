@@ -22,6 +22,10 @@ function setToken(value) {
 // Photos and downloads open as links, which cannot send the login header, so the token goes in the address.
 const withToken = (url) => `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
 
+// Incident numbers are positions in the list, so a delete renumbers the rest. Every change therefore also sends the
+// incident's own timestamp; the server refuses (409) if the incident now at that number is a different one.
+const stamped = (path, timestamp) => (timestamp ? `${path}?timestamp=${encodeURIComponent(timestamp)}` : path);
+
 const json = (method, body) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
 async function request(path, options = {}) {
@@ -60,21 +64,21 @@ export const api = {
   incident: (id) => request(`/api/incidents/${id}`),
   createIncident: (form) => request("/api/incidents", { method: "POST", body: form }),
   // form is a FormData with any of the same fields, plus remove_photo=true; the AI runs again if anything changed
-  editIncident: (id, form) => request(`/api/incidents/${id}`, { method: "PATCH", body: form }),
-  revertIncident: (id, version) => request(`/api/incidents/${id}/revert`, {
+  editIncident: (id, form, timestamp) => request(stamped(`/api/incidents/${id}`, timestamp), { method: "PATCH", body: form }),
+  revertIncident: (id, version, timestamp) => request(stamped(`/api/incidents/${id}/revert`, timestamp), {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ version }),
   }),
   // Runs the AI again on the incident as saved (no form data) and saves the result as a new version
-  reanalyseIncident: (id) => request(`/api/incidents/${id}/reanalyse`, { method: "POST" }),
-  deleteIncident: (id) => request(`/api/incidents/${id}`, { method: "DELETE" }),
+  reanalyseIncident: (id, timestamp) => request(stamped(`/api/incidents/${id}/reanalyse`, timestamp), { method: "POST" }),
+  deleteIncident: (id, timestamp) => request(stamped(`/api/incidents/${id}`, timestamp), { method: "DELETE" }),
   // version is optional: leave it out for the current photo
   photoUrl: (id, version) => withToken(`${API_URL}/api/incidents/${id}/photo${version ? `?version=${version}` : ""}`),
   // params: q, severity_min, hazard, outcome, location, priority, status, date_from, date_to, has_photo
   search: (params) => request(`/api/incidents/search?${new URLSearchParams(
     Object.entries(params).filter(([, v]) => v !== "" && v !== false && v != null)).toString()}`),
-  setPriority: (id, priority) => request(`/api/incidents/${id}/priority`, json("PUT", { priority })),
-  resolveIncident: (id, note) => request(`/api/incidents/${id}/resolve`, json("POST", { note })),
-  reopenIncident: (id) => request(`/api/incidents/${id}/reopen`, { method: "POST" }),
+  setPriority: (id, priority, timestamp) => request(stamped(`/api/incidents/${id}/priority`, timestamp), json("PUT", { priority })),
+  resolveIncident: (id, note, timestamp) => request(stamped(`/api/incidents/${id}/resolve`, timestamp), json("POST", { note })),
+  reopenIncident: (id, timestamp) => request(stamped(`/api/incidents/${id}/reopen`, timestamp), { method: "POST" }),
   // The trend and summary report for the last `days` days; the CSV link downloads the same report.
   summary: (days) => request(`/api/reports/summary?days=${days}`),
   // Every saved incident as a file for reference; format is "csv" or "json"

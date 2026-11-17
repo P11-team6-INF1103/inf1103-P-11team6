@@ -109,6 +109,8 @@ class WebApi:
             self.flask.add_url_rule(path, f"{method}_{path}", handler, methods=[method])
         self.flask.before_request(self._require_login)
         self.flask.register_error_handler(413, self._too_large)
+        self.flask.register_error_handler(404, self._not_found)
+        self.flask.register_error_handler(405, self._not_allowed)
 
     # Darrel
     # The supervisor named by the request's "Authorization: Bearer <token>" header (or ?token= on a link route), or None.
@@ -214,6 +216,20 @@ class WebApi:
         records = self._app.records
         return records[number - 1] if 1 <= number <= len(records) else None
 
+    # Incident numbers are positions in the list, so a delete renumbers the rest. The dashboard therefore sends
+    # ?timestamp=<the incident's own timestamp> with every change: if the incident now at that number has another
+    # timestamp, the list changed since the page loaded, and nothing is changed. Without the parameter (scripts, tests)
+    # the number alone is used.
+    @staticmethod
+    def _stale(incident: Incident) -> bool:
+        expected = request.args.get("timestamp", "")
+        return bool(expected) and expected != incident.timestamp
+
+    @staticmethod
+    def _stale_response() -> tuple:
+        message = "This incident was changed or removed since you loaded the page. Refresh the list and try again."
+        return jsonify({"errors": [message]}), 409
+
     # The caller's address. Takes the LAST X-Forwarded-For value: the one our own proxy (Render) added, which a client cannot fake.
     @staticmethod
     def _client_address() -> str:
@@ -222,6 +238,15 @@ class WebApi:
     @staticmethod
     def _too_large(_error: Exception) -> tuple:
         return jsonify({"errors": ["The photo is larger than 5 MB. Please use a smaller photo."]}), 413
+
+    # An unknown address or a wrong method answers in JSON like every other error, not with an HTML page.
+    @staticmethod
+    def _not_found(_error: Exception) -> tuple:
+        return jsonify({"errors": ["Not found."]}), 404
+
+    @staticmethod
+    def _not_allowed(_error: Exception) -> tuple:
+        return jsonify({"errors": ["That method is not allowed here."]}), 405
 
     def health(self) -> tuple:
         return jsonify({"status": "ok", "incidents": len(self._app.records)}), 200
@@ -241,8 +266,11 @@ class WebApi:
 
     # Re-runs the AI on a saved incident and saves a new version. 200, 404 unknown, 422 rejected, 429 rate limit, 502 AI failed.
     def reanalyse_incident(self, number: int) -> tuple:
-        if self._find(number) is None:
+        incident = self._find(number)
+        if incident is None:
             return jsonify({"errors": [f"No incident #{number}."]}), 404
+        if self._stale(incident):
+            return self._stale_response()
         client = self._client_address()
         if self._limiter.too_many(client):
             return jsonify({"errors": ["Too many incidents from this connection. Try again in a few minutes."]}), 429
@@ -312,6 +340,8 @@ class WebApi:
         old = self._find(number)
         if old is None:
             return jsonify({"errors": [f"No incident #{number}."]}), 404
+        if self._stale(old):
+            return self._stale_response()
         form, upload = self._read_form()
         current = {"description": old.description, "location": old.location,
                    "reporter_role": old.get("reporter_role"), "injury": old.injury}
@@ -357,8 +387,11 @@ class WebApi:
 
     # Copies an older version in as the newest one. Body: {"version": 1}. No AI call.
     def revert_incident(self, number: int) -> tuple:
-        if self._find(number) is None:
+        incident = self._find(number)
+        if incident is None:
             return jsonify({"errors": [f"No incident #{number}."]}), 404
+        if self._stale(incident):
+            return self._stale_response()
         body = request.get_json(silent=True)
         version = body.get("version") if isinstance(body, dict) else None
         if not isinstance(version, int) or isinstance(version, bool):
@@ -372,6 +405,8 @@ class WebApi:
             incident = self._find(number)
             if incident is None:
                 return jsonify({"errors": [f"No incident #{number}."]}), 404
+            if self._stale(incident):
+                return self._stale_response()
             if not self._app.remove_incident(number - 1):
                 return jsonify({"errors": ["The data file could not be updated."]}), 500
             self._workflow.delete(incident.timestamp)
@@ -474,9 +509,15 @@ class WebApi:
     def search_incidents(self) -> tuple:
         args = request.args
         filters: dict = {key: args.get(key, "").strip() for key in ("hazard", "outcome", "location", "date_from", "date_to")}
-        filters["status"] = args.get("status", "") if args.get("status") in ("open", "resolved") else ""
-        filters["has_photo"] = args.get("has_photo", "").lower() in ("true", "1", "yes")
         problems = []
+        status = args.get("status", "")
+        if status not in ("", "open", "resolved"):
+            problems.append("status must be open or resolved.")
+        filters["status"] = status if status in ("open", "resolved") else ""
+        has_photo = args.get("has_photo", "").lower()
+        if has_photo not in ("", "true", "false", "1", "0", "yes", "no"):
+            problems.append("has_photo must be true or false.")
+        filters["has_photo"] = has_photo in ("true", "1", "yes")
         for key, low, high in (("severity_min", 1, 5), ("priority", 1, 4)):
             raw = args.get(key, "")
             if raw == "":
@@ -520,6 +561,8 @@ class WebApi:
         incident = self._find(number)
         if incident is None:
             return jsonify({"errors": [f"No incident #{number}."]}), 404
+        if self._stale(incident):
+            return self._stale_response()
         body = request.get_json(silent=True)
         priority = body.get("priority") if isinstance(body, dict) else "bad"
         if priority is not None and (not isinstance(priority, int) or isinstance(priority, bool)
@@ -533,6 +576,8 @@ class WebApi:
         incident = self._find(number)
         if incident is None:
             return jsonify({"errors": [f"No incident #{number}."]}), 404
+        if self._stale(incident):
+            return self._stale_response()
         body = request.get_json(silent=True)
         note = InputValidator.sanitise(str(body.get("note", ""))) if isinstance(body, dict) else ""
         if len(note) > 500:
@@ -544,6 +589,8 @@ class WebApi:
         incident = self._find(number)
         if incident is None:
             return jsonify({"errors": [f"No incident #{number}."]}), 404
+        if self._stale(incident):
+            return self._stale_response()
         self._workflow.reopen(incident.timestamp)
         return jsonify(self._to_json(incident, number, history=True)), 200
 
